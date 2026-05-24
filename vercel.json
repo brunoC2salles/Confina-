@@ -1,5 +1,8 @@
 {
   "rewrites": [
-    { "source": "/landing", "destination": "/landing.html" }
+    { "source": "/landing", "destination": "/landing.html" },
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/((?!landing\\.html|landing$).*\\.(js|css|png|jpg|ico|svg|woff|woff2|ttf|json)$)", "destination": "/$1" },
+    { "source": "/((?!landing\\.html|landing$).*)", "destination": "/index.html" }
   ]
 }
