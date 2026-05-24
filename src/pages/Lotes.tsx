@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLotes } from '@/hooks/useLotes'
 import { useDietas } from '@/hooks/useHooks'
+import { useParceiros } from '@/hooks/useHooks'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmtData, fmt, fmtNum } from '@/lib/calculations'
 
@@ -10,18 +11,20 @@ const cicloLabel = (n: number) =>
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 export default function Lotes() {
-  const { lotesAtivos, lotesEncerrados, loading, criarLote, encerrarLote, excluirLote, avancarCiclo, bifurcarLote, registrarPesagem, buscarPesagens, buscarSaidas } = useLotes()
+  const { lotesAtivos, lotesEncerrados, loading, criarLote, encerrarLote, excluirLote, avancarCiclo, bifurcarLote, registrarPesagem, registrarSaida } = useLotes()
   const { templates } = useDietas()
+  const { parceiros } = useParceiros()
   const [tab, setTab] = useState<'ativos'|'encerrados'>('ativos')
   const [showNovo, setShowNovo] = useState(false)
   const [showAvancar, setShowAvancar] = useState<string|null>(null)
   const [showBifurcar, setShowBifurcar] = useState<string|null>(null)
   const [showPesagem, setShowPesagem] = useState<string|null>(null)
-  const [showDetalhe, setShowDetalhe] = useState<string|null>(null)
+  const [showSaida, setShowSaida] = useState<string|null>(null)
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState(1)
   const [erro, setErro] = useState<string|null>(null)
 
+  // Form criação lote
   const [form, setForm] = useState({
     nome_lote: '', codigo_lote: '', ciclo_inicial: 1,
     qtd_animais: '', data_entrada: new Date().toISOString().split('T')[0],
@@ -30,10 +33,12 @@ export default function Lotes() {
     raca_predominante: '', dieta_id: '', observacoes: '',
   })
 
+  // Form pesagem
   const [fPesagem, setFPesagem] = useState({
     data: new Date().toISOString().split('T')[0], peso_medio: '', qtd_animais: '', observacoes: '',
   })
 
+  // Form bifurcação
   const [fBif, setFBif] = useState({
     nome_lote: '', codigo_lote: '', ciclo_inicial: 1,
     data_bifurcacao: new Date().toISOString().split('T')[0],
@@ -41,13 +46,34 @@ export default function Lotes() {
     motivo: 'peso' as const, dieta_id: '', observacoes: '',
   })
 
+  // Form saída
+  const [fSaida, setFSaida] = useState({
+    tipo: 'venda' as const,
+    data_saida: new Date().toISOString().split('T')[0],
+    qtd_animais_saida: '', peso_medio_saida: '',
+    valor_total_venda: '', valor_por_kg: '',
+    saida_total: true,
+    destino_tipo: '' as any,
+    destino_id: '',
+    comissoes: [] as Array<{ tipo: string; percentual: number }>,
+    encargos: [] as Array<{ descricao: string; percentual: number }>,
+    observacoes: '',
+  })
+
   const loteAvancar = lotesAtivos.find(l => l.id === showAvancar)
   const loteBifurcar = lotesAtivos.find(l => l.id === showBifurcar)
+  const loteSaida = [...lotesAtivos, ...lotesEncerrados].find(l => l.id === showSaida)
 
   const resetForm = () => {
     setForm({ nome_lote: '', codigo_lote: '', ciclo_inicial: 1, qtd_animais: '', data_entrada: new Date().toISOString().split('T')[0], peso_medio_entrada: '', valor_pago_kg: '', valor_total_lote: '', origem_fazenda: '', origem_municipio: '', origem_estado: '', raca_predominante: '', dieta_id: '', observacoes: '' })
     setStep(1); setErro(null)
   }
+
+  const resetSaida = () => setFSaida({
+    tipo: 'venda', data_saida: new Date().toISOString().split('T')[0],
+    qtd_animais_saida: '', peso_medio_saida: '', valor_total_venda: '', valor_por_kg: '',
+    saida_total: true, destino_tipo: '', destino_id: '', comissoes: [], encargos: [], observacoes: '',
+  })
 
   const handleCriar = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -107,6 +133,33 @@ export default function Lotes() {
     setShowBifurcar(null)
   }
 
+  const handleSaida = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!showSaida) return
+    setSaving(true)
+    const receita = Number(fSaida.valor_total_venda) || 0
+    const totalComissoes = fSaida.comissoes.reduce((t, c) => t + receita * c.percentual / 100, 0)
+    const totalEncargos = fSaida.encargos.reduce((t, c) => t + receita * c.percentual / 100, 0)
+    await registrarSaida({
+      lote_id: showSaida,
+      tipo: fSaida.tipo,
+      data_saida: fSaida.data_saida,
+      qtd_animais_saida: Number(fSaida.qtd_animais_saida),
+      peso_medio_saida: Number(fSaida.peso_medio_saida),
+      saida_total: fSaida.saida_total,
+      valor_total_venda: receita || undefined,
+      valor_por_kg: fSaida.valor_por_kg ? Number(fSaida.valor_por_kg) : undefined,
+      destino_tipo: fSaida.destino_tipo || undefined,
+      destino_id: fSaida.destino_id || undefined,
+      comissoes: fSaida.comissoes.map(c => ({ tipo: c.tipo, percentual: c.percentual, valor_calculado: receita * c.percentual / 100 })),
+      encargos: fSaida.encargos.map(c => ({ descricao: c.descricao, percentual: c.percentual, valor_calculado: receita * c.percentual / 100 })),
+      total_comissoes: totalComissoes,
+      total_encargos: totalEncargos,
+      receita_bruta: receita,
+      receita_liquida: receita - totalComissoes - totalEncargos,
+    })
+    setSaving(false); setShowSaida(null); resetSaida()
+  }
+
   const lista = tab === 'ativos' ? lotesAtivos : lotesEncerrados
   const stepLabel = ['Identificação', 'Entrada e valores', 'Origem e dieta']
 
@@ -140,12 +193,12 @@ export default function Lotes() {
               onExcluir={() => excluirLote(lote.id)}
               onBifurcar={() => { setShowBifurcar(lote.id); setErro(null) }}
               onPesagem={() => setShowPesagem(lote.id)}
-              onDetalhe={() => setShowDetalhe(lote.id)}/>
+              onSaida={() => { setShowSaida(lote.id); resetSaida() }}/>
           ))}
         </div>
       )}
 
-      {/* MODAL CRIAR LOTE */}
+      {/* ── MODAL CRIAR LOTE ── */}
       <Modal open={showNovo} onClose={() => setShowNovo(false)} title="Criar novo lote"
         subtitle={`Passo ${step} de 3 — ${stepLabel[step-1]}`} size="lg">
         <form onSubmit={handleCriar} style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -238,7 +291,7 @@ export default function Lotes() {
         </form>
       </Modal>
 
-      {/* MODAL PESAGEM */}
+      {/* ── MODAL PESAGEM ── */}
       <Modal open={!!showPesagem} onClose={()=>setShowPesagem(null)} title="Registrar pesagem do lote" size="sm"
         subtitle={lotesAtivos.find(l=>l.id===showPesagem)?.nome_lote}>
         <form onSubmit={handlePesagem} style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -261,7 +314,7 @@ export default function Lotes() {
         </form>
       </Modal>
 
-      {/* MODAL AVANÇAR CICLO */}
+      {/* ── MODAL AVANÇAR CICLO ── */}
       <Modal open={!!showAvancar} onClose={()=>setShowAvancar(null)} title="Avançar ciclo" size="sm"
         subtitle={loteAvancar?`${loteAvancar.nome_lote} — Ciclo ${loteAvancar.ciclo_atual} para ${loteAvancar.ciclo_atual+1}`:''}>
         <p style={{fontSize:13,color:'#555',marginBottom:20}}>Todos os animais do lote avançarão para o próximo ciclo. Esta ação não pode ser desfeita.</p>
@@ -275,7 +328,7 @@ export default function Lotes() {
         </div>
       </Modal>
 
-      {/* MODAL BIFURCAR */}
+      {/* ── MODAL BIFURCAR ── */}
       <Modal open={!!showBifurcar} onClose={()=>setShowBifurcar(null)} title="Bifurcar lote" size="lg"
         subtitle={loteBifurcar?`Dividindo ${loteBifurcar.nome_lote} — ${(loteBifurcar as any).qtd_animais_atual ?? (loteBifurcar as any).qtd_animais} animais disponíveis`:''}>
         <form onSubmit={handleBifurcar} style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -332,13 +385,132 @@ export default function Lotes() {
           </div>
         </form>
       </Modal>
+
+      {/* ── MODAL SAÍDA ── */}
+      <Modal open={!!showSaida} onClose={()=>setShowSaida(null)} title="Registrar saída do lote" size="lg"
+        subtitle={loteSaida?`${loteSaida.nome_lote} — ${(loteSaida as any).qtd_animais_atual ?? 0} animais`:''}> 
+        <form onSubmit={handleSaida} style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Tipo de saída</label>
+              <select className="form-input" value={fSaida.tipo} onChange={e=>setFSaida(f=>({...f,tipo:e.target.value as any}))}>
+                <option value="venda">Venda</option>
+                <option value="abate">Abate</option>
+                <option value="transferencia">Transferência</option>
+                <option value="morte">Morte</option>
+              </select></div>
+            <div className="form-group"><label className="form-label">Data</label>
+              <input className="form-input" type="date" value={fSaida.data_saida} onChange={e=>setFSaida(f=>({...f,data_saida:e.target.value}))} required/></div>
+          </div>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Qtd de animais</label>
+              <input className="form-input" type="number" placeholder="80" min="1" value={fSaida.qtd_animais_saida} onChange={e=>setFSaida(f=>({...f,qtd_animais_saida:e.target.value}))} required/></div>
+            <div className="form-group"><label className="form-label">Peso médio final (kg)</label>
+              <input className="form-input" type="number" placeholder="520" step="0.1" value={fSaida.peso_medio_saida} onChange={e=>setFSaida(f=>({...f,peso_medio_saida:e.target.value}))} required/></div>
+          </div>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Valor total recebido (R$)</label>
+              <input className="form-input" type="number" placeholder="0" step="0.01" value={fSaida.valor_total_venda} onChange={e=>{
+                const vtl = e.target.value
+                setFSaida(f=>({...f,valor_total_venda:vtl,valor_por_kg:vtl&&f.qtd_animais_saida&&f.peso_medio_saida?String((Number(vtl)/(Number(f.qtd_animais_saida)*Number(f.peso_medio_saida))).toFixed(4)):''}))
+              }}/></div>
+            <div className="form-group"><label className="form-label">Valor por kg vivo (R$)</label>
+              <input className="form-input" type="number" placeholder="0" step="0.01" value={fSaida.valor_por_kg} onChange={e=>{
+                const vkg = e.target.value
+                setFSaida(f=>({...f,valor_por_kg:vkg,valor_total_venda:vkg&&f.qtd_animais_saida&&f.peso_medio_saida?String((Number(vkg)*Number(f.qtd_animais_saida)*Number(f.peso_medio_saida)).toFixed(2)):''}))
+              }}/></div>
+          </div>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Destino</label>
+              <select className="form-input" value={fSaida.destino_tipo} onChange={e=>setFSaida(f=>({...f,destino_tipo:e.target.value,destino_id:''}))}>
+                <option value="">— Selecionar —</option>
+                <option value="frigorifico">Frigorífico</option>
+                <option value="corretor">Corretor</option>
+                <option value="produtor">Produtor</option>
+                <option value="outro">Outro</option>
+              </select></div>
+            {fSaida.destino_tipo && (
+              <div className="form-group"><label className="form-label">Parceiro</label>
+                <select className="form-input" value={fSaida.destino_id} onChange={e=>setFSaida(f=>({...f,destino_id:e.target.value}))}>
+                  <option value="">— Selecionar —</option>
+                  {parceiros.filter(p => p.tipo === fSaida.destino_tipo).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select></div>
+            )}
+          </div>
+
+          <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,cursor:'pointer'}}>
+            <input type="checkbox" checked={fSaida.saida_total} onChange={e=>setFSaida(f=>({...f,saida_total:e.target.checked}))}/>
+            Saída total do lote (encerrar lote após registrar)
+          </label>
+
+          {/* Comissões */}
+          <div style={{fontWeight:500,fontSize:12,color:'#555',textTransform:'uppercase',letterSpacing:'0.4px',marginTop:4}}>Comissionamentos</div>
+          {fSaida.comissoes.map((c,i)=>(
+            <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 100px 28px',gap:6,alignItems:'center'}}>
+              <select className="form-input" value={c.tipo} onChange={e=>setFSaida(f=>({...f,comissoes:f.comissoes.map((x,j)=>j===i?{...x,tipo:e.target.value}:x)}))}>
+                <option value="corretor">Corretor</option>
+                <option value="operador">Operador</option>
+                <option value="outro">Outro</option>
+              </select>
+              <div style={{position:'relative'}}>
+                <input className="form-input" type="number" step="0.1" placeholder="%" value={c.percentual} onChange={e=>setFSaida(f=>({...f,comissoes:f.comissoes.map((x,j)=>j===i?{...x,percentual:Number(e.target.value)}:x)}))} style={{paddingRight:24}}/>
+                <span style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',fontSize:11,color:'#9e9e9e'}}>%</span>
+              </div>
+              <button type="button" onClick={()=>setFSaida(f=>({...f,comissoes:f.comissoes.filter((_,j)=>j!==i)}))} style={{background:'none',border:'none',cursor:'pointer',color:'#9e9e9e',fontSize:18}}>×</button>
+            </div>
+          ))}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setFSaida(f=>({...f,comissoes:[...f.comissoes,{tipo:'corretor',percentual:2}]}))}>+ Adicionar comissão</button>
+
+          {/* Encargos */}
+          <div style={{fontWeight:500,fontSize:12,color:'#555',textTransform:'uppercase',letterSpacing:'0.4px'}}>Encargos / Impostos</div>
+          {fSaida.encargos.map((c,i)=>(
+            <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 100px 28px',gap:6,alignItems:'center'}}>
+              <input className="form-input" placeholder="Ex: FUNRURAL" value={c.descricao} onChange={e=>setFSaida(f=>({...f,encargos:f.encargos.map((x,j)=>j===i?{...x,descricao:e.target.value}:x)}))}/>
+              <div style={{position:'relative'}}>
+                <input className="form-input" type="number" step="0.1" placeholder="%" value={c.percentual} onChange={e=>setFSaida(f=>({...f,encargos:f.encargos.map((x,j)=>j===i?{...x,percentual:Number(e.target.value)}:x)}))} style={{paddingRight:24}}/>
+                <span style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',fontSize:11,color:'#9e9e9e'}}>%</span>
+              </div>
+              <button type="button" onClick={()=>setFSaida(f=>({...f,encargos:f.encargos.filter((_,j)=>j!==i)}))} style={{background:'none',border:'none',cursor:'pointer',color:'#9e9e9e',fontSize:18}}>×</button>
+            </div>
+          ))}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setFSaida(f=>({...f,encargos:[...f.encargos,{descricao:'',percentual:0}]}))}>+ Adicionar encargo</button>
+
+          {/* Preview resultado */}
+          {fSaida.valor_total_venda && Number(fSaida.valor_total_venda) > 0 && (
+            <div style={{background:'var(--green-bg)',borderRadius:8,padding:'12px 14px'}}>
+              {(() => {
+                const receita = Number(fSaida.valor_total_venda)
+                const comissoes = fSaida.comissoes.reduce((t,c)=>t+receita*c.percentual/100,0)
+                const encargos = fSaida.encargos.reduce((t,c)=>t+receita*c.percentual/100,0)
+                const liquida = receita - comissoes - encargos
+                return (
+                  <>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'3px 0'}}><span style={{color:'#2e7d32'}}>Receita bruta</span><span style={{fontWeight:500,color:'#1b5e20'}}>{fmt(receita)}</span></div>
+                    {comissoes > 0 && <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'3px 0'}}><span style={{color:'#2e7d32'}}>Comissões</span><span style={{fontWeight:500,color:'#b91c1c'}}>- {fmt(comissoes)}</span></div>}
+                    {encargos > 0 && <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'3px 0'}}><span style={{color:'#2e7d32'}}>Encargos</span><span style={{fontWeight:500,color:'#b91c1c'}}>- {fmt(encargos)}</span></div>}
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:14,padding:'6px 0 0',borderTop:'1px solid #a5d6a7',marginTop:4}}><span style={{fontWeight:600,color:'#1b5e20'}}>Receita líquida</span><span style={{fontWeight:700,color:'#1b5e20'}}>{fmt(liquida)}</span></div>
+                  </>
+                )
+              })()}
+            </div>
+          )}
+
+          <div className="form-group"><label className="form-label">Observações</label>
+            <input className="form-input" placeholder="Opcional" value={fSaida.observacoes} onChange={e=>setFSaida(f=>({...f,observacoes:e.target.value}))}/></div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={()=>setShowSaida(null)}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving?<span className="spinner" style={{width:14,height:14}}/>:'Confirmar saída'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }
 
-function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesagem, onDetalhe }: {
+function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesagem, onSaida }: {
   lote: any; onAvancar:()=>void; onEncerrar:()=>void; onExcluir:()=>void
-  onBifurcar:()=>void; onPesagem:()=>void; onDetalhe:()=>void
+  onBifurcar:()=>void; onPesagem:()=>void; onSaida:()=>void
 }) {
   const qtd = lote.qtd_animais_atual ?? lote.qtd_animais ?? '—'
   const pesoAtual = lote.peso_medio_atual ?? lote.peso_medio_entrada
@@ -388,18 +560,19 @@ function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesage
       {lote.status === 'ativo' && (
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           <button className="btn btn-primary btn-sm" style={{flex:1,justifyContent:'center'}} onClick={onPesagem}>Pesagem</button>
-          {lote.ciclo_atual < 4 && <button className="btn btn-secondary btn-sm" style={{flex:1,justifyContent:'center'}} onClick={onAvancar}>Avançar ciclo</button>}
+          <button className="btn btn-secondary btn-sm" style={{flex:1,justifyContent:'center'}} onClick={onSaida}>Registrar saída</button>
+          {lote.ciclo_atual < 4 && <button className="btn btn-ghost btn-sm" style={{flex:1,justifyContent:'center'}} onClick={onAvancar}>Avançar ciclo</button>}
           <button className="btn btn-ghost btn-sm" style={{flex:1,justifyContent:'center'}} onClick={onBifurcar}>Bifurcar</button>
-          <button className="btn btn-ghost btn-sm" style={{justifyContent:'center',color:'#b91c1c'}} onClick={onEncerrar}>Encerrar</button>
         </div>
       )}
 
       <div style={{display:'flex',gap:6}}>
-        <button
-          className="btn btn-ghost btn-sm"
-          style={{flex:1,justifyContent:'center',color:'#b91c1c',borderColor:'#ffcdd2'}}
-          onClick={() => {
-            if (window.confirm(`Excluir permanentemente "${lote.nome_lote}"?\n\nTodos os dados relacionados (pesagens, saídas, custos) serão removidos. Esta ação não pode ser desfeita.`))
+        {lote.status === 'ativo' && (
+          <button className="btn btn-ghost btn-sm" style={{flex:1,justifyContent:'center',color:'#b91c1c'}} onClick={onEncerrar}>Encerrar</button>
+        )}
+        <button className="btn btn-ghost btn-sm" style={{flex:1,justifyContent:'center',color:'#b91c1c',borderColor:'#ffcdd2'}}
+          onClick={()=>{
+            if(window.confirm(`Excluir permanentemente "${lote.nome_lote}"?\n\nTodos os dados relacionados serão removidos. Esta ação não pode ser desfeita.`))
               onExcluir()
           }}>
           Excluir lote
