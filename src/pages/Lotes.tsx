@@ -10,7 +10,7 @@ const cicloLabel = (n: number) =>
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 export default function Lotes() {
-  const { lotesAtivos, lotesEncerrados, loading, criarLote, encerrarLote, avancarCiclo, bifurcarLote, registrarPesagem, buscarPesagens, buscarSaidas } = useLotes()
+  const { lotesAtivos, lotesEncerrados, loading, criarLote, encerrarLote, excluirLote, avancarCiclo, bifurcarLote, registrarPesagem, buscarPesagens, buscarSaidas } = useLotes()
   const { templates } = useDietas()
   const [tab, setTab] = useState<'ativos'|'encerrados'>('ativos')
   const [showNovo, setShowNovo] = useState(false)
@@ -22,7 +22,6 @@ export default function Lotes() {
   const [step, setStep] = useState(1)
   const [erro, setErro] = useState<string|null>(null)
 
-  // Form criação lote
   const [form, setForm] = useState({
     nome_lote: '', codigo_lote: '', ciclo_inicial: 1,
     qtd_animais: '', data_entrada: new Date().toISOString().split('T')[0],
@@ -31,12 +30,10 @@ export default function Lotes() {
     raca_predominante: '', dieta_id: '', observacoes: '',
   })
 
-  // Form pesagem
   const [fPesagem, setFPesagem] = useState({
     data: new Date().toISOString().split('T')[0], peso_medio: '', qtd_animais: '', observacoes: '',
   })
 
-  // Form bifurcação
   const [fBif, setFBif] = useState({
     nome_lote: '', codigo_lote: '', ciclo_inicial: 1,
     data_bifurcacao: new Date().toISOString().split('T')[0],
@@ -46,7 +43,6 @@ export default function Lotes() {
 
   const loteAvancar = lotesAtivos.find(l => l.id === showAvancar)
   const loteBifurcar = lotesAtivos.find(l => l.id === showBifurcar)
-  const loteDetalhe = [...lotesAtivos, ...lotesEncerrados].find(l => l.id === showDetalhe)
 
   const resetForm = () => {
     setForm({ nome_lote: '', codigo_lote: '', ciclo_inicial: 1, qtd_animais: '', data_entrada: new Date().toISOString().split('T')[0], peso_medio_entrada: '', valor_pago_kg: '', valor_total_lote: '', origem_fazenda: '', origem_municipio: '', origem_estado: '', raca_predominante: '', dieta_id: '', observacoes: '' })
@@ -112,7 +108,6 @@ export default function Lotes() {
   }
 
   const lista = tab === 'ativos' ? lotesAtivos : lotesEncerrados
-
   const stepLabel = ['Identificação', 'Entrada e valores', 'Origem e dieta']
 
   return (
@@ -142,6 +137,7 @@ export default function Lotes() {
             <LoteCard key={lote.id} lote={lote as any}
               onAvancar={() => setShowAvancar(lote.id)}
               onEncerrar={() => encerrarLote(lote.id)}
+              onExcluir={() => excluirLote(lote.id)}
               onBifurcar={() => { setShowBifurcar(lote.id); setErro(null) }}
               onPesagem={() => setShowPesagem(lote.id)}
               onDetalhe={() => setShowDetalhe(lote.id)}/>
@@ -149,12 +145,10 @@ export default function Lotes() {
         </div>
       )}
 
-      {/* ── MODAL CRIAR LOTE ── */}
+      {/* MODAL CRIAR LOTE */}
       <Modal open={showNovo} onClose={() => setShowNovo(false)} title="Criar novo lote"
         subtitle={`Passo ${step} de 3 — ${stepLabel[step-1]}`} size="lg">
         <form onSubmit={handleCriar} style={{display:'flex',flexDirection:'column',gap:14}}>
-
-          {/* Indicador de passo */}
           <div style={{display:'flex',gap:6,marginBottom:8}}>
             {[1,2,3].map(s => (
               <div key={s} style={{flex:1,height:3,borderRadius:2,background:s<=step?'var(--green)':'var(--border)'}}/>
@@ -202,7 +196,7 @@ export default function Lotes() {
             </div>
             {form.qtd_animais && form.peso_medio_entrada && form.valor_pago_kg && (
               <div style={{padding:'10px 14px',background:'var(--green-bg)',borderRadius:8,fontSize:13,color:'var(--green-dark)'}}>
-                Peso total do lote: <strong>{fmtNum(Number(form.qtd_animais)*Number(form.peso_medio_entrada),0)} kg</strong>
+                Peso total: <strong>{fmtNum(Number(form.qtd_animais)*Number(form.peso_medio_entrada),0)} kg</strong>
                 {' · '}Valor total: <strong>{fmt(Number(form.valor_total_lote)||Number(form.valor_pago_kg)*Number(form.peso_medio_entrada)*Number(form.qtd_animais))}</strong>
               </div>
             )}
@@ -234,7 +228,6 @@ export default function Lotes() {
           </>}
 
           {erro && <div style={{padding:10,background:'#ffebee',borderRadius:8,color:'#b91c1c',fontSize:13}}>{erro}</div>}
-
           <div className="modal-actions">
             {step > 1 && <button type="button" className="btn btn-ghost" onClick={()=>setStep(s=>s-1)}>Voltar</button>}
             <button type="button" className="btn btn-ghost" onClick={()=>setShowNovo(false)}>Cancelar</button>
@@ -245,7 +238,7 @@ export default function Lotes() {
         </form>
       </Modal>
 
-      {/* ── MODAL PESAGEM ── */}
+      {/* MODAL PESAGEM */}
       <Modal open={!!showPesagem} onClose={()=>setShowPesagem(null)} title="Registrar pesagem do lote" size="sm"
         subtitle={lotesAtivos.find(l=>l.id===showPesagem)?.nome_lote}>
         <form onSubmit={handlePesagem} style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -268,7 +261,7 @@ export default function Lotes() {
         </form>
       </Modal>
 
-      {/* ── MODAL AVANÇAR CICLO ── */}
+      {/* MODAL AVANÇAR CICLO */}
       <Modal open={!!showAvancar} onClose={()=>setShowAvancar(null)} title="Avançar ciclo" size="sm"
         subtitle={loteAvancar?`${loteAvancar.nome_lote} — Ciclo ${loteAvancar.ciclo_atual} para ${loteAvancar.ciclo_atual+1}`:''}>
         <p style={{fontSize:13,color:'#555',marginBottom:20}}>Todos os animais do lote avançarão para o próximo ciclo. Esta ação não pode ser desfeita.</p>
@@ -282,7 +275,7 @@ export default function Lotes() {
         </div>
       </Modal>
 
-      {/* ── MODAL BIFURCAR ── */}
+      {/* MODAL BIFURCAR */}
       <Modal open={!!showBifurcar} onClose={()=>setShowBifurcar(null)} title="Bifurcar lote" size="lg"
         subtitle={loteBifurcar?`Dividindo ${loteBifurcar.nome_lote} — ${(loteBifurcar as any).qtd_animais_atual ?? (loteBifurcar as any).qtd_animais} animais disponíveis`:''}>
         <form onSubmit={handleBifurcar} style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -325,13 +318,11 @@ export default function Lotes() {
           </div>
           <div className="form-group"><label className="form-label">Observações</label>
             <input className="form-input" placeholder="Opcional" value={fBif.observacoes} onChange={e=>setFBif(f=>({...f,observacoes:e.target.value}))}/></div>
-
           {fBif.qtd_animais_transferidos && loteBifurcar && (
             <div style={{padding:'10px 14px',background:'var(--green-bg)',borderRadius:8,fontSize:13,color:'var(--green-dark)'}}>
               Lote origem ficará com: <strong>{Math.max(0,((loteBifurcar as any).qtd_animais_atual||(loteBifurcar as any).qtd_animais||0)-Number(fBif.qtd_animais_transferidos))} animais</strong>
             </div>
           )}
-
           {erro && <div style={{padding:10,background:'#ffebee',borderRadius:8,color:'#b91c1c',fontSize:13}}>{erro}</div>}
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={()=>setShowBifurcar(null)}>Cancelar</button>
@@ -345,8 +336,8 @@ export default function Lotes() {
   )
 }
 
-function LoteCard({ lote, onAvancar, onEncerrar, onBifurcar, onPesagem, onDetalhe }: {
-  lote: any; onAvancar:()=>void; onEncerrar:()=>void
+function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesagem, onDetalhe }: {
+  lote: any; onAvancar:()=>void; onEncerrar:()=>void; onExcluir:()=>void
   onBifurcar:()=>void; onPesagem:()=>void; onDetalhe:()=>void
 }) {
   const qtd = lote.qtd_animais_atual ?? lote.qtd_animais ?? '—'
@@ -366,7 +357,6 @@ function LoteCard({ lote, onAvancar, onEncerrar, onBifurcar, onPesagem, onDetalh
         </span>
       </div>
 
-      {/* Progresso ciclo */}
       <div>
         <div style={{display:'flex',gap:4,marginBottom:4}}>
           {[1,2,3,4].map(n=><div key={n} style={{flex:1,height:4,borderRadius:2,background:n<lote.ciclo_atual?'#2e7d32':n===lote.ciclo_atual?'#66bb6a':'#e0e0e0'}}/>)}
@@ -374,7 +364,6 @@ function LoteCard({ lote, onAvancar, onEncerrar, onBifurcar, onPesagem, onDetalh
         <div style={{fontSize:11,color:'#9e9e9e'}}>Ciclo {lote.ciclo_atual} — {cicloLabel(lote.ciclo_atual)} · {dias}d de confinamento</div>
       </div>
 
-      {/* Métricas */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
         <div style={{background:'#fafafa',borderRadius:8,padding:'8px 10px'}}>
           <div style={{fontSize:11,color:'#9e9e9e'}}>Animais</div>
@@ -384,7 +373,7 @@ function LoteCard({ lote, onAvancar, onEncerrar, onBifurcar, onPesagem, onDetalh
           <div style={{fontSize:11,color:'#9e9e9e'}}>Peso médio</div>
           <div style={{fontSize:17,fontWeight:600}}>{pesoAtual?`${fmtNum(pesoAtual,0)} kg`:'—'}</div>
         </div>
-        <div style={{background: gmd ? '#e8f5e9' : '#fafafa',borderRadius:8,padding:'8px 10px'}}>
+        <div style={{background:gmd?'#e8f5e9':'#fafafa',borderRadius:8,padding:'8px 10px'}}>
           <div style={{fontSize:11,color:'#9e9e9e'}}>GMD</div>
           <div style={{fontSize:17,fontWeight:600,color:gmd?'#1b5e20':'#111'}}>{gmd?`${fmtNum(gmd,3)} kg`:'—'}</div>
         </div>
@@ -404,6 +393,18 @@ function LoteCard({ lote, onAvancar, onEncerrar, onBifurcar, onPesagem, onDetalh
           <button className="btn btn-ghost btn-sm" style={{justifyContent:'center',color:'#b91c1c'}} onClick={onEncerrar}>Encerrar</button>
         </div>
       )}
+
+      <div style={{display:'flex',gap:6}}>
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{flex:1,justifyContent:'center',color:'#b91c1c',borderColor:'#ffcdd2'}}
+          onClick={() => {
+            if (window.confirm(`Excluir permanentemente "${lote.nome_lote}"?\n\nTodos os dados relacionados (pesagens, saídas, custos) serão removidos. Esta ação não pode ser desfeita.`))
+              onExcluir()
+          }}>
+          Excluir lote
+        </button>
+      </div>
     </div>
   )
 }
