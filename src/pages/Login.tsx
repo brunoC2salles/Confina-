@@ -20,7 +20,7 @@ export default function Login() {
       if (error) {
         setError('E-mail ou senha inválidos.')
       } else {
-        navigate('/')
+        navigate('/lotes')
       }
     } else {
       if (!nome.trim()) { setError('Informe seu nome.'); setLoading(false); return }
@@ -39,8 +39,12 @@ export default function Login() {
           <div style={{ fontSize: 13, color: '#9e9e9e', marginTop: 10 }}>Gestão de Confinamento Bovino</div>
         </div>
         <div className="card" style={{ padding: 32 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>{mode === 'login' ? 'Entrar na conta' : 'Criar conta'}</h2>
-          <p style={{ fontSize: 13, color: '#9e9e9e', marginBottom: 24 }}>{mode === 'login' ? 'Informe suas credenciais para continuar' : 'Preencha os dados para se cadastrar'}</p>
+          <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+            {mode === 'login' ? 'Entrar na conta' : 'Criar conta'}
+          </h2>
+          <p style={{ fontSize: 13, color: '#9e9e9e', marginBottom: 24 }}>
+            {mode === 'login' ? 'Informe suas credenciais para continuar' : 'Preencha os dados para se cadastrar'}
+          </p>
           <form onSubmit={handle} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {mode === 'register' && (
               <div className="form-group">
@@ -56,21 +60,32 @@ export default function Login() {
               <label className="form-label">Senha</label>
               <input className="form-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
             </div>
-            {error && <div style={{ padding: '10px 14px', background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{error}</div>}
-            {success && <div style={{ padding: '10px 14px', background: '#e8f5e9', borderRadius: 8, color: '#1b5e20', fontSize: 13 }}>{success}</div>}
+            {error && (
+              <div style={{ padding: '10px 14px', background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>
+                {error}
+              </div>
+            )}
+            {success && (
+              <div style={{ padding: '10px 14px', background: '#e8f5e9', borderRadius: 8, color: '#1b5e20', fontSize: 13 }}>
+                {success}
+              </div>
+            )}
             <button type="submit" className="btn btn-primary" disabled={loading} style={{ justifyContent: 'center', padding: 11 }}>
               {loading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : mode === 'login' ? 'Entrar' : 'Criar conta'}
             </button>
           </form>
           <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: '#9e9e9e' }}>
             {mode === 'login' ? 'Não tem conta? ' : 'Já tem conta? '}
-            <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); setSuccess(null) }}
+            <button
+              onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); setSuccess(null) }}
               style={{ background: 'none', border: 'none', color: '#2e7d32', fontWeight: 500, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>
               {mode === 'login' ? 'Cadastre-se' : 'Faça login'}
             </button>
           </div>
         </div>
-        <p style={{ textAlign: 'center', fontSize: 11, color: '#bdbdbd', marginTop: 16 }}>Confina+ — Todos os direitos reservados</p>
+        <p style={{ textAlign: 'center', fontSize: 11, color: '#bdbdbd', marginTop: 16 }}>
+          Confina+ — Todos os direitos reservados
+        </p>
       </div>
     </div>
   )
