@@ -22,11 +22,9 @@ export function useToast() {
 
 export function ToastContainer({ toasts }: { toasts: Toast[] }) {
   if (!toasts.length) return null
-  return (
-    <div className="toast-wrap">
-      {toasts.map(t => (
-        <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
-      ))}
-    </div>
-  )
+  const items = toasts.map(t => {
+    const cls = 'toast toast-' + t.type
+    return <div key={t.id} className={cls}>{t.msg}</div>
+  })
+  return <div className="toast-wrap">{items}</div>
 }
