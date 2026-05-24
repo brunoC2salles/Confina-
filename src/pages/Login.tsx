@@ -1,8 +1,10 @@
 import { useState, FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function Login() {
   const { signIn, signUp } = useAuth()
+  const navigate = useNavigate()
   const [mode, setMode] = useState<'login'|'register'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -15,7 +17,11 @@ export default function Login() {
     e.preventDefault(); setError(null); setSuccess(null); setLoading(true)
     if (mode === 'login') {
       const { error } = await signIn(email, password)
-      if (error) setError('E-mail ou senha inválidos.')
+      if (error) {
+        setError('E-mail ou senha inválidos.')
+      } else {
+        navigate('/')
+      }
     } else {
       if (!nome.trim()) { setError('Informe seu nome.'); setLoading(false); return }
       const { error } = await signUp(email, password, nome)
