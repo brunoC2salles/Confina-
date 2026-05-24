@@ -1,140 +1,169 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/contexts/AuthContext'
-import { PageHeader } from '@/components/common/UI'
-import { fmt, fmtData } from '@/lib/calculations'
+import { useState } from 'react'
+import { useAnimais } from '@/hooks/useAnimais'
+import { useLotes } from '@/hooks/useLotes'
+import PageHeader from '@/components/common/PageHeader'
+import Modal from '@/components/common/Modal'
+import EmptyState from '@/components/common/EmptyState'
+import { fmtData, fmt, calcularDias } from '@/lib/calculations'
 
-type Periodo = 'semanal'|'quinzenal'|'mensal'|'trimestral'|'semestral'|'anual'
-const diasPeriodo: Record<Periodo, number> = { semanal: 7, quinzenal: 15, mensal: 30, trimestral: 90, semestral: 180, anual: 365 }
+export default function Animais() {
+  const { animais, animaisAtivos, loading, adicionarAnimal, registrarPesagem, registrarSaida } = useAnimais()
+  const { lotesAtivos } = useLotes()
+  const [filtroLote, setFiltroLote] = useState('todos')
+  const [showNovo, setShowNovo] = useState(false)
+  const [showPesagem, setShowPesagem] = useState<string|null>(null)
+  const [showSaida, setShowSaida] = useState<string|null>(null)
+  const [saving, setSaving] = useState(false)
+  const [erro, setErro] = useState<string|null>(null)
 
-interface Resumo {
-  receita_vendas: number; valor_bonus: number; total_comissoes: number; total_encargos: number
-  custo_compra: number; custo_alimentacao: number; custos_variaveis: number; custos_fixos: number
-  qtd_vendidos: number
-}
+  const [fAnimal, setFAnimal] = useState({
+    identificacao: '', peso_entrada: '', data_entrada: new Date().toISOString().split('T')[0],
+    origem: '', raca: '', idade_estimada: '', valor_compra: '', lote_atual_id: '', observacoes: '',
+  })
+  const [fPesagem, setFPesagem] = useState({ peso: '', data: new Date().toISOString().split('T')[0], observacoes: '' })
+  const [fSaida, setFSaida] = useState({ tipo: 'saida_venda' as const, data: new Date().toISOString().split('T')[0], peso_final: '', valor: '', observacoes: '' })
 
-export default function Relatorios() {
-  const { user } = useAuth()
-  const [periodo, setPeriodo] = useState<Periodo>('mensal')
-  const [loading, setLoading] = useState(false)
-  const [resumo, setResumo] = useState<Resumo | null>(null)
+  const animalSaida = animais.find(a => a.id === showSaida)
+  const lista = filtroLote === 'todos' ? animaisAtivos : animaisAtivos.filter(a => a.lote_atual_id === filtroLote)
 
-  const getFim = () => new Date().toISOString().split('T')[0]
-  const getInicio = () => {
-    const d = new Date(); d.setDate(d.getDate() - diasPeriodo[periodo]); return d.toISOString().split('T')[0]
+  const handleAdicionarAnimal = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true); setErro(null)
+    const { error } = await adicionarAnimal({
+      identificacao: fAnimal.identificacao, peso_entrada: Number(fAnimal.peso_entrada),
+      data_entrada: fAnimal.data_entrada, origem: fAnimal.origem || undefined,
+      raca: fAnimal.raca || undefined, idade_estimada: fAnimal.idade_estimada ? Number(fAnimal.idade_estimada) : undefined,
+      valor_compra: Number(fAnimal.valor_compra), lote_atual_id: fAnimal.lote_atual_id,
+      observacoes: fAnimal.observacoes || undefined,
+    })
+    setSaving(false)
+    if (error) { setErro(error); return }
+    setShowNovo(false)
+    setFAnimal({ identificacao: '', peso_entrada: '', data_entrada: new Date().toISOString().split('T')[0], origem: '', raca: '', idade_estimada: '', valor_compra: '', lote_atual_id: '', observacoes: '' })
   }
 
-  useEffect(() => {
-    if (!user) return
-    const load = async () => {
-      setLoading(true)
-      const inicio = getInicio(); const fim = getFim()
-      const [movs, comissoes, encargos, custosVar] = await Promise.all([
-        supabase.from('movimentacoes_animais').select('valor, tipo, animal_id').eq('user_id', user.id).in('tipo', ['saida_venda','saida_abate']).gte('data', inicio).lte('data', fim),
-        supabase.from('comissoes_venda').select('valor_calculado').eq('user_id', user.id).gte('created_at', inicio).lte('created_at', fim),
-        supabase.from('encargos_venda').select('valor_calculado').eq('user_id', user.id).gte('created_at', inicio).lte('created_at', fim),
-        supabase.from('custos_variaveis_animal').select('valor').eq('user_id', user.id).gte('data_lancamento', inicio).lte('data_lancamento', fim),
-      ])
-      const saidas = movs.data ?? []
-      const animalIds = [...new Set(saidas.map(s => s.animal_id).filter(Boolean))]
-      let custoCompra = 0
-      if (animalIds.length > 0) {
-        const { data } = await supabase.from('animais').select('valor_compra').in('id', animalIds)
-        custoCompra = (data ?? []).reduce((t, a) => t + (a.valor_compra ?? 0), 0)
-      }
-      setResumo({
-        receita_vendas: saidas.reduce((t, s) => t + (s.valor ?? 0), 0),
-        valor_bonus: 0,
-        total_comissoes: (comissoes.data ?? []).reduce((t, c) => t + c.valor_calculado, 0),
-        total_encargos: (encargos.data ?? []).reduce((t, e) => t + e.valor_calculado, 0),
-        custo_compra: custoCompra,
-        custo_alimentacao: 0,
-        custos_variaveis: (custosVar.data ?? []).reduce((t, c) => t + c.valor, 0),
-        custos_fixos: 0,
-        qtd_vendidos: saidas.length,
-      })
-      setLoading(false)
-    }
-    load()
-  }, [user, periodo])
+  const handlePesagem = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!showPesagem) return; setSaving(true)
+    await registrarPesagem({ animal_id: showPesagem, peso: Number(fPesagem.peso), data: fPesagem.data, observacoes: fPesagem.observacoes || undefined })
+    setSaving(false); setShowPesagem(null)
+  }
 
-  const rb = (resumo?.receita_vendas ?? 0) + (resumo?.valor_bonus ?? 0)
-  const ded = (resumo?.total_comissoes ?? 0) + (resumo?.total_encargos ?? 0)
-  const rl = rb - ded
-  const tc = (resumo?.custo_compra ?? 0) + (resumo?.custo_alimentacao ?? 0) + (resumo?.custos_variaveis ?? 0) + (resumo?.custos_fixos ?? 0)
-  const lucro = rl - tc
-  const margem = rl > 0 ? (lucro / rl) * 100 : 0
-
-  const Row = ({ label, value, neg, bold }: { label: string; value: string; neg?: boolean; bold?: boolean }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #f5f5f5', fontSize: 13 }}>
-      <span style={{ color: '#555' }}>{label}</span>
-      <span style={{ fontWeight: bold ? 600 : 400, color: neg ? '#b91c1c' : undefined }}>{neg ? `- ${value}` : value}</span>
-    </div>
-  )
+  const handleSaida = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!showSaida) return; setSaving(true)
+    await registrarSaida({ animal_id: showSaida, tipo: fSaida.tipo, data: fSaida.data, peso_final: Number(fSaida.peso_final), valor: fSaida.valor ? Number(fSaida.valor) : undefined, observacoes: fSaida.observacoes || undefined })
+    setSaving(false); setShowSaida(null)
+  }
 
   return (
     <div className="page">
-      <PageHeader title="Relatórios" subtitle="Consolidado financeiro por período"
-        action={<button className="btn btn-primary" onClick={() => window.print()}>Exportar PDF</button>} />
+      <div style={{ padding: '10px 16px', background: '#fff3e0', borderRadius: 8, border: '1px solid #ffe0b2', fontSize: 13, color: '#b45309', marginBottom: 20 }}>
+        O rastreamento individual é opcional. A gestão principal do confinamento é feita por lote na página Lotes.
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, marginBottom: 24 }}>
-        {(Object.keys(diasPeriodo) as Periodo[]).map(p => (
-          <button key={p} onClick={() => setPeriodo(p)}
-            style={{ padding: '10px 8px', border: '1px solid', borderRadius: 8, cursor: 'pointer', textAlign: 'center', background: periodo === p ? '#e8f5e9' : '#fff', borderColor: periodo === p ? '#a5d6a7' : '#e0e0e0', fontSize: 12, fontWeight: periodo === p ? 500 : 400, color: periodo === p ? '#1b5e20' : '#555', fontFamily: 'inherit' }}>
-            <div style={{ textTransform: 'capitalize' }}>{p}</div>
-          </button>
+      <PageHeader title="Animais individuais" subtitle={`${animaisAtivos.length} animal(is) cadastrado(s) individualmente`}
+        action={<button className="btn btn-primary" onClick={() => setShowNovo(true)}>+ Adicionar animal</button>} />
+
+      <div className="pill-wrap">
+        {[{ id: 'todos', label: 'Todos' }, ...lotesAtivos.map(l => ({ id: l.id, label: l.nome_lote }))].map(f => (
+          <button key={f.id} className={`pill${filtroLote === f.id ? ' active' : ''}`} onClick={() => setFiltroLote(f.id)}>{f.label}</button>
         ))}
       </div>
 
-      <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 16 }}>Período: {fmtData(getInicio())} até {fmtData(getFim())}</div>
-
-      {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><div className="spinner" style={{ width: 28, height: 28 }} /></div>
-      : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <div className="card">
-            <div style={{ fontWeight: 600, marginBottom: 14 }}>Receitas</div>
-            <Row label="Venda de animais" value={fmt(resumo?.receita_vendas ?? 0)} />
-            <Row label="Bônus frigorífico" value={fmt(resumo?.valor_bonus ?? 0)} />
-            <Row label="Total receitas brutas" value={fmt(rb)} bold />
-            <div style={{ fontWeight: 600, marginTop: 16, marginBottom: 10 }}>Deduções</div>
-            <Row label="Comissionamentos" value={fmt(resumo?.total_comissoes ?? 0)} neg />
-            <Row label="Encargos e impostos" value={fmt(resumo?.total_encargos ?? 0)} neg />
-            <Row label="Receita líquida" value={fmt(rl)} bold />
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><div className="spinner" style={{ width: 28, height: 28 }} /></div>
+      ) : lista.length === 0 ? (
+        <div className="card">
+          <div className="empty">
+            <div className="empty-icon">◈</div>
+            <div className="empty-title">Nenhum animal individual cadastrado</div>
+            <div className="empty-desc">Use esta seção apenas para animais que precisam de rastreio individual (ex: SISBOV).</div>
+            <button className="btn btn-primary" onClick={() => setShowNovo(true)}>Adicionar animal</button>
           </div>
-
-          <div className="card">
-            <div style={{ fontWeight: 600, marginBottom: 14 }}>Custos</div>
-            <Row label="Compra de animais" value={fmt(resumo?.custo_compra ?? 0)} neg />
-            <Row label="Alimentação" value={fmt(resumo?.custo_alimentacao ?? 0)} neg />
-            <Row label="Custos variáveis (animais)" value={fmt(resumo?.custos_variaveis ?? 0)} neg />
-            <Row label="Custos fixos (lotes)" value={fmt(resumo?.custos_fixos ?? 0)} neg />
-            <Row label="Total custos" value={fmt(tc)} bold />
-
-            <div style={{ background: lucro >= 0 ? '#e8f5e9' : '#ffebee', borderRadius: 8, padding: 16, marginTop: 16 }}>
-              {[
-                ['Lucro líquido', fmt(lucro)],
-                ['Margem líquida', `${margem.toFixed(1)}%`],
-                ['Animais vendidos', `${resumo?.qtd_vendidos ?? 0}`],
-                ['Lucro médio/animal', resumo?.qtd_vendidos ? fmt(lucro / resumo.qtd_vendidos) : '—'],
-              ].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13 }}>
-                  <span style={{ color: lucro >= 0 ? '#2e7d32' : '#b91c1c' }}>{l}</span>
-                  <span style={{ fontWeight: 600, color: lucro >= 0 ? '#1b5e20' : '#b91c1c' }}>{v}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: 'center' }} onClick={() => window.print()}>PDF</button>
-              <button className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center' }} onClick={() => {
-                const rows = [['Métrica','Valor'],['Receita vendas',fmt(resumo?.receita_vendas??0)],['Total receitas brutas',fmt(rb)],['Deduções',fmt(ded)],['Receita líquida',fmt(rl)],['Total custos',fmt(tc)],['Lucro líquido',fmt(lucro)],['Margem',`${margem.toFixed(1)}%`]]
-                const csv = rows.map(r => r.join(',')).join('\n')
-                const a = document.createElement('a'); a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv); a.download = `relatorio-${periodo}.csv`; a.click()
-              }}>CSV</button>
-            </div>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 0 }}>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Identificação</th><th>Lote</th><th>Raça</th><th>Peso entrada</th><th>Data entrada</th><th>Dias</th><th>Valor compra</th><th>Ações</th></tr></thead>
+              <tbody>
+                {lista.map(a => {
+                  const lote = lotesAtivos.find(l => l.id === a.lote_atual_id)
+                  const dias = calcularDias(a.data_entrada, new Date().toISOString().split('T')[0])
+                  return (
+                    <tr key={a.id}>
+                      <td><strong>{a.identificacao}</strong></td>
+                      <td>{lote?.nome_lote ?? '—'}</td>
+                      <td>{a.raca ?? '—'}</td>
+                      <td>{a.peso_entrada} kg</td>
+                      <td>{fmtData(a.data_entrada)}</td>
+                      <td>{dias}d</td>
+                      <td>{fmt(a.valor_compra)}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setShowPesagem(a.id)}>Pesagem</button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => setShowSaida(a.id)}>Saída</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
+
+      <Modal open={showNovo} onClose={() => setShowNovo(false)} title="Adicionar animal individual" size="lg">
+        <form onSubmit={handleAdicionarAnimal} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Brinco / Identificação</label><input className="form-input" placeholder="#4821" value={fAnimal.identificacao} onChange={e => setFAnimal(f => ({ ...f, identificacao: e.target.value }))} required /></div>
+            <div className="form-group"><label className="form-label">Lote</label><select className="form-input" value={fAnimal.lote_atual_id} onChange={e => setFAnimal(f => ({ ...f, lote_atual_id: e.target.value }))} required><option value="">Selecione</option>{lotesAtivos.map(l => <option key={l.id} value={l.id}>{l.nome_lote}</option>)}</select></div>
+          </div>
+          <div className="form-row-3">
+            <div className="form-group"><label className="form-label">Peso entrada (kg)</label><input className="form-input" type="number" placeholder="320" value={fAnimal.peso_entrada} onChange={e => setFAnimal(f => ({ ...f, peso_entrada: e.target.value }))} required min="1" /></div>
+            <div className="form-group"><label className="form-label">Data de entrada</label><input className="form-input" type="date" value={fAnimal.data_entrada} onChange={e => setFAnimal(f => ({ ...f, data_entrada: e.target.value }))} required /></div>
+            <div className="form-group"><label className="form-label">Valor de compra (R$)</label><input className="form-input" type="number" placeholder="2800" value={fAnimal.valor_compra} onChange={e => setFAnimal(f => ({ ...f, valor_compra: e.target.value }))} required min="0" step="0.01" /></div>
+          </div>
+          <div className="form-row-3">
+            <div className="form-group"><label className="form-label">Raça</label><input className="form-input" placeholder="Nelore" value={fAnimal.raca} onChange={e => setFAnimal(f => ({ ...f, raca: e.target.value }))} /></div>
+            <div className="form-group"><label className="form-label">Origem</label><input className="form-input" placeholder="Fazenda" value={fAnimal.origem} onChange={e => setFAnimal(f => ({ ...f, origem: e.target.value }))} /></div>
+            <div className="form-group"><label className="form-label">Idade (meses)</label><input className="form-input" type="number" placeholder="18" value={fAnimal.idade_estimada} onChange={e => setFAnimal(f => ({ ...f, idade_estimada: e.target.value }))} min="0" /></div>
+          </div>
+          {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={() => setShowNovo(false)}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Adicionar'}</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={!!showPesagem} onClose={() => setShowPesagem(null)} title="Registrar pesagem" size="sm">
+        <form onSubmit={handlePesagem} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="form-group"><label className="form-label">Peso atual (kg)</label><input className="form-input" type="number" placeholder="450" value={fPesagem.peso} onChange={e => setFPesagem(f => ({ ...f, peso: e.target.value }))} required min="1" /></div>
+          <div className="form-group"><label className="form-label">Data</label><input className="form-input" type="date" value={fPesagem.data} onChange={e => setFPesagem(f => ({ ...f, data: e.target.value }))} required /></div>
+          <div className="form-group"><label className="form-label">Observações</label><input className="form-input" placeholder="Opcional" value={fPesagem.observacoes} onChange={e => setFPesagem(f => ({ ...f, observacoes: e.target.value }))} /></div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={() => setShowPesagem(null)}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar'}</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={!!showSaida} onClose={() => setShowSaida(null)} title="Registrar saída" subtitle={animalSaida ? `Animal: ${animalSaida.identificacao}` : ''} size="md">
+        <form onSubmit={handleSaida} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Tipo</label><select className="form-input" value={fSaida.tipo} onChange={e => setFSaida(f => ({ ...f, tipo: e.target.value as typeof fSaida.tipo }))}><option value="saida_venda">Venda</option><option value="saida_abate">Abate</option><option value="saida_transferencia">Transferência</option><option value="saida_morte">Morte</option></select></div>
+            <div className="form-group"><label className="form-label">Data</label><input className="form-input" type="date" value={fSaida.data} onChange={e => setFSaida(f => ({ ...f, data: e.target.value }))} required /></div>
+          </div>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Peso final (kg)</label><input className="form-input" type="number" placeholder="540" value={fSaida.peso_final} onChange={e => setFSaida(f => ({ ...f, peso_final: e.target.value }))} required min="1" /></div>
+            {fSaida.tipo === 'saida_venda' && <div className="form-group"><label className="form-label">Valor de venda (R$)</label><input className="form-input" type="number" placeholder="7560" value={fSaida.valor} onChange={e => setFSaida(f => ({ ...f, valor: e.target.value }))} min="0" step="0.01" /></div>}
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={() => setShowSaida(null)}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Confirmar'}</button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }
