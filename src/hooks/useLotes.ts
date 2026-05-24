@@ -157,6 +157,12 @@ export function useLotes() {
     return { error: error?.message ?? null }
   }
 
+  const excluirLote = async (id: string) => {
+    const { error } = await supabase.from('lotes').delete().eq('id', id)
+    if (!error) await fetch()
+    return { error: error?.message ?? null }
+  }
+
   const buscarPesagens = async (loteId: string) => {
     const { data } = await supabase.from('pesagens_lote').select('*')
       .eq('lote_id', loteId).order('data', { ascending: false })
@@ -174,7 +180,7 @@ export function useLotes() {
     lotesAtivos: lotes.filter(l => l.status === 'ativo'),
     lotesEncerrados: lotes.filter(l => l.status === 'encerrado'),
     criarLote, registrarPesagem, bifurcarLote,
-    registrarSaida, avancarCiclo, encerrarLote,
+    registrarSaida, avancarCiclo, encerrarLote, excluirLote,
     buscarPesagens, buscarSaidas,
   }
 }
