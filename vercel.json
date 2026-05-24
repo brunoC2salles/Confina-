@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/landing", "destination": "/landing.html" },
-    { "source": "/((?!api|_next|static|favicon|landing).*)", "destination": "/index.html" }
+    { "source": "/landing", "destination": "/landing.html" }
   ]
 }
