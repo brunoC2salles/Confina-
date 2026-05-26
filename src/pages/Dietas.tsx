@@ -304,7 +304,7 @@ const carregarTemplate = (db: DietaBase) => {
 
       <Modal open={showNova || !!showEditar} onClose={() => { setShowNova(false); setShowEditar(null); setForm(emptyForm()) }}
         title={showEditar ? 'Editar dieta' : 'Nova dieta'} size="lg">
-        <form onSubmit={handleSalvar} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <form onSubmit={handleSalvar} style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '70vh', overflowY: 'auto', paddingRight: 4 }}>
           <FormContent />
           {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
           <div className="modal-actions">
