@@ -4,6 +4,8 @@ import { useAdmin } from '@/hooks/useDietas'
 import { Modal, PageHeader } from '@/components/common/UI'
 import { fmt } from '@/lib/calculations'
 import type { Insumo } from '@/hooks/useDietas'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 
 const categoriaLabel: Record<string, string> = {
   volumoso: 'Volumoso',
