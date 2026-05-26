@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { useAnimais } from '@/hooks/useAnimais'
 import { useLotes } from '@/hooks/useLotes'
-import PageHeader from '@/components/common/PageHeader'
-import Modal from '@/components/common/Modal'
-import EmptyState from '@/components/common/EmptyState'
+import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmtData, fmt, calcularDias } from '@/lib/calculations'
 
 export default function Animais() {
