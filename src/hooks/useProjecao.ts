@@ -1,0 +1,133 @@
+import { useCallback } from 'react'
+
+export interface PontoProjecao {
+  dia: number
+  data: string
+  peso: number
+  peso_carcaca: number
+  receita_bruta: number
+  custo_total: number
+  lucro: number
+  lucro_por_animal: number
+}
+
+export interface ResultadoProjecao {
+  curva_real: PontoProjecao[]
+  curva_esperada: PontoProjecao[]
+  dia_ideal_real: PontoProjecao | null
+  dia_ideal_esperado: PontoProjecao | null
+}
+
+export interface InputProjecao {
+  // Dados do lote
+  peso_medio_atual: number
+  qtd_animais: number
+  gmd_real: number | null
+  gmd_esperado: number | null
+  data_hoje: string
+  // Custos já incorridos
+  custo_compra_total: number
+  custo_alimentacao_acumulado: number
+  custo_alimentacao_dia: number
+  // Parâmetros de venda
+  preco_kg_vivo: number
+  pct_comissao: number
+  pct_encargo: number
+  // Faixas de rendimento e bônus
+  faixas_rendimento: Array<{ peso_min: number; peso_max: number; rendimento_pct: number }>
+  faixas_bonus: Array<{ peso_min: number; peso_max: number; bonus_kg: number }>
+}
+
+function getRendimento(peso: number, faixas: InputProjecao['faixas_rendimento']): number {
+  const faixa = faixas.find(f => peso >= f.peso_min && peso <= f.peso_max)
+  return faixa ? faixa.rendimento_pct / 100 : 0.54 // 54% default
+}
+
+function getBonus(peso: number, faixas: InputProjecao['faixas_bonus']): number {
+  const faixa = faixas.find(f => peso >= f.peso_min && peso <= f.peso_max)
+  return faixa ? faixa.bonus_kg : 0
+}
+
+function calcularPonto(
+  dia: number,
+  peso_medio: number,
+  gmd: number,
+  input: InputProjecao
+): PontoProjecao {
+  const peso = peso_medio + gmd * dia
+  const rendimento = getRendimento(peso, input.faixas_rendimento)
+  const bonus = getBonus(peso, input.faixas_bonus)
+  const peso_carcaca_animal = peso * rendimento
+  const peso_carcaca_total = peso_carcaca_animal * input.qtd_animais
+
+  // Receita: peso vivo × preço/kg + bônus sobre carcaça
+  const receita_venda = peso * input.qtd_animais * input.preco_kg_vivo
+  const receita_bonus = peso_carcaca_total * bonus
+  const receita_bruta = receita_venda + receita_bonus
+
+  // Custo projetado
+  const custo_alimentacao_futuro = input.custo_alimentacao_dia * dia
+  const custo_total =
+    input.custo_compra_total +
+    input.custo_alimentacao_acumulado +
+    custo_alimentacao_futuro
+
+  // Deduções sobre receita
+  const deducoes = receita_bruta * ((input.pct_comissao + input.pct_encargo) / 100)
+  const receita_liquida = receita_bruta - deducoes
+
+  const lucro = receita_liquida - custo_total
+  const lucro_por_animal = input.qtd_animais > 0 ? lucro / input.qtd_animais : 0
+
+  // Data projetada
+  const data = new Date(input.data_hoje)
+  data.setDate(data.getDate() + dia)
+  const data_str = data.toISOString().split('T')[0]
+
+  return {
+    dia,
+    data: data_str,
+    peso: Math.round(peso * 10) / 10,
+    peso_carcaca: Math.round(peso_carcaca_total * 10) / 10,
+    receita_bruta: Math.round(receita_bruta * 100) / 100,
+    custo_total: Math.round(custo_total * 100) / 100,
+    lucro: Math.round(lucro * 100) / 100,
+    lucro_por_animal: Math.round(lucro_por_animal * 100) / 100,
+  }
+}
+
+function encontrarDiaIdeal(curva: PontoProjecao[]): PontoProjecao | null {
+  if (curva.length === 0) return null
+  let melhor = curva[0]
+  for (const ponto of curva) {
+    if (ponto.lucro > melhor.lucro) melhor = ponto
+  }
+  return melhor
+}
+
+export function useProjecao() {
+  const calcular = useCallback((input: InputProjecao): ResultadoProjecao => {
+    const curva_real: PontoProjecao[] = []
+    const curva_esperada: PontoProjecao[] = []
+
+    for (let dia = 0; dia <= 90; dia++) {
+      // Curva com GMD real (só se existir)
+      if (input.gmd_real && input.gmd_real > 0) {
+        curva_real.push(calcularPonto(dia, input.peso_medio_atual, input.gmd_real, input))
+      }
+      // Curva com GMD esperado da dieta
+      if (input.gmd_esperado && input.gmd_esperado > 0) {
+        curva_esperada.push(calcularPonto(dia, input.peso_medio_atual, input.gmd_esperado, input))
+      }
+    }
+
+    return {
+      curva_real,
+      curva_esperada,
+      dia_ideal_real: encontrarDiaIdeal(curva_real),
+      dia_ideal_esperado: encontrarDiaIdeal(curva_esperada),
+    }
+  }, [])
+
+  return { calcular }
+}
