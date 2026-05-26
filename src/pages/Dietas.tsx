@@ -63,23 +63,23 @@ export default function Dietas() {
   const updateComponente = (idx: number, field: string, value: any) =>
     setForm(f => ({ ...f, componentes: f.componentes.map((c, i) => i === idx ? { ...c, [field]: value } : c) }))
 
-  const carregarTemplate = (db: DietaBase) => {
-    if (!db.ingredientes) return
-    setForm(f => ({
-      ...f,
-      baseada_em: db.id,
-      nome: f.nome || `${db.nome} (cópia)`,
-      gmd_esperado: db.gmd_esperado ? String(db.gmd_esperado) : f.gmd_esperado,
-      ciclo_recomendado: db.ciclo_recomendado ?? f.ciclo_recomendado,
-      descricao: f.descricao || db.descricao || '',
-      componentes: db.ingredientes.map(i => ({
-        insumo_id: i.insumo_id,
-        quantidade: i.quantidade,
-        unidade: i.unidade as any,
-        preco_kg: i.insumo?.preco_referencia ?? 0,
-      })),
-    }))
-  }
+const carregarTemplate = (db: DietaBase) => {
+  const ingredientes = db.ingredientes ?? []
+  setForm(f => ({
+    ...f,
+    baseada_em: db.id,
+    nome: f.nome || `${db.nome} (cópia)`,
+    gmd_esperado: db.gmd_esperado ? String(db.gmd_esperado) : f.gmd_esperado,
+    ciclo_recomendado: db.ciclo_recomendado ?? f.ciclo_recomendado,
+    descricao: f.descricao || db.descricao || '',
+    componentes: ingredientes.map(i => ({
+      insumo_id: i.insumo_id,
+      quantidade: i.quantidade,
+      unidade: i.unidade as any,
+      preco_kg: i.insumo?.preco_referencia ?? 0,
+    })),
+  }))
+}
 
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true); setErro(null)
