@@ -137,8 +137,38 @@ export function useLotes() {
 
   const registrarSaida = async (input: SaidaLoteInput) => {
     if (!user) return { error: 'Não autenticado' }
+
+    const lote = lotes.find(l => l.id === input.lote_id) as any
+    const qtd_saida = input.qtd_animais_saida
+    const qtd_total = lote?.qtd_animais ?? qtd_saida
+
+    // Custo de compra rateado proporcional
+    const custo_compra_rateado = lote?.valor_total_lote
+      ? (lote.valor_total_lote / qtd_total) * qtd_saida
+      : (input.custo_compra_rateado ?? 0)
+
+    // Custo alimentação acumulado rateado
+    const custo_alimentacao = lote?.custo_alimentacao_acumulado
+      ? (lote.custo_alimentacao_acumulado / qtd_total) * qtd_saida
+      : (input.custo_alimentacao ?? 0)
+
+    const receita_bruta   = input.receita_bruta ?? input.valor_total_venda ?? 0
+    const valor_bonus     = input.valor_bonus ?? 0
+    const total_comissoes = input.total_comissoes ?? 0
+    const total_encargos  = input.total_encargos ?? 0
+    const receita_liquida = input.receita_liquida ?? (receita_bruta + valor_bonus - total_comissoes - total_encargos)
+    const custo_total     = custo_compra_rateado + custo_alimentacao + (input.custos_variaveis ?? 0) + (input.custos_fixos_rateados ?? 0)
+    const lucro_total     = receita_liquida - custo_total
+    const lucro_por_animal = qtd_saida > 0 ? lucro_total / qtd_saida : 0
+    const margem_pct      = receita_liquida > 0 ? (lucro_total / receita_liquida) * 100 : 0
+
     const { error } = await supabase.from('saidas_lote').insert({
-      ...input, comissoes: input.comissoes ?? [], encargos: input.encargos ?? [],
+      ...input,
+      comissoes: input.comissoes ?? [],
+      encargos:  input.encargos ?? [],
+      custo_compra_rateado, custo_alimentacao, custo_total,
+      lucro_total, lucro_por_animal, margem_pct,
+      receita_bruta, valor_bonus, total_comissoes, total_encargos, receita_liquida,
       user_id: user.id,
     })
     if (!error) await fetch()
