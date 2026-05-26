@@ -4,6 +4,10 @@ import { useDietas } from '@/hooks/useHooks'
 import { useParceiros } from '@/hooks/useHooks'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmtData, fmt, fmtNum } from '@/lib/calculations'
+import { useProjecao } from '@/hooks/useProjecao'
+import { useFaixas } from '@/hooks/useFaixas'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
+import type { InputProjecao } from '@/hooks/useProjecao'
 
 const cicloLabel = (n: number) =>
   ({ 1: 'Adaptação', 2: 'Crescimento', 3: 'Engorda', 4: 'Acabamento' }[n] ?? `Ciclo ${n}`)
