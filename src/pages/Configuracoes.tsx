@@ -18,7 +18,13 @@ const cicloLabel = (n: number) =>
 
 export default function Configuracoes() {
   const { user } = useAuth()
-  const isAdmin = (user?.user_metadata?.role === 'admin') || ((user as any)?.role === 'admin')
+  const [isAdmin, setIsAdmin] = useState(false)
+
+useEffect(() => {
+  if (!user) return
+  supabase.from('profiles').select('role').eq('id', user.id).single()
+    .then(({ data }) => { if (data?.role === 'admin') setIsAdmin(true) })
+}, [user])
   const { insumos, dietasBase, loading, criarInsumo, atualizarInsumo, criarDietaBase, atualizarDietaBase } = useAdmin()
 
   const [tab, setTab] = useState<'conta' | 'insumos' | 'dietas_base'>('conta')
