@@ -573,7 +573,7 @@ export default function Lotes() {
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={dadosGrafico} margin={{top:4,right:8,left:0,bottom:0}}>
                     <XAxis dataKey="dia" tick={{fontSize:10}} interval={4}/>
-                    <YAxis tick={{fontSize:10}} tickFormatter={v=>`R$${v}`} width={72}/>
+                    <YAxis tick={{fontSize:10}} tickFormatter={(v: number)=>`R$${v}`} width={72}/>
                     <Tooltip formatter={(v:any)=>fmt(v)} labelStyle={{fontSize:12}}/>
                     <Legend wrapperStyle={{fontSize:12}}/>
                     {curva_real.length>0&&<Line type="monotone" dataKey="lucro_real" name="GMD real" stroke="#2e7d32" strokeWidth={2} dot={false}/>}
