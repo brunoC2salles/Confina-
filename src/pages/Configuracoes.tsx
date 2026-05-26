@@ -1,11 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAdmin } from '@/hooks/useDietas'
+import { supabase } from '@/lib/supabase'
 import { Modal, PageHeader } from '@/components/common/UI'
 import { fmt } from '@/lib/calculations'
 import type { Insumo } from '@/hooks/useDietas'
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
 
 const categoriaLabel: Record<string, string> = {
   volumoso: 'Volumoso',
