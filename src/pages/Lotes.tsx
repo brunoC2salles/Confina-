@@ -65,7 +65,8 @@ export default function Lotes() {
   })
 
   const [fProjecao, setFProjecao] = useState({
-    preco_kg_vivo: '', pct_comissao: '2', pct_encargo: '1.5',
+    preco_valor: '', modo_preco: 'arroba' as 'arroba' | 'kg_vivo',
+    pct_comissao: '2', pct_encargo: '1.5',
   })
 
   const todosLotes = [...lotesAtivos, ...lotesEncerrados]
@@ -75,7 +76,7 @@ export default function Lotes() {
   const loteProjecao = todosLotes.find(l => l.id === showProjecao)
   const loteEditar = lotesAtivos.find(l => l.id === showEditarLote)
 
-  const projecaoResult = showProjecao && loteProjecao && fProjecao.preco_kg_vivo
+  const projecaoResult = showProjecao && loteProjecao && fProjecao.preco_valor
     ? calcular({
         peso_medio_atual: (loteProjecao as any).peso_medio_atual ?? (loteProjecao as any).peso_medio_entrada ?? 0,
         qtd_animais: (loteProjecao as any).qtd_animais_atual ?? (loteProjecao as any).qtd_animais ?? 0,
@@ -85,7 +86,8 @@ export default function Lotes() {
         custo_compra_total: (loteProjecao as any).valor_total_lote ?? 0,
         custo_alimentacao_acumulado: (loteProjecao as any).custo_alimentacao_acumulado ?? 0,
         custo_alimentacao_dia: (loteProjecao as any).custo_alimentacao_dia ?? 0,
-        preco_kg_vivo: Number(fProjecao.preco_kg_vivo),
+        preco_valor: Number(fProjecao.preco_valor),
+        modo_preco: fProjecao.modo_preco,
         pct_comissao: Number(fProjecao.pct_comissao),
         pct_encargo: Number(fProjecao.pct_encargo),
         faixas_rendimento: rendimentos.map(f => ({
@@ -230,7 +232,8 @@ export default function Lotes() {
               onProjecao={() => {
                 setShowProjecao(lote.id)
                 setFProjecao({
-                  preco_kg_vivo: String((lote as any).preco_venda_esperado_kg ?? ''),
+                  preco_valor: String((lote as any).preco_venda_esperado_kg ?? ''),
+                  modo_preco: 'arroba',
                   pct_comissao: '2', pct_encargo: '1.5',
                 })
               }}/>
@@ -538,25 +541,30 @@ export default function Lotes() {
         subtitle={loteProjecao?`${loteProjecao.nome_lote} · ${(loteProjecao as any).qtd_animais_atual??0} animais · Peso médio: ${fmtNum((loteProjecao as any).peso_medio_atual??0,0)} kg`:''}>
         <div style={{display:'flex',flexDirection:'column',gap:16,maxHeight:'80vh',overflowY:'auto',paddingRight:4}}>
 
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
-            <div className="form-group"><label className="form-label">Preço esperado por kg vivo (R$)</label>
-              <input className="form-input" type="number" step="0.01" placeholder="210,00"
-                value={fProjecao.preco_kg_vivo} onChange={e=>setFProjecao(f=>({...f,preco_kg_vivo:e.target.value}))}/></div>
-            <div className="form-group"><label className="form-label">Comissão esperada (%)</label>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:10}}>
+            <div className="form-group"><label className="form-label">Modo de preço</label>
+              <select className="form-input" value={fProjecao.modo_preco} onChange={e=>setFProjecao(f=>({...f,modo_preco:e.target.value as any}))}>
+                <option value="arroba">R$ por arroba (@)</option>
+                <option value="kg_vivo">R$ por kg vivo</option>
+              </select></div>
+            <div className="form-group"><label className="form-label">{fProjecao.modo_preco==='arroba'?'Preço por @ (R$)':'Preço por kg vivo (R$)'}</label>
+              <input className="form-input" type="number" step="0.01" placeholder={fProjecao.modo_preco==='arroba'?'280,00':'18,00'}
+                value={fProjecao.preco_valor} onChange={e=>setFProjecao(f=>({...f,preco_valor:e.target.value}))}/></div>
+            <div className="form-group"><label className="form-label">Comissão (%)</label>
               <input className="form-input" type="number" step="0.1" placeholder="2"
                 value={fProjecao.pct_comissao} onChange={e=>setFProjecao(f=>({...f,pct_comissao:e.target.value}))}/></div>
-            <div className="form-group"><label className="form-label">Encargos esperados (%)</label>
+            <div className="form-group"><label className="form-label">Encargos (%)</label>
               <input className="form-input" type="number" step="0.1" placeholder="1.5"
                 value={fProjecao.pct_encargo} onChange={e=>setFProjecao(f=>({...f,pct_encargo:e.target.value}))}/></div>
           </div>
 
-          {!fProjecao.preco_kg_vivo&&(
+          {!fProjecao.preco_valor&&(
             <div style={{padding:'12px 14px',background:'var(--gray-50)',borderRadius:8,fontSize:13,color:'var(--gray-500)',textAlign:'center'}}>
-              Informe o preço esperado por kg vivo para ver a projeção.
+              Informe o preço de venda para ver a projeção.
             </div>
           )}
 
-          {fProjecao.preco_kg_vivo&&projecaoResult&&projecaoResult.curva_real.length===0&&projecaoResult.curva_esperada.length===0&&(
+          {fProjecao.preco_valor&&projecaoResult&&projecaoResult.curva_real.length===0&&projecaoResult.curva_esperada.length===0&&(
             <div style={{padding:'12px 14px',background:'#fff3e0',borderRadius:8,fontSize:13,color:'#b45309',border:'1px solid #ffe0b2'}}>
               Este lote ainda não tem GMD calculado. Para gerar a projeção registre pelo menos uma pesagem, ou vincule uma dieta com GMD esperado ao lote.
             </div>
