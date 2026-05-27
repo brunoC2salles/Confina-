@@ -663,8 +663,6 @@ export default function Lotes() {
           })()}
         </div>
       </Modal>
-    </div>
-
       {/* ── MODAL EDITAR LOTE ── */}
       <Modal open={!!showEditarLote} onClose={()=>setShowEditarLote(null)} title="Editar lote" size="sm"
         subtitle={loteEditar?.nome_lote}>
