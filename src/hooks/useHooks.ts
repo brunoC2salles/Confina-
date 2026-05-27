@@ -88,13 +88,19 @@ export function useParceiros() {
     return { error: error?.message ?? null }
   }
 
+  const editarParceiro = async (id: string, input: Partial<Omit<Parceiro, 'id'|'user_id'|'created_at'|'updated_at'>>) => {
+    const { error } = await supabase.from('parceiros').update(input).eq('id', id)
+    if (!error) await fetch()
+    return { error: error?.message ?? null }
+  }
+
   const excluirParceiro = async (id: string) => {
     const { error } = await supabase.from('parceiros').delete().eq('id', id)
     if (!error) await fetch()
     return { error: error?.message ?? null }
   }
 
-  return { parceiros, loading, fetch, criarParceiro, excluirParceiro, porTipo: (t: Parceiro['tipo']) => parceiros.filter(p => p.tipo === t) }
+  return { parceiros, loading, fetch, criarParceiro, editarParceiro, excluirParceiro, porTipo: (t: Parceiro['tipo']) => parceiros.filter(p => p.tipo === t) }
 }
 
 export function useCustosLote(loteId: string) {
