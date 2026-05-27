@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useDietas } from '@/hooks/useDietas'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt, fmtNum } from '@/lib/calculations'
@@ -17,6 +17,11 @@ const categoriaLabel: Record<string, string> = {
 
 const unidadeLabel = (u: string) => u === 'pct_pc' ? '% PC' : 'kg/animal/dia'
 
+const emptyForm = () => ({
+  nome: '', gmd_esperado: '', ciclo_recomendado: '' as any,
+  descricao: '', baseada_em: '', componentes: [] as ComponenteDieta[],
+})
+
 export default function Dietas() {
   const { dietas, dietasBase, insumos, loading, criarDieta, atualizarDieta, excluirDieta, calcularCustoDia } = useDietas()
   const [showNova, setShowNova] = useState(false)
@@ -25,18 +30,14 @@ export default function Dietas() {
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [tab, setTab] = useState<'minhas' | 'base'>('minhas')
+  // Simulação fora do form para não re-renderizar inputs
   const [simPeso, setSimPeso] = useState('450')
   const [simQtd, setSimQtd] = useState('80')
 
+  const [form, setForm] = useState(emptyForm())
   const dietaDetalhe = dietas.find(d => d.id === showDetalhe)
 
-  const emptyForm = () => ({
-    nome: '', gmd_esperado: '', ciclo_recomendado: '' as any,
-    descricao: '', baseada_em: '', componentes: [] as ComponenteDieta[],
-  })
-  const [form, setForm] = useState(emptyForm())
-
-  const categorias = [...new Set(insumos.map(i => i.categoria))]
+  const categorias = useMemo(() => [...new Set(insumos.map(i => i.categoria))], [insumos])
 
   const insumoPorId = useMemo(() => {
     const m: Record<string, typeof insumos[0]> = {}
@@ -44,8 +45,8 @@ export default function Dietas() {
     return m
   }, [insumos])
 
-  const addComponente = (insumo_id: string) => {
-    const insumo = insumoPorId[insumo_id]
+  const addComponente = useCallback((insumo_id: string) => {
+    const insumo = insumos.find(i => i.id === insumo_id)
     if (!insumo) return
     setForm(f => ({
       ...f,
@@ -55,31 +56,29 @@ export default function Dietas() {
         preco_kg: insumo.preco_referencia ?? 0,
       }],
     }))
-  }
+  }, [insumos])
 
-  const removeComponente = (idx: number) =>
-    setForm(f => ({ ...f, componentes: f.componentes.filter((_, i) => i !== idx) }))
+  const removeComponente = useCallback((idx: number) =>
+    setForm(f => ({ ...f, componentes: f.componentes.filter((_, i) => i !== idx) })), [])
 
-  const updateComponente = (idx: number, field: string, value: any) =>
-    setForm(f => ({ ...f, componentes: f.componentes.map((c, i) => i === idx ? { ...c, [field]: value } : c) }))
+  const updateComponente = useCallback((idx: number, field: string, value: any) =>
+    setForm(f => ({ ...f, componentes: f.componentes.map((c, i) => i === idx ? { ...c, [field]: value } : c) })), [])
 
-const carregarTemplate = (db: DietaBase) => {
-  const ingredientes = db.ingredientes ?? []
-  setForm(f => ({
-    ...f,
-    baseada_em: db.id,
-    nome: f.nome || `${db.nome} (cópia)`,
-    gmd_esperado: db.gmd_esperado ? String(db.gmd_esperado) : f.gmd_esperado,
-    ciclo_recomendado: db.ciclo_recomendado ?? f.ciclo_recomendado,
-    descricao: f.descricao || db.descricao || '',
-    componentes: ingredientes.map(i => ({
-      insumo_id: i.insumo_id,
-      quantidade: i.quantidade,
-      unidade: i.unidade as any,
-      preco_kg: i.insumo?.preco_referencia ?? 0,
-    })),
-  }))
-}
+  const carregarTemplate = useCallback((db: DietaBase) => {
+    const ingredientes = db.ingredientes ?? []
+    setForm(f => ({
+      ...f,
+      baseada_em: db.id,
+      nome: f.nome || `${db.nome} (cópia)`,
+      gmd_esperado: db.gmd_esperado ? String(db.gmd_esperado) : f.gmd_esperado,
+      ciclo_recomendado: db.ciclo_recomendado ?? f.ciclo_recomendado,
+      descricao: f.descricao || db.descricao || '',
+      componentes: ingredientes.map(i => ({
+        insumo_id: i.insumo_id, quantidade: i.quantidade,
+        unidade: i.unidade as any, preco_kg: i.insumo?.preco_referencia ?? 0,
+      })),
+    }))
+  }, [])
 
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true); setErro(null)
@@ -98,123 +97,20 @@ const carregarTemplate = (db: DietaBase) => {
     setShowNova(false); setShowEditar(null); setForm(emptyForm())
   }
 
-  const custoDia = useMemo(() => {
-    if (!dietaDetalhe?.componentes) return 0
-    return calcularCustoDia(dietaDetalhe.componentes, Number(simPeso), Number(simQtd))
-  }, [dietaDetalhe, simPeso, simQtd, calcularCustoDia])
-
-  const FormContent = () => (
-    <>
-      {!showEditar && form.componentes.length === 0 && dietasBase.length > 0 && (
-        <div style={{ padding: '12px 14px', background: 'var(--green-bg)', borderRadius: 8, fontSize: 13 }}>
-          <div style={{ fontWeight: 500, color: '#1b5e20', marginBottom: 8 }}>Partir de um template base</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {dietasBase.map(db => (
-              <button key={db.id} type="button"
-                style={{ fontSize: 12, padding: '4px 10px', background: '#fff', border: '1px solid #a5d6a7', borderRadius: 6, cursor: 'pointer', color: '#2e7d32' }}
-                onClick={() => carregarTemplate(db)}>
-                {db.nome}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="form-row-2">
-        <div className="form-group"><label className="form-label">Nome da dieta</label>
-          <input className="form-input" placeholder="Ex: Dieta Engorda Ciclo 3" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} required /></div>
-        <div className="form-group"><label className="form-label">GMD esperado (kg/dia)</label>
-          <input className="form-input" type="number" placeholder="1.4" step="0.01" value={form.gmd_esperado} onChange={e => setForm(f => ({ ...f, gmd_esperado: e.target.value }))} required /></div>
-      </div>
-      <div className="form-row-2">
-        <div className="form-group"><label className="form-label">Ciclo recomendado</label>
-          <select className="form-input" value={form.ciclo_recomendado} onChange={e => setForm(f => ({ ...f, ciclo_recomendado: e.target.value }))}>
-            <option value="">Todos os ciclos</option>
-            {[1, 2, 3, 4].map(n => <option key={n} value={n}>Ciclo {n} — {cicloLabel(n)}</option>)}
-          </select></div>
-        <div className="form-group"><label className="form-label">Descrição</label>
-          <input className="form-input" placeholder="Opcional" value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} /></div>
-      </div>
-
-      <div style={{ fontWeight: 500, fontSize: 13, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
-        Ingredientes ({form.componentes.length})
-      </div>
-
-      {form.componentes.length === 0 ? (
-        <div style={{ padding: '12px 14px', background: 'var(--gray-50)', borderRadius: 8, fontSize: 13, color: 'var(--gray-500)', textAlign: 'center' }}>
-          Selecione ingredientes abaixo
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {form.componentes.map((c, i) => {
-            const ins = c.insumo_id ? insumoPorId[c.insumo_id] : null
-            return (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 130px 90px 28px', gap: 6, alignItems: 'center' }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>
-                  {ins?.nome ?? c.nome_ingrediente ?? '—'}
-                  <span style={{ fontSize: 11, color: 'var(--gray-400)', marginLeft: 6 }}>{ins ? categoriaLabel[ins.categoria] : ''}</span>
-                </div>
-                <input className="form-input" type="number" step="0.01" placeholder="Qtd" value={c.quantidade}
-                  onChange={e => updateComponente(i, 'quantidade', Number(e.target.value))} style={{ fontSize: 13 }} />
-                <select className="form-input" value={c.unidade} onChange={e => updateComponente(i, 'unidade', e.target.value)} style={{ fontSize: 12 }}>
-                  <option value="kg_animal_dia">kg/animal/dia</option>
-                  <option value="pct_pc">% PC</option>
-                </select>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#9e9e9e' }}>R$</span>
-                  <input className="form-input" type="number" step="0.0001" value={c.preco_kg}
-                    onChange={e => updateComponente(i, 'preco_kg', Number(e.target.value))} style={{ paddingLeft: 26, fontSize: 13 }} />
-                </div>
-                <button type="button" onClick={() => removeComponente(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 18 }}>×</button>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-        <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>Adicionar ingrediente:</div>
-        {categorias.map(cat => (
-          <div key={cat} style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>{categoriaLabel[cat]}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {insumos.filter(i => i.categoria === cat && !form.componentes.find(c => c.insumo_id === i.id)).map(ins => (
-                <button key={ins.id} type="button"
-                  style={{ fontSize: 11, padding: '3px 8px', background: 'var(--gray-50)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', color: 'var(--gray-600)' }}
-                  onClick={() => addComponente(ins.id)}>
-                  + {ins.nome}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {form.componentes.length > 0 && (() => {
-        const cd = calcularCustoDia(form.componentes, Number(simPeso), Number(simQtd))
-        return (
-          <div style={{ background: 'var(--green-bg)', borderRadius: 8, padding: '12px 14px' }}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: '#2e7d32', marginBottom: 8 }}>Simulação de custo</div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Peso médio (kg)</label>
-                <input className="form-input" type="number" value={simPeso} onChange={e => setSimPeso(e.target.value)} style={{ marginTop: 2 }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Qtd animais</label>
-                <input className="form-input" type="number" value={simQtd} onChange={e => setSimQtd(e.target.value)} style={{ marginTop: 2 }} />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap' }}>
-              <div><span style={{ color: '#2e7d32' }}>Custo/dia (lote): </span><strong style={{ color: '#1b5e20' }}>{fmt(cd)}</strong></div>
-              <div><span style={{ color: '#2e7d32' }}>Por animal/dia: </span><strong style={{ color: '#1b5e20' }}>{Number(simQtd) > 0 ? fmt(cd / Number(simQtd)) : '—'}</strong></div>
-              <div><span style={{ color: '#2e7d32' }}>Custo 30d: </span><strong style={{ color: '#1b5e20' }}>{fmt(cd * 30)}</strong></div>
-            </div>
-          </div>
-        )
-      })()}
-    </>
+  // Custo simulado — calculado separado para não afetar inputs
+  const custoDiaForm = useMemo(() =>
+    calcularCustoDia(form.componentes, Number(simPeso), Number(simQtd)),
+    [form.componentes, simPeso, simQtd, calcularCustoDia]
   )
+
+  const custoDiaDetalhe = useMemo(() =>
+    dietaDetalhe?.componentes
+      ? calcularCustoDia(dietaDetalhe.componentes, Number(simPeso), Number(simQtd))
+      : 0,
+    [dietaDetalhe, simPeso, simQtd, calcularCustoDia]
+  )
+
+  const fecharModal = () => { setShowNova(false); setShowEditar(null); setForm(emptyForm()); setErro(null) }
 
   return (
     <div className="page">
@@ -285,12 +181,13 @@ const carregarTemplate = (db: DietaBase) => {
                 {db.descricao && <div style={{ fontSize: 12, color: '#737370' }}>{db.descricao}</div>}
                 {(db.ingredientes?.length ?? 0) > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {db.ingredientes!.map((ing, i) => (
+                    {db.ingredientes!.slice(0, 4).map((ing, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f5f5f5' }}>
                         <span>{ing.insumo?.nome ?? '—'}</span>
                         <span style={{ color: '#9e9e9e' }}>{ing.quantidade} {unidadeLabel(ing.unidade)}</span>
                       </div>
                     ))}
+                    {db.ingredientes!.length > 4 && <div style={{ fontSize: 11, color: '#9e9e9e' }}>+ {db.ingredientes!.length - 4} ingredientes</div>}
                   </div>
                 )}
                 <button className="btn btn-primary btn-sm" style={{ justifyContent: 'center' }} onClick={() => { setForm(emptyForm()); carregarTemplate(db); setShowNova(true) }}>
@@ -302,13 +199,139 @@ const carregarTemplate = (db: DietaBase) => {
         )
       )}
 
-      <Modal open={showNova || !!showEditar} onClose={() => { setShowNova(false); setShowEditar(null); setForm(emptyForm()) }}
+      {/* ── MODAL CRIAR/EDITAR ── */}
+      <Modal open={showNova || !!showEditar} onClose={fecharModal}
         title={showEditar ? 'Editar dieta' : 'Nova dieta'} size="lg">
-        <form onSubmit={handleSalvar} style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '70vh', overflowY: 'auto', paddingRight: 4 }}>
-          <FormContent />
+        <form onSubmit={handleSalvar} style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '75vh', overflowY: 'auto', paddingRight: 4 }}>
+
+          {!showEditar && form.componentes.length === 0 && dietasBase.length > 0 && (
+            <div style={{ padding: '12px 14px', background: 'var(--green-bg)', borderRadius: 8, fontSize: 13 }}>
+              <div style={{ fontWeight: 500, color: '#1b5e20', marginBottom: 8 }}>Partir de um template base</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {dietasBase.map(db => (
+                  <button key={db.id} type="button"
+                    style={{ fontSize: 12, padding: '4px 10px', background: '#fff', border: '1px solid #a5d6a7', borderRadius: 6, cursor: 'pointer', color: '#2e7d32' }}
+                    onClick={() => carregarTemplate(db)}>
+                    {db.nome}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label">Nome da dieta</label>
+              <input className="form-input" placeholder="Ex: Dieta Engorda Ciclo 3" value={form.nome}
+                onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} required />
+            </div>
+            <div className="form-group">
+              <label className="form-label">GMD esperado (kg/dia)</label>
+              <input className="form-input" type="number" placeholder="1.4" step="0.01" value={form.gmd_esperado}
+                onChange={e => setForm(f => ({ ...f, gmd_esperado: e.target.value }))} required />
+            </div>
+          </div>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label">Ciclo recomendado</label>
+              <select className="form-input" value={form.ciclo_recomendado} onChange={e => setForm(f => ({ ...f, ciclo_recomendado: e.target.value }))}>
+                <option value="">Todos os ciclos</option>
+                {[1, 2, 3, 4].map(n => <option key={n} value={n}>Ciclo {n} — {cicloLabel(n)}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Descrição</label>
+              <input className="form-input" placeholder="Opcional" value={form.descricao}
+                onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} />
+            </div>
+          </div>
+
+          <div style={{ fontWeight: 500, fontSize: 13, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+            Ingredientes ({form.componentes.length})
+          </div>
+
+          {form.componentes.length === 0 ? (
+            <div style={{ padding: '12px 14px', background: 'var(--gray-50)', borderRadius: 8, fontSize: 13, color: 'var(--gray-500)', textAlign: 'center' }}>
+              Selecione ingredientes abaixo
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {form.componentes.map((c, i) => {
+                const ins = c.insumo_id ? insumoPorId[c.insumo_id] : null
+                return (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 130px 90px 28px', gap: 6, alignItems: 'center' }}>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>
+                      {ins?.nome ?? c.nome_ingrediente ?? '—'}
+                      <span style={{ fontSize: 11, color: 'var(--gray-400)', marginLeft: 6 }}>{ins ? categoriaLabel[ins.categoria] : ''}</span>
+                    </div>
+                    <input className="form-input" type="number" step="0.01" placeholder="Qtd"
+                      value={c.quantidade}
+                      onChange={e => updateComponente(i, 'quantidade', Number(e.target.value))}
+                      style={{ fontSize: 13 }} />
+                    <select className="form-input" value={c.unidade}
+                      onChange={e => updateComponente(i, 'unidade', e.target.value)}
+                      style={{ fontSize: 12 }}>
+                      <option value="kg_animal_dia">kg/animal/dia</option>
+                      <option value="pct_pc">% PC</option>
+                    </select>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#9e9e9e' }}>R$</span>
+                      <input className="form-input" type="number" step="0.0001"
+                        value={c.preco_kg}
+                        onChange={e => updateComponente(i, 'preco_kg', Number(e.target.value))}
+                        style={{ paddingLeft: 26, fontSize: 13 }} />
+                    </div>
+                    <button type="button" onClick={() => removeComponente(i)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 18 }}>×</button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>Adicionar ingrediente:</div>
+            {categorias.map(cat => (
+              <div key={cat} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>{categoriaLabel[cat]}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {insumos.filter(i => i.categoria === cat && !form.componentes.find(c => c.insumo_id === i.id)).map(ins => (
+                    <button key={ins.id} type="button"
+                      style={{ fontSize: 11, padding: '3px 8px', background: 'var(--gray-50)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', color: 'var(--gray-600)' }}
+                      onClick={() => addComponente(ins.id)}>
+                      + {ins.nome}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Simulação — inputs separados, não causam re-render do form */}
+          {form.componentes.length > 0 && (
+            <div style={{ background: 'var(--green-bg)', borderRadius: 8, padding: '12px 14px' }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#2e7d32', marginBottom: 8 }}>Simulação de custo</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Peso médio (kg)</label>
+                  <input className="form-input" type="number" value={simPeso} onChange={e => setSimPeso(e.target.value)} style={{ marginTop: 2 }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Qtd animais</label>
+                  <input className="form-input" type="number" value={simQtd} onChange={e => setSimQtd(e.target.value)} style={{ marginTop: 2 }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap' }}>
+                <div><span style={{ color: '#2e7d32' }}>Custo/dia (lote): </span><strong style={{ color: '#1b5e20' }}>{fmt(custoDiaForm)}</strong></div>
+                <div><span style={{ color: '#2e7d32' }}>Por animal/dia: </span><strong style={{ color: '#1b5e20' }}>{Number(simQtd) > 0 ? fmt(custoDiaForm / Number(simQtd)) : '—'}</strong></div>
+                <div><span style={{ color: '#2e7d32' }}>Custo 30d: </span><strong style={{ color: '#1b5e20' }}>{fmt(custoDiaForm * 30)}</strong></div>
+              </div>
+            </div>
+          )}
+
           {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
           <div className="modal-actions">
-            <button type="button" className="btn btn-ghost" onClick={() => { setShowNova(false); setShowEditar(null); setForm(emptyForm()) }}>Cancelar</button>
+            <button type="button" className="btn btn-ghost" onClick={fecharModal}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : showEditar ? 'Salvar alterações' : 'Criar dieta'}
             </button>
@@ -316,6 +339,7 @@ const carregarTemplate = (db: DietaBase) => {
         </form>
       </Modal>
 
+      {/* ── MODAL DETALHE ── */}
       <Modal open={!!showDetalhe} onClose={() => setShowDetalhe(null)} title={dietaDetalhe?.nome ?? ''} size="lg"
         subtitle={dietaDetalhe?.ciclo_recomendado ? cicloLabel(dietaDetalhe.ciclo_recomendado) : 'Todos os ciclos'}>
         {dietaDetalhe && (
@@ -357,14 +381,20 @@ const carregarTemplate = (db: DietaBase) => {
             <div style={{ background: 'var(--green-bg)', borderRadius: 8, padding: '12px 14px' }}>
               <div style={{ fontSize: 12, fontWeight: 500, color: '#2e7d32', marginBottom: 8 }}>Simulação de custo</div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                <div style={{ flex: 1 }}><label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Peso médio (kg)</label><input className="form-input" type="number" value={simPeso} onChange={e => setSimPeso(e.target.value)} style={{ marginTop: 2 }} /></div>
-                <div style={{ flex: 1 }}><label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Qtd animais</label><input className="form-input" type="number" value={simQtd} onChange={e => setSimQtd(e.target.value)} style={{ marginTop: 2 }} /></div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Peso médio (kg)</label>
+                  <input className="form-input" type="number" value={simPeso} onChange={e => setSimPeso(e.target.value)} style={{ marginTop: 2 }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Qtd animais</label>
+                  <input className="form-input" type="number" value={simQtd} onChange={e => setSimQtd(e.target.value)} style={{ marginTop: 2 }} />
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap' }}>
-                <div><span style={{ color: '#2e7d32' }}>Custo/dia (lote): </span><strong style={{ color: '#1b5e20' }}>{fmt(custoDia)}</strong></div>
-                <div><span style={{ color: '#2e7d32' }}>Por animal/dia: </span><strong style={{ color: '#1b5e20' }}>{Number(simQtd) > 0 ? fmt(custoDia / Number(simQtd)) : '—'}</strong></div>
-                <div><span style={{ color: '#2e7d32' }}>Custo 30d (lote): </span><strong style={{ color: '#1b5e20' }}>{fmt(custoDia * 30)}</strong></div>
-                <div><span style={{ color: '#2e7d32' }}>Custo 30d/animal: </span><strong style={{ color: '#1b5e20' }}>{Number(simQtd) > 0 ? fmt(custoDia / Number(simQtd) * 30) : '—'}</strong></div>
+                <div><span style={{ color: '#2e7d32' }}>Custo/dia (lote): </span><strong style={{ color: '#1b5e20' }}>{fmt(custoDiaDetalhe)}</strong></div>
+                <div><span style={{ color: '#2e7d32' }}>Por animal/dia: </span><strong style={{ color: '#1b5e20' }}>{Number(simQtd) > 0 ? fmt(custoDiaDetalhe / Number(simQtd)) : '—'}</strong></div>
+                <div><span style={{ color: '#2e7d32' }}>Custo 30d: </span><strong style={{ color: '#1b5e20' }}>{fmt(custoDiaDetalhe * 30)}</strong></div>
+                <div><span style={{ color: '#2e7d32' }}>Custo 30d/animal: </span><strong style={{ color: '#1b5e20' }}>{Number(simQtd) > 0 ? fmt(custoDiaDetalhe / Number(simQtd) * 30) : '—'}</strong></div>
               </div>
             </div>
           </div>
