@@ -20,21 +20,6 @@
   --font-d:'Syne',sans-serif;--font-b:'Inter',sans-serif;
   --r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;
 } 
-  @media (max-width: 768px) {
-    nav {
-      padding: 0 16px;
-      gap: 8px;
-    }
-    .nav-logo-text {
-      display: none;
-    }
-    .btn-ghost,
-    .btn-primary {
-      white-space: nowrap;
-      padding: 8px 14px;
-      font-size: 13px;
-    }
-  }
 
 </style>  
 }
@@ -43,7 +28,8 @@ body{font-family:var(--font-b);background:var(--white);color:var(--black);-webki
 img{display:block;max-width:100%}a{text-decoration:none;color:inherit}
 
 nav{position:fixed;top:0;left:0;right:0;z-index:200;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 56px;background:rgba(255,255,255,.95);backdrop-filter:blur(16px);border-bottom:1px solid transparent;transition:border-color .3s,box-shadow .3s}
-nav.scrolled{border-color:var(--border);box-shadow:0 1px 8px rgba(0,0,0,.06)}
+@media(max-width:768px){nav{padding:0 16px}.nav-logo-text{display:none}.nav-links{display:none}.btn-ghost,.btn-primary{white-space:nowrap;padding:8px 12px;font-size:13px}}
+  nav.scrolled{border-color:var(--border);box-shadow:0 1px 8px rgba(0,0,0,.06)}
 .nav-logo{display:flex;align-items:center;gap:10px}
 .nav-logo img{height:38px;width:38px;object-fit:contain;border-radius:50%;background:transparent}
 .nav-logo-text{font-family:var(--font-d);font-size:18px;font-weight:600;color:var(--green)}
