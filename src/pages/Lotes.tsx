@@ -6,6 +6,7 @@ import { useFaixas } from '@/hooks/useFaixas'
 import { useProjecao } from '@/hooks/useProjecao'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt, fmtNum } from '@/lib/calculations'
+import { supabase } from '@/lib/supabase'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
 
 const cicloLabel = (n: number) =>
@@ -14,7 +15,7 @@ const cicloLabel = (n: number) =>
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 export default function Lotes() {
-  const { lotesAtivos, lotesEncerrados, loading, criarLote, encerrarLote, excluirLote, avancarCiclo, bifurcarLote, registrarPesagem, registrarSaida } = useLotes()
+  const { lotesAtivos, lotesEncerrados, loading, criarLote, encerrarLote, excluirLote, avancarCiclo, bifurcarLote, registrarPesagem, registrarSaida, fetch } = useLotes()
   const { templates } = useDietas()
   const { parceiros } = useParceiros()
   const { rendimentos, bonus } = useFaixas()
@@ -27,6 +28,8 @@ export default function Lotes() {
   const [showPesagem, setShowPesagem] = useState<string|null>(null)
   const [showSaida, setShowSaida] = useState<string|null>(null)
   const [showProjecao, setShowProjecao] = useState<string|null>(null)
+  const [showEditarLote, setShowEditarLote] = useState<string|null>(null)
+  const [fEditar, setFEditar] = useState({ dieta_id: '', observacoes: '' })
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState(1)
   const [erro, setErro] = useState<string|null>(null)
@@ -70,6 +73,7 @@ export default function Lotes() {
   const loteBifurcar = lotesAtivos.find(l => l.id === showBifurcar)
   const loteSaida = todosLotes.find(l => l.id === showSaida)
   const loteProjecao = todosLotes.find(l => l.id === showProjecao)
+  const loteEditar = lotesAtivos.find(l => l.id === showEditarLote)
 
   const projecaoResult = showProjecao && loteProjecao && fProjecao.preco_kg_vivo
     ? calcular({
@@ -216,6 +220,13 @@ export default function Lotes() {
               onBifurcar={() => { setShowBifurcar(lote.id); setErro(null) }}
               onPesagem={() => setShowPesagem(lote.id)}
               onSaida={() => { setShowSaida(lote.id); resetSaida() }}
+              onEditar={() => {
+                setShowEditarLote(lote.id)
+                setFEditar({
+                  dieta_id: String((lote as any).dieta_id ?? ''),
+                  observacoes: String((lote as any).observacoes ?? ''),
+                })
+              }}
               onProjecao={() => {
                 setShowProjecao(lote.id)
                 setFProjecao({
@@ -526,6 +537,7 @@ export default function Lotes() {
       <Modal open={!!showProjecao} onClose={()=>setShowProjecao(null)} title="Projeção de venda" size="lg"
         subtitle={loteProjecao?`${loteProjecao.nome_lote} · ${(loteProjecao as any).qtd_animais_atual??0} animais · Peso médio: ${fmtNum((loteProjecao as any).peso_medio_atual??0,0)} kg`:''}>
         <div style={{display:'flex',flexDirection:'column',gap:16,maxHeight:'80vh',overflowY:'auto',paddingRight:4}}>
+
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
             <div className="form-group"><label className="form-label">Preço esperado por kg vivo (R$)</label>
               <input className="form-input" type="number" step="0.01" placeholder="210,00"
@@ -544,15 +556,27 @@ export default function Lotes() {
             </div>
           )}
 
+          {fProjecao.preco_kg_vivo&&projecaoResult&&projecaoResult.curva_real.length===0&&projecaoResult.curva_esperada.length===0&&(
+            <div style={{padding:'12px 14px',background:'#fff3e0',borderRadius:8,fontSize:13,color:'#b45309',border:'1px solid #ffe0b2'}}>
+              Este lote ainda não tem GMD calculado. Para gerar a projeção registre pelo menos uma pesagem, ou vincule uma dieta com GMD esperado ao lote.
+            </div>
+          )}
+
           {projecaoResult&&(()=>{
             const {curva_real,curva_esperada,dia_ideal_real,dia_ideal_esperado}=projecaoResult
             const diaIdeal=dia_ideal_real??dia_ideal_esperado
+
             const dadosGrafico=Array.from({length:31},(_,i)=>{
               const dia=i*3
               const real=curva_real.find(p=>p.dia===dia)
               const esp=curva_esperada.find(p=>p.dia===dia)
-              return{ dia:`Dia ${dia}`, lucro_real:real?Math.round(real.lucro_por_animal):undefined, lucro_esperado:esp?Math.round(esp.lucro_por_animal):undefined }
+              return{
+                dia:`Dia ${dia}`,
+                lucro_real:real?Math.round(real.lucro_por_animal):undefined,
+                lucro_esperado:esp?Math.round(esp.lucro_por_animal):undefined,
+              }
             })
+
             return(<>
               {diaIdeal&&(
                 <div style={{background:'var(--green-bg)',border:'1px solid var(--green-border)',borderRadius:12,padding:'16px 20px'}}>
@@ -568,26 +592,40 @@ export default function Lotes() {
                   </div>
                 </div>
               )}
+
               <div>
                 <div style={{fontSize:12,color:'var(--gray-500)',marginBottom:8}}>Lucro por animal (R$) — próximos 90 dias</div>
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={dadosGrafico} margin={{top:4,right:8,left:0,bottom:0}}>
                     <XAxis dataKey="dia" tick={{fontSize:10}} interval={4}/>
-                    <YAxis tick={{fontSize:10}} tickFormatter={(v: number)=>`R$${v}`} width={72}/>
+                    <YAxis tick={{fontSize:10}} tickFormatter={v=>`R$${v}`} width={72}/>
                     <Tooltip formatter={(v:any)=>fmt(v)} labelStyle={{fontSize:12}}/>
                     <Legend wrapperStyle={{fontSize:12}}/>
-                    {curva_real.length>0&&<Line type="monotone" dataKey="lucro_real" name="GMD real" stroke="#2e7d32" strokeWidth={2} dot={false}/>}
-                    {curva_esperada.length>0&&<Line type="monotone" dataKey="lucro_esperado" name="GMD esperado" stroke="#9e9e9e" strokeWidth={1.5} strokeDasharray="5 5" dot={false}/>}
-                    {dia_ideal_real&&<ReferenceLine x={`Dia ${Math.round(dia_ideal_real.dia/3)*3}`} stroke="#2e7d32" strokeDasharray="3 3" label={{value:'Ideal',fontSize:10,fill:'#2e7d32'}}/>}
+                    {curva_real.length>0&&(
+                      <Line type="monotone" dataKey="lucro_real" name="GMD real" stroke="#2e7d32" strokeWidth={2} dot={false}/>
+                    )}
+                    {curva_esperada.length>0&&(
+                      <Line type="monotone" dataKey="lucro_esperado" name="GMD esperado" stroke="#9e9e9e" strokeWidth={1.5} strokeDasharray="5 5" dot={false}/>
+                    )}
+                    {dia_ideal_real&&(
+                      <ReferenceLine x={`Dia ${Math.round(dia_ideal_real.dia/3)*3}`} stroke="#2e7d32" strokeDasharray="3 3" label={{value:'Ideal',fontSize:10,fill:'#2e7d32'}}/>
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+
               <div>
                 <div style={{fontSize:12,color:'var(--gray-500)',marginBottom:8}}>Detalhamento semanal</div>
                 <div className="card" style={{padding:0}}>
                   <div className="table-wrap" style={{border:'none',borderRadius:0}}>
                     <table>
-                      <thead><tr><th>Dia</th><th>Data</th><th>Peso médio</th><th>Receita bruta</th><th>Custo total</th><th>Lucro total</th><th>Lucro/animal</th></tr></thead>
+                      <thead>
+                        <tr>
+                          <th>Dia</th><th>Data</th><th>Peso médio</th>
+                          <th>Receita bruta</th><th>Custo total</th>
+                          <th>Lucro total</th><th>Lucro/animal</th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {[0,7,14,21,28,35,42,49,56,63,70,77,84,90].map(dia=>{
                           const real=curva_real.find(p=>p.dia===dia)
@@ -598,7 +636,9 @@ export default function Lotes() {
                           return(
                             <tr key={dia} style={{background:isIdeal?'#e8f5e9':undefined}}>
                               <td>
-                                <strong style={{color:isIdeal?'var(--green-dark)':undefined}}>{dia===0?'Hoje':`+${dia}d`}</strong>
+                                <strong style={{color:isIdeal?'var(--green-dark)':undefined}}>
+                                  {dia===0?'Hoje':`+${dia}d`}
+                                </strong>
                                 {isIdeal&&<span style={{fontSize:10,marginLeft:6,color:'var(--green)',background:'var(--green-bg)',padding:'1px 6px',borderRadius:20,border:'1px solid var(--green-border)'}}>Ideal</span>}
                               </td>
                               <td>{new Date(ponto.data+'T12:00:00').toLocaleDateString('pt-BR')}</td>
@@ -615,6 +655,7 @@ export default function Lotes() {
                   </div>
                 </div>
               </div>
+
               <div style={{padding:'10px 14px',background:'var(--gray-50)',borderRadius:8,fontSize:11,color:'var(--gray-400)',lineHeight:1.6}}>
                 Projeção baseada no GMD atual do lote e preço informado. Variações de mercado, saúde do rebanho e custos futuros podem alterar o resultado real. Use como referência, não como garantia.
               </div>
@@ -623,12 +664,41 @@ export default function Lotes() {
         </div>
       </Modal>
     </div>
+
+      {/* ── MODAL EDITAR LOTE ── */}
+      <Modal open={!!showEditarLote} onClose={()=>setShowEditarLote(null)} title="Editar lote" size="sm"
+        subtitle={loteEditar?.nome_lote}>
+        <form onSubmit={async e=>{
+          e.preventDefault(); if(!showEditarLote)return; setSaving(true)
+          const{error}=await supabase.from('lotes').update({
+            dieta_id:fEditar.dieta_id||null,
+            observacoes:fEditar.observacoes||null,
+          }).eq('id',showEditarLote)
+          setSaving(false)
+          if(!error){setShowEditarLote(null);fetch()}
+        }} style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div className="form-group"><label className="form-label">Dieta vinculada</label>
+            <select className="form-input" value={fEditar.dieta_id} onChange={e=>setFEditar(f=>({...f,dieta_id:e.target.value}))}>
+              <option value="">— Sem dieta —</option>
+              {templates.map(d=><option key={d.id} value={d.id}>{d.nome} (GMD est. {d.gmd_esperado} kg/dia)</option>)}
+            </select></div>
+          <div className="form-group"><label className="form-label">Observações</label>
+            <input className="form-input" placeholder="Opcional" value={fEditar.observacoes} onChange={e=>setFEditar(f=>({...f,observacoes:e.target.value}))}/></div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={()=>setShowEditarLote(null)}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving?<span className="spinner" style={{width:14,height:14}}/>:'Salvar'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </div>
   )
 }
 
-function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesagem, onSaida, onProjecao }: {
+function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesagem, onSaida, onProjecao, onEditar }: {
   lote: any; onAvancar:()=>void; onEncerrar:()=>void; onExcluir:()=>void
-  onBifurcar:()=>void; onPesagem:()=>void; onSaida:()=>void; onProjecao:()=>void
+  onBifurcar:()=>void; onPesagem:()=>void; onSaida:()=>void; onProjecao:()=>void; onEditar:()=>void
 }) {
   const qtd=lote.qtd_animais_atual??lote.qtd_animais??'—'
   const pesoAtual=lote.peso_medio_atual??lote.peso_medio_entrada
@@ -700,6 +770,7 @@ function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesage
           <div style={{display:'flex',gap:6}}>
             {lote.ciclo_atual<4&&<button className="btn btn-ghost btn-sm" style={{flex:1,justifyContent:'center'}} onClick={onAvancar}>Avançar ciclo</button>}
             <button className="btn btn-ghost btn-sm" style={{flex:1,justifyContent:'center'}} onClick={onBifurcar}>Bifurcar</button>
+            <button className="btn btn-ghost btn-sm" style={{flex:1,justifyContent:'center'}} onClick={onEditar}>Editar</button>
           </div>
         </>
       )}
