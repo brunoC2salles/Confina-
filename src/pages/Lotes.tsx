@@ -14,6 +14,23 @@ const cicloLabel = (n: number) =>
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
+// Estrutura de um ciclo programado
+type CicloConfig = {
+  numero: number
+  nome: string         // nome personalizado (ex: "Adaptação", "Ceva intensiva", etc.)
+  dias_planejados: number
+  dieta_id: string
+  gmd_esperado: string // kg/dia previsto para este ciclo
+}
+
+const cicloDefault = (n: number): CicloConfig => ({
+  numero: n,
+  nome: cicloLabel(n),
+  dias_planejados: n === 1 ? 21 : n === 2 ? 35 : n === 3 ? 35 : 21,
+  dieta_id: '',
+  gmd_esperado: '',
+})
+
 export default function Lotes() {
   const { lotesAtivos, lotesEncerrados, loading, criarLote, encerrarLote, excluirLote, avancarCiclo, bifurcarLote, registrarPesagem, registrarSaida, fetch } = useLotes()
   const { templates } = useDietas()
@@ -29,11 +46,11 @@ export default function Lotes() {
   const [showSaida, setShowSaida] = useState<string|null>(null)
   const [showProjecao, setShowProjecao] = useState<string|null>(null)
   const [showEditarLote, setShowEditarLote] = useState<string|null>(null)
-  const [fEditar, setFEditar] = useState({ dieta_id: '', observacoes: '' })
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState(1)
   const [erro, setErro] = useState<string|null>(null)
 
+  // ── FORM CRIAR LOTE ──────────────────────────────────────────────
   const [form, setForm] = useState({
     nome_lote: '', codigo_lote: '', ciclo_inicial: 1,
     qtd_animais: '', data_entrada: new Date().toISOString().split('T')[0],
@@ -42,6 +59,23 @@ export default function Lotes() {
     raca_predominante: '', dieta_id: '', observacoes: '',
   })
 
+  // Ciclos programados no momento da criação (1 a 4)
+  const [ciclos, setCiclos] = useState<CicloConfig[]>([1,2,3,4].map(cicloDefault))
+
+  const setCiclo = (n: number, patch: Partial<CicloConfig>) =>
+    setCiclos(cs => cs.map(c => c.numero === n ? { ...c, ...patch } : c))
+
+  // ── FORM EDITAR LOTE ─────────────────────────────────────────────
+  const [fEditar, setFEditar] = useState({
+    nome_lote: '', codigo_lote: '',
+    qtd_animais: '', peso_medio_entrada: '',
+    valor_pago_kg: '', valor_total_lote: '',
+    raca_predominante: '',
+    origem_fazenda: '', origem_municipio: '', origem_estado: '',
+    dieta_id: '', observacoes: '',
+  })
+
+  // ── OUTROS FORMS ─────────────────────────────────────────────────
   const [fPesagem, setFPesagem] = useState({
     data: new Date().toISOString().split('T')[0], peso_medio: '', qtd_animais: '', observacoes: '',
   })
@@ -76,16 +110,39 @@ export default function Lotes() {
   const loteProjecao = todosLotes.find(l => l.id === showProjecao)
   const loteEditar = lotesAtivos.find(l => l.id === showEditarLote)
 
+  // Monta ciclos_config para o hook de projeção:
+  // usa os ciclos salvos no lote (ciclos_config do banco), enriquecendo com
+  // o custo_dia de cada dieta vinculada. Filtra apenas ciclos >= ciclo atual.
+  const ciclosProjecao = (() => {
+    if (!loteProjecao) return []
+    const lp = loteProjecao as any
+    const configs: Array<{ numero: number; nome: string; dias_planejados: number; gmd_esperado: number | null; dieta_id: string | null }> =
+      lp.ciclos_config ?? []
+    if (configs.length === 0) return []
+    return configs
+      .filter(c => c.numero >= (lp.ciclo_atual ?? 1))
+      .map(c => ({
+        numero: c.numero,
+        nome: c.nome,
+        dias_planejados: c.dias_planejados ?? 30,
+        gmd_esperado: c.gmd_esperado ?? null,
+        // custo_dia: busca na dieta vinculada ao ciclo (campo custo_dia_estimado da dieta)
+        custo_dia: c.dieta_id
+          ? (templates.find(t => t.id === c.dieta_id) as any)?.custo_dia_estimado ?? null
+          : null,
+      }))
+  })()
+
   const projecaoResult = showProjecao && loteProjecao && fProjecao.preco_valor
     ? calcular({
         peso_medio_atual: (loteProjecao as any).peso_medio_atual ?? (loteProjecao as any).peso_medio_entrada ?? 0,
         qtd_animais: (loteProjecao as any).qtd_animais_atual ?? (loteProjecao as any).qtd_animais ?? 0,
         gmd_real: (loteProjecao as any).gmd_atual ?? null,
-        gmd_esperado: templates.find(t => t.id === (loteProjecao as any).dieta_id)?.gmd_esperado ?? null,
         data_hoje: new Date().toISOString().split('T')[0],
         custo_compra_total: (loteProjecao as any).valor_total_lote ?? 0,
         custo_alimentacao_acumulado: (loteProjecao as any).custo_alimentacao_acumulado ?? 0,
         custo_alimentacao_dia: (loteProjecao as any).custo_alimentacao_dia ?? 0,
+        ciclos_config: ciclosProjecao,
         preco_valor: Number(fProjecao.preco_valor),
         modo_preco: fProjecao.modo_preco,
         pct_comissao: Number(fProjecao.pct_comissao),
@@ -99,8 +156,18 @@ export default function Lotes() {
       })
     : null
 
+  // Total de dias planejados (para exibir no sumário da projeção)
+  const totalDiasPlanejados = ciclos.reduce((s, c) => s + (c.dias_planejados || 0), 0)
+
   const resetForm = () => {
-    setForm({ nome_lote: '', codigo_lote: '', ciclo_inicial: 1, qtd_animais: '', data_entrada: new Date().toISOString().split('T')[0], peso_medio_entrada: '', valor_pago_kg: '', valor_total_lote: '', origem_fazenda: '', origem_municipio: '', origem_estado: '', raca_predominante: '', dieta_id: '', observacoes: '' })
+    setForm({
+      nome_lote: '', codigo_lote: '', ciclo_inicial: 1,
+      qtd_animais: '', data_entrada: new Date().toISOString().split('T')[0],
+      peso_medio_entrada: '', valor_pago_kg: '', valor_total_lote: '',
+      origem_fazenda: '', origem_municipio: '', origem_estado: '',
+      raca_predominante: '', dieta_id: '', observacoes: '',
+    })
+    setCiclos([1,2,3,4].map(cicloDefault))
     setStep(1); setErro(null)
   }
 
@@ -110,12 +177,19 @@ export default function Lotes() {
     saida_total: true, destino_tipo: '', destino_id: '', comissoes: [], encargos: [], observacoes: '',
   })
 
+  // ── HANDLERS ─────────────────────────────────────────────────────
+
   const handleCriar = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (step < 3) { setStep(s => s + 1); return }
+    if (step < 4) { setStep(s => s + 1); return }
     setSaving(true); setErro(null)
+
+    // O ciclo inicial define qual a dieta padrão do lote
+    const cicloInicial = ciclos.find(c => c.numero === form.ciclo_inicial)
+
     const { error } = await criarLote({
-      nome_lote: form.nome_lote, codigo_lote: form.codigo_lote,
+      nome_lote: form.nome_lote,
+      codigo_lote: form.codigo_lote,
       ciclo_inicial: Number(form.ciclo_inicial),
       qtd_animais: Number(form.qtd_animais),
       data_entrada: form.data_entrada,
@@ -126,8 +200,17 @@ export default function Lotes() {
       origem_municipio: form.origem_municipio || undefined,
       origem_estado: form.origem_estado || undefined,
       raca_predominante: form.raca_predominante || undefined,
-      dieta_id: form.dieta_id || undefined,
+      // dieta do ciclo inicial, ou fallback do campo geral
+      dieta_id: cicloInicial?.dieta_id || form.dieta_id || undefined,
       observacoes: form.observacoes || undefined,
+      // dados dos ciclos planejados armazenados como JSON no banco
+      ciclos_config: ciclos.map(c => ({
+        numero: c.numero,
+        nome: c.nome,
+        dias_planejados: c.dias_planejados,
+        dieta_id: c.dieta_id || null,
+        gmd_esperado: c.gmd_esperado ? Number(c.gmd_esperado) : null,
+      })),
     })
     setSaving(false)
     if (error) { setErro(error); return }
@@ -188,8 +271,43 @@ export default function Lotes() {
     setSaving(false); setShowSaida(null); resetSaida()
   }
 
+  const handleSalvarEdicao = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!showEditarLote) return
+    setSaving(true)
+    const patch: Record<string, any> = {
+      nome_lote: fEditar.nome_lote || undefined,
+      codigo_lote: fEditar.codigo_lote || undefined,
+      raca_predominante: fEditar.raca_predominante || null,
+      origem_fazenda: fEditar.origem_fazenda || null,
+      origem_municipio: fEditar.origem_municipio || null,
+      origem_estado: fEditar.origem_estado || null,
+      dieta_id: fEditar.dieta_id || null,
+      observacoes: fEditar.observacoes || null,
+    }
+    // Campos numéricos — só atualizar se preenchidos
+    if (fEditar.qtd_animais) patch.qtd_animais = Number(fEditar.qtd_animais)
+    if (fEditar.peso_medio_entrada) patch.peso_medio_entrada = Number(fEditar.peso_medio_entrada)
+    if (fEditar.valor_pago_kg) patch.valor_pago_kg = Number(fEditar.valor_pago_kg)
+    if (fEditar.valor_total_lote) patch.valor_total_lote = Number(fEditar.valor_total_lote)
+
+    const { error } = await supabase.from('lotes').update(patch).eq('id', showEditarLote)
+    setSaving(false)
+    if (!error) { setShowEditarLote(null); fetch() }
+  }
+
   const lista = tab === 'ativos' ? lotesAtivos : lotesEncerrados
-  const stepLabel = ['Identificação', 'Entrada e valores', 'Origem e dieta']
+  const stepLabel = ['Identificação', 'Entrada e valores', 'Origem e dieta', 'Ciclos planejados']
+
+  // Dias acumulados para data prevista por ciclo
+  const dataPrevistaCiclo = (numeroCiclo: number) => {
+    if (!form.data_entrada) return null
+    const diasAte = ciclos
+      .filter(c => c.numero < numeroCiclo)
+      .reduce((s, c) => s + (c.dias_planejados || 0), 0)
+    const d = new Date(form.data_entrada + 'T12:00:00')
+    d.setDate(d.getDate() + diasAte)
+    return d.toLocaleDateString('pt-BR')
+  }
 
   return (
     <div className="page">
@@ -223,10 +341,21 @@ export default function Lotes() {
               onPesagem={() => setShowPesagem(lote.id)}
               onSaida={() => { setShowSaida(lote.id); resetSaida() }}
               onEditar={() => {
+                const l = lote as any
                 setShowEditarLote(lote.id)
                 setFEditar({
-                  dieta_id: String((lote as any).dieta_id ?? ''),
-                  observacoes: String((lote as any).observacoes ?? ''),
+                  nome_lote: l.nome_lote ?? '',
+                  codigo_lote: l.codigo_lote ?? '',
+                  qtd_animais: l.qtd_animais_atual != null ? String(l.qtd_animais_atual) : String(l.qtd_animais ?? ''),
+                  peso_medio_entrada: String(l.peso_medio_entrada ?? ''),
+                  valor_pago_kg: String(l.valor_pago_kg ?? ''),
+                  valor_total_lote: String(l.valor_total_lote ?? ''),
+                  raca_predominante: l.raca_predominante ?? '',
+                  origem_fazenda: l.origem_fazenda ?? '',
+                  origem_municipio: l.origem_municipio ?? '',
+                  origem_estado: l.origem_estado ?? '',
+                  dieta_id: String(l.dieta_id ?? ''),
+                  observacoes: String(l.observacoes ?? ''),
                 })
               }}
               onProjecao={() => {
@@ -241,16 +370,20 @@ export default function Lotes() {
         </div>
       )}
 
-      {/* ── MODAL CRIAR LOTE ── */}
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL CRIAR LOTE — 4 steps
+      ══════════════════════════════════════════════════════════════ */}
       <Modal open={showNovo} onClose={() => setShowNovo(false)} title="Criar novo lote"
-        subtitle={`Passo ${step} de 3 — ${stepLabel[step-1]}`} size="lg">
+        subtitle={`Passo ${step} de 4 — ${stepLabel[step-1]}`} size="lg">
         <form onSubmit={handleCriar} style={{display:'flex',flexDirection:'column',gap:14,maxHeight:'75vh',overflowY:'auto',paddingRight:4}}>
+          {/* barra de progresso */}
           <div style={{display:'flex',gap:6,marginBottom:4}}>
-            {[1,2,3].map(s=>(
+            {[1,2,3,4].map(s=>(
               <div key={s} style={{flex:1,height:3,borderRadius:2,background:s<=step?'var(--green)':'var(--border)'}}/>
             ))}
           </div>
 
+          {/* ── STEP 1: Identificação ── */}
           {step === 1 && <>
             <div className="form-row-2">
               <div className="form-group"><label className="form-label">Nome do lote</label>
@@ -268,6 +401,7 @@ export default function Lotes() {
             </div>
           </>}
 
+          {/* ── STEP 2: Entrada e valores ── */}
           {step === 2 && <>
             <div className="form-row-2">
               <div className="form-group"><label className="form-label">Número de animais</label>
@@ -298,6 +432,7 @@ export default function Lotes() {
             )}
           </>}
 
+          {/* ── STEP 3: Origem e dieta geral ── */}
           {step === 3 && <>
             <div className="form-row-2">
               <div className="form-group"><label className="form-label">Raça predominante</label>
@@ -314,13 +449,102 @@ export default function Lotes() {
               <div className="form-group"><label className="form-label">Município de origem</label>
                 <input className="form-input" placeholder="Cidade" value={form.origem_municipio} onChange={e=>setForm(f=>({...f,origem_municipio:e.target.value}))}/></div>
             </div>
-            <div className="form-group"><label className="form-label">Dieta inicial (opcional)</label>
-              <select className="form-input" value={form.dieta_id} onChange={e=>setForm(f=>({...f,dieta_id:e.target.value}))}>
-                <option value="">— Selecionar depois —</option>
-                {templates.map(d=><option key={d.id} value={d.id}>{d.nome} (GMD est. {d.gmd_esperado} kg/dia)</option>)}
-              </select></div>
             <div className="form-group"><label className="form-label">Observações</label>
               <input className="form-input" placeholder="Opcional" value={form.observacoes} onChange={e=>setForm(f=>({...f,observacoes:e.target.value}))}/></div>
+          </>}
+
+          {/* ── STEP 4: Ciclos planejados ── */}
+          {step === 4 && <>
+            <div style={{padding:'10px 14px',background:'var(--gray-50)',borderRadius:8,fontSize:12,color:'var(--gray-500)',lineHeight:1.6}}>
+              Configure cada ciclo do confinamento. Os dados de GMD e dieta por ciclo alimentam a projeção de venda e os cálculos de custo. Você pode ajustar a qualquer momento.
+            </div>
+
+            {ciclos.map(ciclo => {
+              const ativo = ciclo.numero >= form.ciclo_inicial
+              return (
+                <div key={ciclo.numero} style={{
+                  border: `1px solid ${ativo ? 'var(--green-border)' : 'var(--border)'}`,
+                  borderRadius: 10, padding: '14px 16px',
+                  background: ativo ? 'var(--green-bg)' : 'var(--gray-50)',
+                  opacity: ativo ? 1 : 0.6,
+                }}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+                    <div style={{
+                      width: 26, height: 26, borderRadius: '50%', display:'flex',alignItems:'center',justifyContent:'center',
+                      fontSize: 12, fontWeight: 700,
+                      background: ativo ? 'var(--green)' : 'var(--border)',
+                      color: ativo ? '#fff' : '#9e9e9e',
+                    }}>{ciclo.numero}</div>
+                    <div style={{fontSize:13,fontWeight:600,color:ativo?'var(--green-dark)':'var(--gray-500)'}}>
+                      Ciclo {ciclo.numero}
+                      {!ativo && <span style={{fontSize:11,fontWeight:400,marginLeft:6}}>(antes do ciclo inicial)</span>}
+                    </div>
+                  </div>
+
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                    {/* Nome do ciclo */}
+                    <div className="form-group" style={{margin:0}}>
+                      <label className="form-label">Nome do ciclo</label>
+                      <input className="form-input" placeholder={cicloLabel(ciclo.numero)}
+                        value={ciclo.nome}
+                        onChange={e => setCiclo(ciclo.numero, { nome: e.target.value })}
+                        disabled={!ativo}/>
+                    </div>
+
+                    {/* Duração planejada */}
+                    <div className="form-group" style={{margin:0}}>
+                      <label className="form-label">
+                        Duração planejada (dias)
+                        {form.data_entrada && ativo && (
+                          <span style={{fontSize:10,color:'var(--gray-400)',marginLeft:6,fontWeight:400}}>
+                            previsto: {dataPrevistaCiclo(ciclo.numero)}
+                          </span>
+                        )}
+                      </label>
+                      <input className="form-input" type="number" min="1" max="365"
+                        placeholder="21"
+                        value={ciclo.dias_planejados || ''}
+                        onChange={e => setCiclo(ciclo.numero, { dias_planejados: Number(e.target.value) || 0 })}
+                        disabled={!ativo}/>
+                    </div>
+
+                    {/* Dieta do ciclo */}
+                    <div className="form-group" style={{margin:0}}>
+                      <label className="form-label">Dieta deste ciclo</label>
+                      <select className="form-input" value={ciclo.dieta_id}
+                        onChange={e => {
+                          const t = templates.find(d => d.id === e.target.value)
+                          setCiclo(ciclo.numero, {
+                            dieta_id: e.target.value,
+                            gmd_esperado: t?.gmd_esperado ? String(t.gmd_esperado) : ciclo.gmd_esperado,
+                          })
+                        }}
+                        disabled={!ativo}>
+                        <option value="">— Sem dieta —</option>
+                        {templates.map(d=><option key={d.id} value={d.id}>{d.nome}</option>)}
+                      </select>
+                    </div>
+
+                    {/* GMD esperado */}
+                    <div className="form-group" style={{margin:0}}>
+                      <label className="form-label">GMD esperado (kg/dia)</label>
+                      <input className="form-input" type="number" step="0.01" placeholder="1.50"
+                        value={ciclo.gmd_esperado}
+                        onChange={e => setCiclo(ciclo.numero, { gmd_esperado: e.target.value })}
+                        disabled={!ativo}/>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Sumário dos dias planejados */}
+            {totalDiasPlanejados > 0 && (
+              <div style={{padding:'10px 14px',background:'var(--green-bg)',borderRadius:8,fontSize:13,color:'var(--green-dark)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span>Total planejado do confinamento</span>
+                <strong>{totalDiasPlanejados} dias</strong>
+              </div>
+            )}
           </>}
 
           {erro&&<div style={{padding:10,background:'#ffebee',borderRadius:8,color:'#b91c1c',fontSize:13}}>{erro}</div>}
@@ -328,13 +552,15 @@ export default function Lotes() {
             {step>1&&<button type="button" className="btn btn-ghost" onClick={()=>setStep(s=>s-1)}>Voltar</button>}
             <button type="button" className="btn btn-ghost" onClick={()=>setShowNovo(false)}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving?<span className="spinner" style={{width:14,height:14}}/>:step<3?'Próximo':'Criar lote'}
+              {saving?<span className="spinner" style={{width:14,height:14}}/>:step<4?'Próximo':'Criar lote'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* ── MODAL PESAGEM ── */}
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL PESAGEM
+      ══════════════════════════════════════════════════════════════ */}
       <Modal open={!!showPesagem} onClose={()=>setShowPesagem(null)} title="Registrar pesagem do lote" size="sm"
         subtitle={lotesAtivos.find(l=>l.id===showPesagem)?.nome_lote}>
         <form onSubmit={handlePesagem} style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -357,7 +583,9 @@ export default function Lotes() {
         </form>
       </Modal>
 
-      {/* ── MODAL AVANÇAR CICLO ── */}
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL AVANÇAR CICLO
+      ══════════════════════════════════════════════════════════════ */}
       <Modal open={!!showAvancar} onClose={()=>setShowAvancar(null)} title="Avançar ciclo" size="sm"
         subtitle={loteAvancar?`${loteAvancar.nome_lote} — Ciclo ${loteAvancar.ciclo_atual} para ${loteAvancar.ciclo_atual+1}`:''}>
         <p style={{fontSize:13,color:'#555',marginBottom:20}}>Todos os animais do lote avançarão para o próximo ciclo. Esta ação não pode ser desfeita.</p>
@@ -371,7 +599,9 @@ export default function Lotes() {
         </div>
       </Modal>
 
-      {/* ── MODAL BIFURCAR ── */}
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL BIFURCAR
+      ══════════════════════════════════════════════════════════════ */}
       <Modal open={!!showBifurcar} onClose={()=>setShowBifurcar(null)} title="Bifurcar lote" size="lg"
         subtitle={loteBifurcar?`Dividindo ${loteBifurcar.nome_lote} — ${(loteBifurcar as any).qtd_animais_atual??(loteBifurcar as any).qtd_animais} animais disponíveis`:''}>
         <form onSubmit={handleBifurcar} style={{display:'flex',flexDirection:'column',gap:14,maxHeight:'75vh',overflowY:'auto',paddingRight:4}}>
@@ -429,7 +659,9 @@ export default function Lotes() {
         </form>
       </Modal>
 
-      {/* ── MODAL SAÍDA ── */}
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL SAÍDA
+      ══════════════════════════════════════════════════════════════ */}
       <Modal open={!!showSaida} onClose={()=>setShowSaida(null)} title="Registrar saída do lote" size="lg"
         subtitle={loteSaida?`${loteSaida.nome_lote} — ${(loteSaida as any).qtd_animais_atual??0} animais`:''}>
         <form onSubmit={handleSaida} style={{display:'flex',flexDirection:'column',gap:14,maxHeight:'75vh',overflowY:'auto',paddingRight:4}}>
@@ -536,7 +768,9 @@ export default function Lotes() {
         </form>
       </Modal>
 
-      {/* ── MODAL PROJEÇÃO ── */}
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL PROJEÇÃO
+      ══════════════════════════════════════════════════════════════ */}
       <Modal open={!!showProjecao} onClose={()=>setShowProjecao(null)} title="Projeção de venda" size="lg"
         subtitle={loteProjecao?`${loteProjecao.nome_lote} · ${(loteProjecao as any).qtd_animais_atual??0} animais · Peso médio: ${fmtNum((loteProjecao as any).peso_medio_atual??0,0)} kg`:''}>
         <div style={{display:'flex',flexDirection:'column',gap:16,maxHeight:'80vh',overflowY:'auto',paddingRight:4}}>
@@ -623,15 +857,15 @@ export default function Lotes() {
               </div>
 
               <div>
-                <div style={{fontSize:12,color:'var(--gray-500)',marginBottom:8}}>Detalhamento semanal</div>
+                <div style={{fontSize:12,color:'var(--gray-500)',marginBottom:8}}>Evolução dia a dia — custos e lucro por fase</div>
                 <div className="card" style={{padding:0}}>
                   <div className="table-wrap" style={{border:'none',borderRadius:0}}>
                     <table>
                       <thead>
                         <tr>
-                          <th>Dia</th><th>Data</th><th>Peso médio</th>
-                          <th>Receita bruta</th><th>Custo total</th>
-                          <th>Lucro total</th><th>Lucro/animal</th>
+                          <th>Dia</th><th>Data</th><th>Fase</th><th>Peso médio</th>
+                          <th>Custo alim.</th><th>Custo total</th>
+                          <th>Receita bruta</th><th>Lucro total</th><th>Lucro/animal</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -650,9 +884,15 @@ export default function Lotes() {
                                 {isIdeal&&<span style={{fontSize:10,marginLeft:6,color:'var(--green)',background:'var(--green-bg)',padding:'1px 6px',borderRadius:20,border:'1px solid var(--green-border)'}}>Ideal</span>}
                               </td>
                               <td>{new Date(ponto.data+'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                              <td>
+                                <span style={{fontSize:11,background:'var(--gray-50)',padding:'2px 8px',borderRadius:20,color:'var(--gray-500)',border:'1px solid var(--border)',whiteSpace:'nowrap'}}>
+                                  {ponto.ciclo_nome}
+                                </span>
+                              </td>
                               <td>{fmtNum(ponto.peso,0)} kg</td>
-                              <td>{fmt(ponto.receita_bruta)}</td>
+                              <td style={{color:'#b45309'}}>{fmt(ponto.custo_alimentacao_acumulado)}</td>
                               <td style={{color:'#b91c1c'}}>{fmt(ponto.custo_total)}</td>
+                              <td>{fmt(ponto.receita_bruta)}</td>
                               <td style={{fontWeight:500,color:ponto.lucro>=0?'var(--green-dark)':'#b91c1c'}}>{fmt(ponto.lucro)}</td>
                               <td style={{fontWeight:500,color:ponto.lucro_por_animal>=0?'var(--green-dark)':'#b91c1c'}}>{fmt(ponto.lucro_por_animal)}</td>
                             </tr>
@@ -665,24 +905,90 @@ export default function Lotes() {
               </div>
 
               <div style={{padding:'10px 14px',background:'var(--gray-50)',borderRadius:8,fontSize:11,color:'var(--gray-400)',lineHeight:1.6}}>
-                Projeção baseada no GMD atual do lote e preço informado. Variações de mercado, saúde do rebanho e custos futuros podem alterar o resultado real. Use como referência, não como garantia.
+                Curva esperada calculada com os GMDs e custos configurados por ciclo. Curva real baseada no GMD calculado pelas pesagens. Variações de mercado, sanitárias e de consumo podem alterar o resultado real.
               </div>
             </>)
           })()}
         </div>
       </Modal>
-      {/* ── MODAL EDITAR LOTE ── */}
-      <Modal open={!!showEditarLote} onClose={()=>setShowEditarLote(null)} title="Editar lote" size="sm"
+
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL EDITAR LOTE — COMPLETO
+      ══════════════════════════════════════════════════════════════ */}
+      <Modal open={!!showEditarLote} onClose={()=>setShowEditarLote(null)} title="Editar lote" size="lg"
         subtitle={loteEditar?.nome_lote}>
-        <form onSubmit={async e=>{
-          e.preventDefault(); if(!showEditarLote)return; setSaving(true)
-          const{error}=await supabase.from('lotes').update({
-            dieta_id:fEditar.dieta_id||null,
-            observacoes:fEditar.observacoes||null,
-          }).eq('id',showEditarLote)
-          setSaving(false)
-          if(!error){setShowEditarLote(null);fetch()}
-        }} style={{display:'flex',flexDirection:'column',gap:14}}>
+        <form onSubmit={handleSalvarEdicao} style={{display:'flex',flexDirection:'column',gap:14,maxHeight:'75vh',overflowY:'auto',paddingRight:4}}>
+
+          {/* Identificação */}
+          <div style={{fontSize:11,fontWeight:600,color:'var(--gray-400)',textTransform:'uppercase',letterSpacing:'0.6px'}}>Identificação</div>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Nome do lote</label>
+              <input className="form-input" value={fEditar.nome_lote} onChange={e=>setFEditar(f=>({...f,nome_lote:e.target.value}))} required/></div>
+            <div className="form-group"><label className="form-label">Código</label>
+              <input className="form-input" value={fEditar.codigo_lote} onChange={e=>setFEditar(f=>({...f,codigo_lote:e.target.value}))}/></div>
+          </div>
+
+          {/* Rebanho */}
+          <div style={{fontSize:11,fontWeight:600,color:'var(--gray-400)',textTransform:'uppercase',letterSpacing:'0.6px',marginTop:4}}>Rebanho</div>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Qtd de animais atual</label>
+              <input className="form-input" type="number" min="1" value={fEditar.qtd_animais} onChange={e=>setFEditar(f=>({...f,qtd_animais:e.target.value}))}/></div>
+            <div className="form-group"><label className="form-label">Peso médio de entrada (kg)</label>
+              <input className="form-input" type="number" step="0.1" value={fEditar.peso_medio_entrada} onChange={e=>setFEditar(f=>({...f,peso_medio_entrada:e.target.value}))}/></div>
+          </div>
+          <div className="form-group"><label className="form-label">Raça predominante</label>
+            <input className="form-input" placeholder="Ex: Nelore" value={fEditar.raca_predominante} onChange={e=>setFEditar(f=>({...f,raca_predominante:e.target.value}))}/></div>
+
+          {/* Valores de compra */}
+          <div style={{fontSize:11,fontWeight:600,color:'var(--gray-400)',textTransform:'uppercase',letterSpacing:'0.6px',marginTop:4}}>Valores de compra</div>
+          <div style={{padding:'8px 12px',background:'var(--gray-50)',borderRadius:8,fontSize:12,color:'var(--gray-500)'}}>
+            Alterar esses valores recalcula o custo de compra e impacta diretamente o lucro e a projeção de venda.
+          </div>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Valor pago por kg vivo (R$)</label>
+              <input className="form-input" type="number" step="0.01" value={fEditar.valor_pago_kg} onChange={e=>{
+                const vkg=e.target.value
+                setFEditar(f=>({
+                  ...f, valor_pago_kg: vkg,
+                  valor_total_lote: vkg&&f.peso_medio_entrada&&f.qtd_animais
+                    ? String((Number(vkg)*Number(f.peso_medio_entrada)*Number(f.qtd_animais)).toFixed(2))
+                    : f.valor_total_lote,
+                }))
+              }}/></div>
+            <div className="form-group"><label className="form-label">Valor total do lote (R$)</label>
+              <input className="form-input" type="number" step="0.01" value={fEditar.valor_total_lote} onChange={e=>{
+                const vtl=e.target.value
+                setFEditar(f=>({
+                  ...f, valor_total_lote: vtl,
+                  valor_pago_kg: vtl&&f.peso_medio_entrada&&f.qtd_animais
+                    ? String((Number(vtl)/(Number(f.peso_medio_entrada)*Number(f.qtd_animais))).toFixed(4))
+                    : f.valor_pago_kg,
+                }))
+              }}/></div>
+          </div>
+          {fEditar.qtd_animais&&fEditar.peso_medio_entrada&&fEditar.valor_total_lote&&(
+            <div style={{padding:'10px 14px',background:'var(--green-bg)',borderRadius:8,fontSize:13,color:'var(--green-dark)'}}>
+              Custo por animal: <strong>{fmt(Number(fEditar.valor_total_lote)/Number(fEditar.qtd_animais))}</strong>
+              {' · '}Custo por kg: <strong>{fmt(Number(fEditar.valor_pago_kg))}/kg</strong>
+            </div>
+          )}
+
+          {/* Origem */}
+          <div style={{fontSize:11,fontWeight:600,color:'var(--gray-400)',textTransform:'uppercase',letterSpacing:'0.6px',marginTop:4}}>Origem</div>
+          <div className="form-row-2">
+            <div className="form-group"><label className="form-label">Fazenda de origem</label>
+              <input className="form-input" placeholder="Nome da fazenda" value={fEditar.origem_fazenda} onChange={e=>setFEditar(f=>({...f,origem_fazenda:e.target.value}))}/></div>
+            <div className="form-group"><label className="form-label">Município</label>
+              <input className="form-input" placeholder="Cidade" value={fEditar.origem_municipio} onChange={e=>setFEditar(f=>({...f,origem_municipio:e.target.value}))}/></div>
+          </div>
+          <div className="form-group"><label className="form-label">Estado</label>
+            <select className="form-input" value={fEditar.origem_estado} onChange={e=>setFEditar(f=>({...f,origem_estado:e.target.value}))}>
+              <option value="">— Selecione —</option>
+              {ESTADOS.map(uf=><option key={uf} value={uf}>{uf}</option>)}
+            </select></div>
+
+          {/* Dieta e obs */}
+          <div style={{fontSize:11,fontWeight:600,color:'var(--gray-400)',textTransform:'uppercase',letterSpacing:'0.6px',marginTop:4}}>Dieta e observações</div>
           <div className="form-group"><label className="form-label">Dieta vinculada</label>
             <select className="form-input" value={fEditar.dieta_id} onChange={e=>setFEditar(f=>({...f,dieta_id:e.target.value}))}>
               <option value="">— Sem dieta —</option>
@@ -690,10 +996,11 @@ export default function Lotes() {
             </select></div>
           <div className="form-group"><label className="form-label">Observações</label>
             <input className="form-input" placeholder="Opcional" value={fEditar.observacoes} onChange={e=>setFEditar(f=>({...f,observacoes:e.target.value}))}/></div>
+
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={()=>setShowEditarLote(null)}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving?<span className="spinner" style={{width:14,height:14}}/>:'Salvar'}
+              {saving?<span className="spinner" style={{width:14,height:14}}/>:'Salvar alterações'}
             </button>
           </div>
         </form>
@@ -702,6 +1009,9 @@ export default function Lotes() {
   )
 }
 
+// ══════════════════════════════════════════════════════════════════
+// LOTE CARD
+// ══════════════════════════════════════════════════════════════════
 function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesagem, onSaida, onProjecao, onEditar }: {
   lote: any; onAvancar:()=>void; onEncerrar:()=>void; onExcluir:()=>void
   onBifurcar:()=>void; onPesagem:()=>void; onSaida:()=>void; onProjecao:()=>void; onEditar:()=>void
@@ -712,6 +1022,10 @@ function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesage
   const dias=lote.dias_confinamento??0
   const custoAcum=lote.custo_alimentacao_acumulado
   const custoDia=lote.custo_alimentacao_dia
+
+  // Nome do ciclo: usa configuração salva se existir
+  const ciclosConfig: Array<{numero:number;nome:string}> = lote.ciclos_config ?? []
+  const nomeCicloAtual = ciclosConfig.find(c=>c.numero===lote.ciclo_atual)?.nome ?? cicloLabel(lote.ciclo_atual)
 
   return(
     <div className="card" style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -727,9 +1041,14 @@ function LoteCard({ lote, onAvancar, onEncerrar, onExcluir, onBifurcar, onPesage
 
       <div>
         <div style={{display:'flex',gap:4,marginBottom:4}}>
-          {[1,2,3,4].map(n=><div key={n} style={{flex:1,height:4,borderRadius:2,background:n<lote.ciclo_atual?'#2e7d32':n===lote.ciclo_atual?'#66bb6a':'#e0e0e0'}}/>)}
+          {[1,2,3,4].map(n=>{
+            const nomeN = ciclosConfig.find(c=>c.numero===n)?.nome ?? cicloLabel(n)
+            return (
+              <div key={n} title={nomeN} style={{flex:1,height:4,borderRadius:2,background:n<lote.ciclo_atual?'#2e7d32':n===lote.ciclo_atual?'#66bb6a':'#e0e0e0'}}/>
+            )
+          })}
         </div>
-        <div style={{fontSize:11,color:'#9e9e9e'}}>Ciclo {lote.ciclo_atual} — {cicloLabel(lote.ciclo_atual)} · {dias}d de confinamento</div>
+        <div style={{fontSize:11,color:'#9e9e9e'}}>Ciclo {lote.ciclo_atual} — {nomeCicloAtual} · {dias}d de confinamento</div>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
