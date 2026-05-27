@@ -65,12 +65,13 @@ export default function Dashboard() {
     { label: 'Projetar venda',    sub: 'Dia ideal e lucro estimado', rota: '/lotes' },
   ]
 
-  const cards = [
-    { label: 'Animais em confinamento', value: metricas.totalAnimais > 0 ? fmtNum(metricas.totalAnimais, 0) : '—' },
-    { label: 'Peso médio geral',        value: metricas.pesoMedioGeral > 0 ? `${fmtNum(metricas.pesoMedioGeral, 0)} kg` : '—' },
-    { label: 'GMD médio geral',         value: metricas.gmdMedioGeral > 0 ? `${fmtNum(metricas.gmdMedioGeral, 3)} kg/dia` : '—' },
-    { label: 'Custo alim. acumulado',   value: metricas.custoAlimTotal > 0 ? fmt(metricas.custoAlimTotal) : '—' },
-  ]
+  // Só monta cards que têm valor real
+  const cardsAtivos = [
+    metricas.totalAnimais > 0 && { label: 'Animais em confinamento', value: fmtNum(metricas.totalAnimais, 0) },
+    metricas.pesoMedioGeral > 0 && { label: 'Peso médio geral', value: `${fmtNum(metricas.pesoMedioGeral, 0)} kg` },
+    metricas.gmdMedioGeral > 0 && { label: 'GMD médio geral', value: `${fmtNum(metricas.gmdMedioGeral, 3)} kg/dia` },
+    metricas.custoAlimTotal > 0 && { label: 'Custo alim. acumulado', value: fmt(metricas.custoAlimTotal) },
+  ].filter(Boolean) as { label: string; value: string }[]
 
   const ErroCard = ({ msg }: { msg: string }) => (
     <div style={{ padding: '12px 16px', background: '#ffebee', borderRadius: 8, fontSize: 13, color: '#b91c1c', border: '1px solid #ffcdd2', marginBottom: 16 }}>
@@ -103,18 +104,9 @@ export default function Dashboard() {
 
       {erroMetricas && <ErroCard msg={erroMetricas} />}
 
-      {loadMetricas ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 24 }}>
-          {[1,2,3,4].map(i => (
-            <div key={i} style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0', height: 80 }}>
-              <div style={{ width: 80, height: 12, background: '#e0e0e0', borderRadius: 4, marginBottom: 10 }}/>
-              <div style={{ width: 60, height: 22, background: '#e0e0e0', borderRadius: 4 }}/>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 24 }}>
-          {cards.map(m => (
+      {!loadMetricas && cardsAtivos.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cardsAtivos.length},1fr)`, gap: 12, marginBottom: 24 }}>
+          {cardsAtivos.map(m => (
             <div key={m.label} style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0' }}>
               <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>{m.label}</div>
               <div style={{ fontSize: 22, fontWeight: 600 }}>{m.value}</div>
@@ -123,7 +115,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {metricas.qtdVendidos > 0 && (
+      {!loadMetricas && metricas.qtdVendidos > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
           <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0' }}>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>Receita líquida acumulada</div>
