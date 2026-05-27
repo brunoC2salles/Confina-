@@ -119,7 +119,7 @@ export function useLotes() {
   const bifurcarLote = async (input: BifurcacaoInput) => {
     if (!user) return { error: 'Não autenticado' }
     try {
-      const origem = lotes.find(l => l.id === input.lote_origem_id)
+      const origem = lotes.find(l => l.id === input.lote_origem_id) as any
       if (!origem) return { error: 'Lote de origem não encontrado' }
 
       const { data: novoLote, error: e1 } = await supabase.from('lotes').insert({
@@ -128,13 +128,13 @@ export function useLotes() {
         data_criacao: input.data_bifurcacao, data_entrada: input.data_bifurcacao,
         qtd_animais: input.qtd_animais_transferidos,
         qtd_animais_atual: input.qtd_animais_transferidos,
-        peso_medio_entrada: input.peso_medio_saida ?? (origem as any).peso_medio_atual,
-        peso_medio_atual: input.peso_medio_saida ?? (origem as any).peso_medio_atual,
-        origem_fazenda: (origem as any).origem_fazenda,
-        origem_municipio: (origem as any).origem_municipio,
-        origem_estado: (origem as any).origem_estado,
-        raca_predominante: (origem as any).raca_predominante,
-        dieta_id: input.dieta_id ?? (origem as any).dieta_id,
+        peso_medio_entrada: input.peso_medio_saida ?? origem.peso_medio_atual,
+        peso_medio_atual: input.peso_medio_saida ?? origem.peso_medio_atual,
+        origem_fazenda: origem.origem_fazenda,
+        origem_municipio: origem.origem_municipio,
+        origem_estado: origem.origem_estado,
+        raca_predominante: origem.raca_predominante,
+        dieta_id: input.dieta_id ?? origem.dieta_id,
         lote_origem_id: input.lote_origem_id,
         status: 'ativo', user_id: user.id,
       }).select().single()
@@ -160,39 +160,75 @@ export function useLotes() {
   const registrarSaida = async (input: SaidaLoteInput) => {
     if (!user) return { error: 'Não autenticado' }
     try {
-      const lote = lotes.find(l => l.id === input.lote_id) as any
-      const qtd_saida = input.qtd_animais_saida
-      // FIX: usar qtd_animais_atual (não original) como denominador
-      const qtd_atual = lote?.qtd_animais_atual ?? lote?.qtd_animais ?? qtd_saida
+      // CORREÇÃO: buscar lote direto do banco para garantir valores atualizados
+      const { data: loteAtual, error: eLote } = await supabase
+        .from('lotes').select('*').eq('id', input.lote_id).single()
+      if (eLote) throw eLote
+      const lote = loteAtual as any
 
-      const custo_compra_rateado = lote?.valor_total_lote && qtd_atual > 0
+      const qtd_saida = input.qtd_animais_saida
+      const qtd_atual = lote.qtd_animais_atual ?? lote.qtd_animais ?? qtd_saida
+
+      // Ratear custo de compra proporcionalmente aos animais que saem
+      const custo_compra_rateado = lote.valor_total_lote && qtd_atual > 0
         ? (lote.valor_total_lote / qtd_atual) * qtd_saida
         : (input.custo_compra_rateado ?? 0)
 
-      const custo_alimentacao = lote?.custo_alimentacao_acumulado && qtd_atual > 0
+      // Ratear custo de alimentação acumulado proporcionalmente
+      const custo_alimentacao = lote.custo_alimentacao_acumulado && qtd_atual > 0
         ? (lote.custo_alimentacao_acumulado / qtd_atual) * qtd_saida
         : (input.custo_alimentacao ?? 0)
+
+      // Buscar custos fixos do lote e ratear
+      const { data: custosFixos } = await supabase
+        .from('custos_fixos_lote').select('valor, recorrencia')
+        .eq('lote_id', input.lote_id).eq('user_id', user.id)
+
+      const mult: Record<string, number> = { unico: 1, semanal: 4, quinzenal: 2, mensal: 1 }
+      const totalFixos = (custosFixos ?? []).reduce((t: number, c: any) =>
+        t + c.valor * (mult[c.recorrencia] ?? 1), 0)
+      const custos_fixos_rateados = qtd_atual > 0
+        ? (totalFixos / qtd_atual) * qtd_saida
+        : (input.custos_fixos_rateados ?? 0)
 
       const receita_bruta   = input.receita_bruta ?? input.valor_total_venda ?? 0
       const valor_bonus     = input.valor_bonus ?? 0
       const total_comissoes = input.total_comissoes ?? 0
       const total_encargos  = input.total_encargos ?? 0
-      const receita_liquida = input.receita_liquida ?? (receita_bruta + valor_bonus - total_comissoes - total_encargos)
-      const custo_total     = custo_compra_rateado + custo_alimentacao + (input.custos_variaveis ?? 0) + (input.custos_fixos_rateados ?? 0)
-      const lucro_total     = receita_liquida - custo_total
+      const receita_liquida = input.receita_liquida
+        ?? (receita_bruta + valor_bonus - total_comissoes - total_encargos)
+      const custos_variaveis = input.custos_variaveis ?? 0
+      const custo_total = custo_compra_rateado + custo_alimentacao + custos_variaveis + custos_fixos_rateados
+      const lucro_total = receita_liquida - custo_total
       const lucro_por_animal = qtd_saida > 0 ? lucro_total / qtd_saida : 0
-      const margem_pct      = receita_liquida > 0 ? (lucro_total / receita_liquida) * 100 : 0
+      const margem_pct = receita_liquida > 0 ? (lucro_total / receita_liquida) * 100 : 0
 
       const { error } = await supabase.from('saidas_lote').insert({
         ...input,
         comissoes: input.comissoes ?? [],
         encargos:  input.encargos ?? [],
-        custo_compra_rateado, custo_alimentacao, custo_total,
-        lucro_total, lucro_por_animal, margem_pct,
-        receita_bruta, valor_bonus, total_comissoes, total_encargos, receita_liquida,
+        custo_compra_rateado,
+        custo_alimentacao,
+        custos_fixos_rateados,
+        custos_variaveis,
+        custo_total,
+        lucro_total,
+        lucro_por_animal,
+        margem_pct,
+        receita_bruta,
+        valor_bonus,
+        total_comissoes,
+        total_encargos,
+        receita_liquida,
         user_id: user.id,
       })
       if (error) throw error
+
+      // Se saída total, encerrar o lote
+      if (input.saida_total) {
+        await supabase.from('lotes').update({ status: 'encerrado' }).eq('id', input.lote_id)
+      }
+
       await fetch()
       return { error: null }
     } catch (e: any) {
