@@ -1,21 +1,45 @@
 import { NavLink, useNavigate, Outlet } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 
-const NAV = [
-  { to: '/',           label: 'Dashboard',     end: true },
-  { to: '/lotes',      label: 'Lotes',         end: false },
-  { to: '/animais',    label: 'Animais',        end: false },
-  { to: '/dietas',     label: 'Dietas',         end: false },
-  { to: '/parceiros',  label: 'Parceiros',      end: false },
-  { to: '/relatorios', label: 'Relatórios',     end: false },
-  { to: '/config',     label: 'Configurações',  end: false },
+const NAV_PRINCIPAL = [
+  { to: '/',           label: 'Dashboard',    end: true  },
+  { to: '/lotes',      label: 'Lotes',        end: false },
+  { to: '/dietas',     label: 'Dietas',       end: false },
+]
+
+const NAV_GESTAO = [
+  { to: '/parceiros',  label: 'Parceiros',    end: false },
+  { to: '/relatorios', label: 'Relatórios',   end: false },
+  { to: '/config',     label: 'Configurações', end: false },
+]
+
+// Animais individual aparece apenas se há animais cadastrados ou perfil admin
+const NAV_OPCIONAL = [
+  { to: '/animais',    label: 'Animais individuais', end: false },
 ]
 
 export function Sidebar() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const [role, setRole] = useState<string>('produtor')
+  const [temAnimais, setTemAnimais] = useState(false)
+
+  useEffect(() => {
+    if (!user) return
+    // Buscar role real do banco
+    supabase.from('profiles').select('role').eq('id', user.id).single()
+      .then(({ data }) => { if (data?.role) setRole(data.role) })
+    // Verificar se tem animais individuais cadastrados
+    supabase.from('animais').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
+      .then(({ count }) => { if (count && count > 0) setTemAnimais(true) })
+  }, [user])
+
   const nome = user?.user_metadata?.nome || user?.email || 'Usuário'
   const initials = nome.split(' ').slice(0,2).map((n: string) => n[0]).join('').toUpperCase()
+
+  const roleLabel = role === 'admin' ? 'Administrador' : role === 'operador' ? 'Operador' : 'Produtor'
 
   const linkStyle = (active: boolean) => ({
     display: 'flex', alignItems: 'center', padding: '9px 12px',
@@ -33,16 +57,26 @@ export function Sidebar() {
       </div>
       <nav style={{ padding: '12px 8px', flex: 1, overflowY: 'auto' }}>
         <div style={{ fontSize: '10px', color: '#bdbdbd', padding: '8px 12px 4px', letterSpacing: '0.6px', textTransform: 'uppercase' }}>Principal</div>
-        {NAV.slice(0,4).map(n => <NavLink key={n.to} to={n.to} end={n.end} style={({ isActive }) => linkStyle(isActive)}>{n.label}</NavLink>)}
+        {NAV_PRINCIPAL.map(n => (
+          <NavLink key={n.to} to={n.to} end={n.end} style={({ isActive }) => linkStyle(isActive)}>{n.label}</NavLink>
+        ))}
         <div style={{ fontSize: '10px', color: '#bdbdbd', padding: '16px 12px 4px', letterSpacing: '0.6px', textTransform: 'uppercase' }}>Gestão</div>
-        {NAV.slice(4).map(n => <NavLink key={n.to} to={n.to} end={n.end} style={({ isActive }) => linkStyle(isActive)}>{n.label}</NavLink>)}
+        {NAV_GESTAO.map(n => (
+          <NavLink key={n.to} to={n.to} end={n.end} style={({ isActive }) => linkStyle(isActive)}>{n.label}</NavLink>
+        ))}
+        {(temAnimais || role === 'admin') && <>
+          <div style={{ fontSize: '10px', color: '#bdbdbd', padding: '16px 12px 4px', letterSpacing: '0.6px', textTransform: 'uppercase' }}>Opcional</div>
+          {NAV_OPCIONAL.map(n => (
+            <NavLink key={n.to} to={n.to} end={n.end} style={({ isActive }) => linkStyle(isActive)}>{n.label}</NavLink>
+          ))}
+        </>}
       </nav>
       <div style={{ padding: '12px 8px', borderTop: '1px solid #f0f0f0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 4 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#e8f5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#2e7d32', flexShrink: 0 }}>{initials}</div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.user_metadata?.nome || user?.email}</div>
-            <div style={{ fontSize: 11, color: '#9e9e9e' }}>Administrador</div>
+            <div style={{ fontSize: 11, color: '#9e9e9e' }}>{roleLabel}</div>
           </div>
         </div>
         <button onClick={async () => { await signOut(); navigate('/login') }}
