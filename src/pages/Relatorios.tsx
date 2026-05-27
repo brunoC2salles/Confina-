@@ -23,6 +23,7 @@ export default function Relatorios() {
   const [periodo, setPeriodo] = useState<Periodo>('mensal')
   const [loading, setLoading] = useState(false)
   const [resumo, setResumo] = useState<Resumo | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
 
   const getFim = () => new Date().toISOString().split('T')[0]
   const getInicio = () => {
@@ -35,38 +36,41 @@ export default function Relatorios() {
     if (!user) return
     const load = async () => {
       setLoading(true)
-      const inicio = getInicio()
-      const fim = getFim()
+      setErro(null)
+      try {
+        const { data: saidas, error } = await supabase
+          .from('saidas_lote')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('data_saida', getInicio())
+          .lte('data_saida', getFim())
+        if (error) throw error
 
-      const { data: saidas } = await supabase
-        .from('saidas_lote')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('data_saida', inicio)
-        .lte('data_saida', fim)
+        const ss = saidas ?? []
+        const receita_bruta     = ss.reduce((t, s) => t + (s.receita_bruta ?? s.valor_total_venda ?? 0), 0)
+        const valor_bonus       = ss.reduce((t, s) => t + (s.valor_bonus ?? 0), 0)
+        const total_comissoes   = ss.reduce((t, s) => t + (s.total_comissoes ?? 0), 0)
+        const total_encargos    = ss.reduce((t, s) => t + (s.total_encargos ?? 0), 0)
+        const receita_liquida   = ss.reduce((t, s) => t + (s.receita_liquida ?? (s.valor_total_venda ?? 0)), 0)
+        const custo_compra      = ss.reduce((t, s) => t + (s.custo_compra_rateado ?? 0), 0)
+        const custo_alimentacao = ss.reduce((t, s) => t + (s.custo_alimentacao ?? 0), 0)
+        const custos_variaveis  = ss.reduce((t, s) => t + (s.custos_variaveis ?? 0), 0)
+        const custo_total       = ss.reduce((t, s) => t + (s.custo_total ?? 0), 0)
+        const lucro_total       = ss.reduce((t, s) => t + (s.lucro_total ?? 0), 0)
+        const qtd_animais       = ss.reduce((t, s) => t + (s.qtd_animais_saida ?? 0), 0)
+        const lucro_por_animal  = qtd_animais > 0 ? lucro_total / qtd_animais : 0
+        const margem_pct        = receita_liquida > 0 ? (lucro_total / receita_liquida) * 100 : 0
 
-      const ss = saidas ?? []
-
-      const receita_bruta     = ss.reduce((t, s) => t + (s.receita_bruta ?? s.valor_total_venda ?? 0), 0)
-      const valor_bonus       = ss.reduce((t, s) => t + (s.valor_bonus ?? 0), 0)
-      const total_comissoes   = ss.reduce((t, s) => t + (s.total_comissoes ?? 0), 0)
-      const total_encargos    = ss.reduce((t, s) => t + (s.total_encargos ?? 0), 0)
-      const receita_liquida   = ss.reduce((t, s) => t + (s.receita_liquida ?? (s.valor_total_venda ?? 0)), 0)
-      const custo_compra      = ss.reduce((t, s) => t + (s.custo_compra_rateado ?? 0), 0)
-      const custo_alimentacao = ss.reduce((t, s) => t + (s.custo_alimentacao ?? 0), 0)
-      const custos_variaveis  = ss.reduce((t, s) => t + (s.custos_variaveis ?? 0), 0)
-      const custo_total       = ss.reduce((t, s) => t + (s.custo_total ?? 0), 0)
-      const lucro_total       = ss.reduce((t, s) => t + (s.lucro_total ?? 0), 0)
-      const qtd_animais       = ss.reduce((t, s) => t + (s.qtd_animais_saida ?? 0), 0)
-      const lucro_por_animal  = qtd_animais > 0 ? lucro_total / qtd_animais : 0
-      const margem_pct        = receita_liquida > 0 ? (lucro_total / receita_liquida) * 100 : 0
-
-      setResumo({
-        receita_bruta, valor_bonus, total_comissoes, total_encargos, receita_liquida,
-        custo_compra, custo_alimentacao, custos_variaveis, custo_total,
-        lucro_total, qtd_saidas: ss.length, qtd_animais, lucro_por_animal, margem_pct,
-      })
-      setLoading(false)
+        setResumo({
+          receita_bruta, valor_bonus, total_comissoes, total_encargos, receita_liquida,
+          custo_compra, custo_alimentacao, custos_variaveis, custo_total,
+          lucro_total, qtd_saidas: ss.length, qtd_animais, lucro_por_animal, margem_pct,
+        })
+      } catch (e: any) {
+        setErro('Não foi possível carregar os relatórios. Verifique sua conexão.')
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [user, periodo])
@@ -83,7 +87,7 @@ export default function Relatorios() {
   const exportCSV = () => {
     if (!resumo) return
     const rows = [
-      ['Métrica', 'Valor'],
+      ['Métrica','Valor'],
       ['Período', `${fmtData(getInicio())} a ${fmtData(getFim())}`],
       ['Receita bruta', fmt(resumo.receita_bruta)],
       ['Bônus frigorífico', fmt(resumo.valor_bonus)],
@@ -95,7 +99,7 @@ export default function Relatorios() {
       ['Custos variáveis', fmt(resumo.custos_variaveis)],
       ['Custo total', fmt(resumo.custo_total)],
       ['Lucro líquido', fmt(resumo.lucro_total)],
-      ['Margem', `${fmtNum(resumo.margem_pct, 1)}%`],
+      ['Margem', `${fmtNum(resumo.margem_pct,1)}%`],
       ['Animais vendidos', String(resumo.qtd_animais)],
       ['Lucro por animal', resumo.qtd_animais > 0 ? fmt(resumo.lucro_por_animal) : '—'],
     ]
@@ -111,7 +115,7 @@ export default function Relatorios() {
       <PageHeader title="Relatórios" subtitle="Consolidado financeiro por período"
         action={
           <div style={{ display:'flex', gap:8 }}>
-            <button className="btn btn-ghost" onClick={exportCSV}>Exportar CSV</button>
+            <button className="btn btn-ghost" onClick={exportCSV} disabled={!resumo}>Exportar CSV</button>
             <button className="btn btn-primary" onClick={() => window.print()}>Exportar PDF</button>
           </div>
         }/>
@@ -129,6 +133,12 @@ export default function Relatorios() {
         Período: {fmtData(getInicio())} até {fmtData(getFim())}
         {resumo && <span style={{ marginLeft:16 }}>{resumo.qtd_saidas} saída{resumo.qtd_saidas !== 1 ? 's' : ''} · {resumo.qtd_animais} animal(is)</span>}
       </div>
+
+      {erro && (
+        <div style={{ padding:'12px 16px', background:'#ffebee', borderRadius:8, fontSize:13, color:'#b91c1c', border:'1px solid #ffcdd2', marginBottom:16 }}>
+          {erro}
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display:'flex', justifyContent:'center', padding:48 }}>
