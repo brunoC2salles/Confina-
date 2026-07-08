@@ -3,10 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAssinatura, PRICE_IDS } from '@/hooks/useAssinatura'
 
+type PlanoChave = 'free' | 'pro_mensal' | 'pro_anual' | 'master_mensal' | 'master_anual'
+
 const PLANO_LABEL: Record<string, string> = {
   pro_mensal: 'Pro (mensal)', pro_anual: 'Pro (anual)',
   master_mensal: 'Master (mensal)', master_anual: 'Master (anual)',
 }
+
+const PLANO_VALIDO = (v: string | null): v is PlanoChave =>
+  v === 'free' || v === 'pro_mensal' || v === 'pro_anual' || v === 'master_mensal' || v === 'master_anual'
 
 export default function Login() {
   const { signIn, signUp } = useAuth()
@@ -14,10 +19,18 @@ export default function Login() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  const planoParam = searchParams.get('plano') // 'free' | 'pro_mensal' | 'pro_anual' | 'master_mensal' | 'master_anual' | null
+  const planoDaUrl = searchParams.get('plano')
   const modoInicial = searchParams.get('mode') === 'register' ? 'register' : 'login'
 
   const [mode, setMode] = useState<'login'|'register'>(modoInicial)
+  // Seletor de plano visível no próprio formulário de cadastro — não depende
+  // só do link de origem. Usa o da URL como ponto de partida quando existe.
+  const [planoBase, setPlanoBase] = useState<'free' | 'pro' | 'master'>(
+    planoDaUrl?.startsWith('master') ? 'master' : planoDaUrl?.startsWith('pro') ? 'pro' : 'free'
+  )
+  const [anual, setAnual] = useState(planoDaUrl?.endsWith('anual') ?? false)
+  const planoEscolhido: PlanoChave = planoBase === 'free' ? 'free' : `${planoBase}_${anual ? 'anual' : 'mensal'}` as PlanoChave
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [nome, setNome] = useState('')
@@ -27,6 +40,11 @@ export default function Login() {
 
   useEffect(() => {
     if (searchParams.get('mode') === 'register') setMode('register')
+    if (PLANO_VALIDO(planoDaUrl)) {
+      setPlanoBase(planoDaUrl.startsWith('master') ? 'master' : planoDaUrl.startsWith('pro') ? 'pro' : 'free')
+      setAnual(planoDaUrl.endsWith('anual'))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
   const handle = async (e: FormEvent) => {
@@ -47,11 +65,11 @@ export default function Login() {
         return
       }
       // Sem confirmação de e-mail obrigatória, o signUp já devolve sessão ativa.
-      // Se veio de um botão de plano pago na landing, manda direto pro checkout;
-      // senão (free ou acesso direto), cai no Dashboard normalmente.
-      if (planoParam && planoParam !== 'free' && planoParam in PRICE_IDS) {
-        setSuccess(`Conta criada! Levando você pro checkout do plano ${PLANO_LABEL[planoParam]}...`)
-        const res = await assinar(PRICE_IDS[planoParam as keyof typeof PRICE_IDS])
+      // Se um plano pago foi escolhido (na URL ou no seletor do formulário),
+      // manda direto pro checkout; senão (free), cai no Dashboard normalmente.
+      if (planoEscolhido !== 'free') {
+        setSuccess(`Conta criada! Levando você pro checkout do plano ${PLANO_LABEL[planoEscolhido]}...`)
+        const res = await assinar(PRICE_IDS[planoEscolhido])
         if (res.error) {
           setError(`Conta criada, mas não consegui abrir o checkout: ${res.error}. Você pode assinar depois em Configurações → Conta.`)
           setLoading(false)
@@ -67,7 +85,7 @@ export default function Login() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ width: '100%', maxWidth: 420 }}>
+      <div style={{ width: '100%', maxWidth: 440 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <img src="/logo.png" alt="Confina+" style={{ height: 80, objectFit: 'contain' }} />
           <div style={{ fontSize: 13, color: '#9e9e9e', marginTop: 10 }}>Gestão de Confinamento Bovino</div>
@@ -76,14 +94,42 @@ export default function Login() {
           <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
             {mode === 'login' ? 'Entrar na conta' : 'Criar conta'}
           </h2>
-          <p style={{ fontSize: 13, color: '#9e9e9e', marginBottom: mode === 'register' && planoParam && planoParam !== 'free' ? 8 : 24 }}>
+          <p style={{ fontSize: 13, color: '#9e9e9e', marginBottom: 24 }}>
             {mode === 'login' ? 'Informe suas credenciais para continuar' : 'Preencha os dados para se cadastrar'}
           </p>
-          {mode === 'register' && planoParam && planoParam !== 'free' && PLANO_LABEL[planoParam] && (
-            <div style={{ padding: '8px 12px', background: 'var(--green-bg, #e8f5e9)', borderRadius: 8, fontSize: 12, color: '#1b5e20', marginBottom: 16 }}>
-              Plano escolhido: <strong>{PLANO_LABEL[planoParam]}</strong> — você vai pro checkout logo depois de criar a conta.
+
+          {mode === 'register' && (
+            <div style={{ marginBottom: 20, border: '1px solid var(--border, #eee)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-500, #888)', marginBottom: 10 }}>Escolha seu plano</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: anual !== undefined && planoBase !== 'free' ? 10 : 0, flexWrap: 'wrap' }}>
+                {(['free', 'pro', 'master'] as const).map(p => (
+                  <button key={p} type="button" onClick={() => setPlanoBase(p)}
+                    style={{
+                      flex: 1, minWidth: 90, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                      border: planoBase === p ? '2px solid #2e7d32' : '1px solid var(--border, #ddd)',
+                      background: planoBase === p ? '#e8f5e9' : '#fff',
+                      color: planoBase === p ? '#1b5e20' : '#555',
+                    }}>
+                    {p === 'free' ? 'Free' : p === 'pro' ? 'Pro' : 'Master'}
+                  </button>
+                ))}
+              </div>
+              {planoBase !== 'free' && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginTop: 10 }}>
+                  <button type="button" onClick={() => setAnual(false)}
+                    style={{ padding: '5px 10px', borderRadius: 6, cursor: 'pointer', border: !anual ? '1px solid #2e7d32' : '1px solid var(--border, #ddd)', background: !anual ? '#e8f5e9' : '#fff', color: !anual ? '#1b5e20' : '#777' }}>
+                    Mensal
+                  </button>
+                  <button type="button" onClick={() => setAnual(true)}
+                    style={{ padding: '5px 10px', borderRadius: 6, cursor: 'pointer', border: anual ? '1px solid #2e7d32' : '1px solid var(--border, #ddd)', background: anual ? '#e8f5e9' : '#fff', color: anual ? '#1b5e20' : '#777' }}>
+                    Anual
+                  </button>
+                  <span style={{ color: '#9e9e9e' }}>— você vai pro checkout do Stripe logo após criar a conta</span>
+                </div>
+              )}
             </div>
           )}
+
           <form onSubmit={handle} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {mode === 'register' && (
               <div className="form-group">
