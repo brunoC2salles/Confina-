@@ -258,7 +258,7 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
   </ul>
   <div class="nav-right">
     <a href="/login" class="btn-ghost">Entrar</a>
-    <a href="/login" class="btn-primary">Começar grátis</a>
+    <a href="/login?mode=register&amp;plano=free" class="btn-primary">Começar grátis</a>
   </div>
 </nav>
 
@@ -267,7 +267,7 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
     <h1>O confinamento<br/>que você <span class="g">conhece</span><br/>número a número.</h1>
     <p class="hero-sub">Cada arroba produzida tem um custo calculado, um GMD real e uma janela ideal de venda. O Confina+ coloca isso na sua mão antes do abate.</p>
     <div class="hero-cta">
-      <a href="/login" class="btn-lg">Começar gratuitamente</a>
+      <a href="/login?mode=register&amp;plano=free" class="btn-lg">Começar gratuitamente</a>
       <a href="#como-funciona" class="btn-text">Ver como funciona</a>
     </div>
     <div class="hero-proof">
@@ -402,7 +402,7 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
         <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Relatórios básicos</li>
         <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Cadastro de parceiros</li>
       </ul>
-      <a href="/login" class="pc-btn">Começar grátis</a>
+      <a href="/login?mode=register&amp;plano=free" class="pc-btn">Começar grátis</a>
     </div>
     <div class="pc feat reveal d1">
       <div class="pc-badge">Mais popular</div>
@@ -418,7 +418,7 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
         <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Relatórios PDF e CSV</li>
         <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Suporte prioritário</li>
       </ul>
-      <a href="/login" class="pc-btn">Começar Pro</a>
+      <a href="/login?mode=register&amp;plano=pro_mensal" id="pro-btn" class="pc-btn">Começar Pro</a>
     </div>
     <div class="pc reveal d2">
       <div class="pc-plan">Master</div>
@@ -432,10 +432,10 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
         <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Acesso antecipado a novas funções</li>
         <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Suporte via WhatsApp</li>
       </ul>
-      <a href="/login" class="pc-btn">Começar Master</a>
+      <a href="/login?mode=register&amp;plano=master_mensal" id="mas-btn" class="pc-btn">Começar Master</a>
     </div>
   </div>
-  <p class="price-note">Todos os planos incluem 14 dias de teste Pro sem cartão de crédito. Cancele quando quiser, sem multa.</p>
+  <p class="price-note">Cancele quando quiser, sem multa.</p>
 </section>
 
 <section class="sec consultoria-sec" id="consultoria">
@@ -462,7 +462,7 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
   <p class="sec-tag">Comece hoje</p>
   <h2>Seu confinamento merece gestão de precisão.</h2>
   <p class="sec-desc">Crie sua conta gratuitamente. Veja em tempo real quanto cada animal está custando e quanto vai render antes de decidir a venda.</p>
-  <a href="/login" class="cta-btn">Criar conta grátis</a>
+  <a href="/login?mode=register&amp;plano=free" class="cta-btn">Criar conta grátis</a>
   <p class="cta-note">Sem cartão de crédito. Plano gratuito disponível para sempre.</p>
 </section>
 
@@ -496,6 +496,8 @@ function toggleBilling(){
   document.getElementById('pro-p').textContent=ann?'por mês, cobrado anualmente (R$ 1.190,00/ano)':'por mês'
   document.getElementById('mas-v').innerHTML=ann?'<sup>R$</sup>164<span style="font-size:22px;font-weight:400">,17</span>':'<sup>R$</sup>197'
   document.getElementById('mas-p').textContent=ann?'por mês, cobrado anualmente (R$ 1.970,00/ano)':'por mês'
+  document.getElementById('pro-btn').href=ann?'/login?mode=register&plano=pro_anual':'/login?mode=register&plano=pro_mensal'
+  document.getElementById('mas-btn').href=ann?'/login?mode=register&plano=master_anual':'/login?mode=register&plano=master_mensal'
 }
 function toggleFaq(btn){
   const item=btn.closest('.faq-item'),open=item.classList.contains('open')
