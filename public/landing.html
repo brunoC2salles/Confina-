@@ -70,7 +70,7 @@ h1 .g{color:var(--green)}
 h2{font-family:var(--font-d);font-size:clamp(26px,2.8vw,40px);font-weight:600;line-height:1.12;letter-spacing:-.6px;color:var(--black);margin-bottom:14px}
 .sec-desc{font-size:16px;font-weight:300;line-height:1.7;color:var(--gray-500);max-width:500px}
 
-.consultoria-sec{display:flex;flex-direction:column;align-items:center;text-align:center;min-height:60vh;justify-content:center}
+.consultoria-sec{display:flex;flex-direction:column;align-items:center;text-align:center;padding:64px 80px}
 .consultoria-sec .sec-desc{max-width:640px;margin-left:auto;margin-right:auto}
 
 .prob{background:#0d0d0d;padding:96px 80px}
@@ -190,9 +190,9 @@ h2{font-family:var(--font-d);font-size:clamp(26px,2.8vw,40px);font-weight:600;li
 .cta-btn:hover{background:var(--green-bg);transform:translateY(-2px);box-shadow:0 10px 32px rgba(0,0,0,.2)}
 .cta-note{margin-top:14px;font-size:12px;color:rgba(255,255,255,.35)}
 
-.disclaimer{background:var(--gray-50);border-top:1px solid var(--border);padding:28px 80px}
-.disclaimer p{font-size:12px;color:var(--gray-400);line-height:1.7;max-width:820px}
-.disclaimer strong{color:var(--gray-500);font-weight:500}
+.disclaimer{background:var(--black);padding:24px 80px 0}
+.disclaimer p{font-size:12px;color:rgba(255,255,255,.35);line-height:1.6;max-width:760px;margin:0 auto;text-align:center}
+.disclaimer strong{color:rgba(255,255,255,.55);font-weight:500}
 
 footer{background:var(--black);padding:44px 80px;display:flex;justify-content:space-between;align-items:center}
 .ft-logo{display:flex;align-items:center;gap:10px}
@@ -226,7 +226,7 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
   .testi-img{height:280px}
   footer{flex-direction:column;gap:20px;text-align:center;padding:32px 28px}
   .ft-links{flex-wrap:wrap;justify-content:center}
-  .disclaimer{padding:20px 28px}
+  .disclaimer{padding:20px 28px 0}
   .pricing-hdr{flex-direction:column;align-items:flex-start;gap:16px}
   .hero-proof{flex-wrap:wrap;gap:24px}
 }
@@ -235,7 +235,7 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
   .sec,.pricing-sec,.faq-sec,.testi,.metrics,.prob,.cta-sec{padding:56px 20px}
   .feat-grid{grid-template-columns:1fr}
   h1{font-size:32px}h2{font-size:24px}
-  footer,.disclaimer{padding:28px 20px}
+  footer{padding:28px 20px}.disclaimer{padding:20px 20px 0}
   .hero-cta{flex-direction:column;align-items:stretch;gap:8px;margin-bottom:36px}
   .btn-lg{width:100%;text-align:center;padding:15px 26px}
   .btn-text{text-align:center}
@@ -441,8 +441,8 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
 <section class="sec consultoria-sec" id="consultoria">
   <p class="sec-tag">Consultoria Técnica Especializada</p>
   <h2>Quer ir além da plataforma?<br/>Tenha um especialista ao seu lado.</h2>
-  <p class="sec-desc">Ricardo Schuch, engenheiro agrônomo especialista em confinamento, na Fazenda Dona Lucy II, em São Gabriel (RS), analisa sua operação e monta um plano de implementação — seja para melhorar um confinamento já em funcionamento, seja para estruturar um do zero. Atendimento presencial ou online.</p>
-  <a href="/consultoria" class="btn-lg" style="display:inline-block;text-decoration:none;margin-top:8px">Saber mais</a>
+  <p class="sec-desc">Ricardo Schuch, engenheiro agrônomo da Fazenda Dona Lucy II, em São Gabriel (RS), analisa sua operação e monta um plano de implementação — para melhorar um confinamento em funcionamento ou estruturar um do zero. Presencial ou online.</p>
+  <a href="/consultoria" class="btn-lg" style="display:inline-block;text-decoration:none;margin-top:28px">Saber mais</a>
 </section>
 
 <section class="faq-sec" id="faq">
@@ -467,7 +467,7 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
 </section>
 
 <div class="disclaimer">
-  <p><strong>Aviso:</strong> O Confina+ é uma ferramenta de apoio à gestão e não substitui o julgamento técnico do produtor, médico veterinário, zootecnista ou consultor agropecuário. Os cálculos de custo, GMD, rendimento de carcaça e projeções financeiras são baseados nos dados inseridos pelo usuário e têm caráter informativo e auxiliar. Decisões de compra, venda, manejo sanitário e nutrição animal devem sempre considerar o contexto da propriedade e a orientação de profissionais habilitados.</p>
+  <p><strong>Aviso:</strong> O Confina+ é uma ferramenta de apoio à gestão — não substitui o julgamento do produtor, veterinário, zootecnista ou consultor habilitado. Cálculos e projeções têm caráter informativo.</p>
 </div>
 
 <footer>
