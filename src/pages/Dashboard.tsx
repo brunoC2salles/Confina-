@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLotes } from '@/hooks/useLotes'
 import { supabase } from '@/lib/supabase'
+import { Modal } from '@/components/common/UI'
 import { fmt, fmtNum } from '@/lib/calculations'
 
 const cicloLabel = (n: number) =>
@@ -13,6 +14,9 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { lotesAtivos, resumo, loading: loadLotes } = useLotes()
   const nome = user?.user_metadata?.nome?.split(' ')[0] || 'produtor'
+
+  const [searchParams, setSearchParams] = useSearchParams()
+  const upgrade = searchParams.get('upgrade')
 
   const [metricas, setMetricas] = useState({
     totalAnimais: 0, pesoMedioGeral: 0,
@@ -90,6 +94,27 @@ export default function Dashboard() {
 
   return (
     <div className="page">
+      {upgrade === 'sucesso' && (
+        <Modal open onClose={() => setSearchParams(p => { p.delete('upgrade'); return p })} title="Assinatura confirmada!">
+          <div style={{ padding: '4px 0 16px', fontSize: 14, color: 'var(--gray-500)' }}>
+            Bem-vindo(a) ao seu novo plano! Os limites já foram atualizados — pode continuar de onde parou.
+          </div>
+          <button className="btn btn-primary" onClick={() => setSearchParams(p => { p.delete('upgrade'); return p })}>
+            Entendi
+          </button>
+        </Modal>
+      )}
+      {upgrade === 'cancelado' && (
+        <Modal open onClose={() => setSearchParams(p => { p.delete('upgrade'); return p })} title="Assinatura não concluída">
+          <div style={{ padding: '4px 0 16px', fontSize: 14, color: 'var(--gray-500)' }}>
+            Nenhuma cobrança foi feita. Quando quiser, é só tentar de novo em Configurações → Conta.
+          </div>
+          <button className="btn btn-primary" onClick={() => setSearchParams(p => { p.delete('upgrade'); return p })}>
+            Fechar
+          </button>
+        </Modal>
+      )}
+
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600 }}>Bom dia, {nome}</h1>
         <p style={{ fontSize: 13, color: '#9e9e9e', marginTop: 3 }}>Visão geral do confinamento</p>
