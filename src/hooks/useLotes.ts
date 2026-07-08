@@ -174,6 +174,22 @@ export function useLotes() {
       return { error: 'Número de ciclos configurados não bate com num_ciclos' }
     }
 
+    // Limite de lotes ativos por plano — checado com dado fresco do banco,
+    // não com o estado local, pra não deixar passar por corrida entre abas
+    // ou por essa mesma função ser chamada logo após um upgrade.
+    const { data: profileData } = await supabase
+      .from('profiles').select('plano, plano_status').eq('id', user.id).single()
+    const planoEfetivo = (profileData?.plano_status === 'ativo' ? profileData?.plano : 'free') ?? 'free'
+    const LIMITES: Record<string, number> = { free: 5, pro: 20, master: Infinity }
+    const limite = LIMITES[planoEfetivo] ?? 5
+    if (Number.isFinite(limite)) {
+      const { count } = await supabase
+        .from('lotes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'ativo')
+      if ((count ?? 0) >= limite) {
+        return { error: `Seu plano (${planoEfetivo}) permite até ${limite} lotes ativos. Encerre um lote existente ou faça upgrade em Configurações → Conta.` }
+      }
+    }
+
     const { data: loteExistente } = await supabase
       .from('lotes').select('id').eq('user_id', user.id).eq('prefixo', input.prefixo).eq('status', 'ativo').maybeSingle()
     if (loteExistente) return { error: `Já existe um lote ativo usando o prefixo "${input.prefixo}"` }
