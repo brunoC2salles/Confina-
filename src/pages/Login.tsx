@@ -1,17 +1,33 @@
-import { useState, FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, FormEvent, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAssinatura, PRICE_IDS } from '@/hooks/useAssinatura'
+
+const PLANO_LABEL: Record<string, string> = {
+  pro_mensal: 'Pro (mensal)', pro_anual: 'Pro (anual)',
+  master_mensal: 'Master (mensal)', master_anual: 'Master (anual)',
+}
 
 export default function Login() {
   const { signIn, signUp } = useAuth()
+  const { assinar } = useAssinatura()
   const navigate = useNavigate()
-  const [mode, setMode] = useState<'login'|'register'>('login')
+  const [searchParams] = useSearchParams()
+
+  const planoParam = searchParams.get('plano') // 'free' | 'pro_mensal' | 'pro_anual' | 'master_mensal' | 'master_anual' | null
+  const modoInicial = searchParams.get('mode') === 'register' ? 'register' : 'login'
+
+  const [mode, setMode] = useState<'login'|'register'>(modoInicial)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [nome, setNome] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string|null>(null)
   const [success, setSuccess] = useState<string|null>(null)
+
+  useEffect(() => {
+    if (searchParams.get('mode') === 'register') setMode('register')
+  }, [searchParams])
 
   const handle = async (e: FormEvent) => {
     e.preventDefault(); setError(null); setSuccess(null); setLoading(true)
@@ -20,13 +36,31 @@ export default function Login() {
       if (error) {
         setError('E-mail ou senha inválidos.')
       } else {
-        navigate('/lotes')
+        navigate('/')
       }
     } else {
       if (!nome.trim()) { setError('Informe seu nome.'); setLoading(false); return }
       const { error } = await signUp(email, password, nome)
-      if (error) setError(error.message)
-      else setSuccess('Conta criada com sucesso! Você já pode entrar.')
+      if (error) {
+        setError(error.message)
+        setLoading(false)
+        return
+      }
+      // Sem confirmação de e-mail obrigatória, o signUp já devolve sessão ativa.
+      // Se veio de um botão de plano pago na landing, manda direto pro checkout;
+      // senão (free ou acesso direto), cai no Dashboard normalmente.
+      if (planoParam && planoParam !== 'free' && planoParam in PRICE_IDS) {
+        setSuccess(`Conta criada! Levando você pro checkout do plano ${PLANO_LABEL[planoParam]}...`)
+        const res = await assinar(PRICE_IDS[planoParam as keyof typeof PRICE_IDS])
+        if (res.error) {
+          setError(`Conta criada, mas não consegui abrir o checkout: ${res.error}. Você pode assinar depois em Configurações → Conta.`)
+          setLoading(false)
+          navigate('/')
+        }
+        // em caso de sucesso, assinar() já redireciona a página pro Stripe
+        return
+      }
+      navigate('/')
     }
     setLoading(false)
   }
@@ -42,9 +76,14 @@ export default function Login() {
           <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
             {mode === 'login' ? 'Entrar na conta' : 'Criar conta'}
           </h2>
-          <p style={{ fontSize: 13, color: '#9e9e9e', marginBottom: 24 }}>
+          <p style={{ fontSize: 13, color: '#9e9e9e', marginBottom: mode === 'register' && planoParam && planoParam !== 'free' ? 8 : 24 }}>
             {mode === 'login' ? 'Informe suas credenciais para continuar' : 'Preencha os dados para se cadastrar'}
           </p>
+          {mode === 'register' && planoParam && planoParam !== 'free' && PLANO_LABEL[planoParam] && (
+            <div style={{ padding: '8px 12px', background: 'var(--green-bg, #e8f5e9)', borderRadius: 8, fontSize: 12, color: '#1b5e20', marginBottom: 16 }}>
+              Plano escolhido: <strong>{PLANO_LABEL[planoParam]}</strong> — você vai pro checkout logo depois de criar a conta.
+            </div>
+          )}
           <form onSubmit={handle} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {mode === 'register' && (
               <div className="form-group">
