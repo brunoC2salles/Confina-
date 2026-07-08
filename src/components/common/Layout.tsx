@@ -9,6 +9,7 @@ const NAV_PRINCIPAL = [
   { to: '/vendas',        label: 'Vendas',       end: false },
   { to: '/ranking',       label: 'Ranking',      end: false },
   { to: '/comparativo',   label: 'Comparativo',  end: false },
+  { to: '/importar',      label: 'Importar',     end: false },
   { to: '/dietas',        label: 'Dietas',       end: false },
   { to: '/ingredientes',  label: 'Ingredientes', end: false },
 ]
