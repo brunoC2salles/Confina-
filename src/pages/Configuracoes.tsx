@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAdmin, type InsumoPadrao, type DietaBase } from '@/hooks/useDietas'
+import { useAssinatura, PRICE_IDS, LIMITE_LOTES_ATIVOS } from '@/hooks/useAssinatura'
 import { supabase } from '@/lib/supabase'
 import { Modal, PageHeader } from '@/components/common/UI'
 import { fmt } from '@/lib/calculations'
@@ -104,6 +105,8 @@ function SecaoIngredientesTemplate({
 export default function Configuracoes() {
   const { user } = useAuth()
   const [isAdmin, setIsAdmin] = useState(false)
+  const { plano, planoEfetivo, planoStatus, processando, assinar, abrirPortal } = useAssinatura()
+  const [erroAssinatura, setErroAssinatura] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -279,6 +282,57 @@ export default function Configuracoes() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {tab === 'conta' && (
+        <div className="card" style={{ maxWidth: 480, marginTop: 16 }}>
+          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Plano</div>
+          <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 16 }}>
+            Plano atual: <strong style={{ textTransform: 'capitalize', color: 'var(--black)' }}>{planoEfetivo}</strong>
+            {' '}· Até {LIMITE_LOTES_ATIVOS[planoEfetivo] === Infinity ? 'lotes ilimitados' : `${LIMITE_LOTES_ATIVOS[planoEfetivo]} lotes ativos`}
+            {planoStatus !== 'ativo' && plano !== 'free' && (
+              <span style={{ color: '#b91c1c' }}> — assinatura {planoStatus}, tratado como free até regularizar</span>
+            )}
+          </div>
+
+          {erroAssinatura && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10, fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>
+              {erroAssinatura}
+            </div>
+          )}
+
+          {planoEfetivo === 'free' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary btn-sm" disabled={processando}
+                  onClick={async () => { const r = await assinar(PRICE_IDS.pro_mensal); if (r.error) setErroAssinatura(r.error) }}>
+                  Assinar Pro (mensal)
+                </button>
+                <button className="btn btn-ghost btn-sm" disabled={processando}
+                  onClick={async () => { const r = await assinar(PRICE_IDS.pro_anual); if (r.error) setErroAssinatura(r.error) }}>
+                  Pro (anual)
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary btn-sm" disabled={processando}
+                  onClick={async () => { const r = await assinar(PRICE_IDS.master_mensal); if (r.error) setErroAssinatura(r.error) }}>
+                  Assinar Master (mensal)
+                </button>
+                <button className="btn btn-ghost btn-sm" disabled={processando}
+                  onClick={async () => { const r = await assinar(PRICE_IDS.master_anual); if (r.error) setErroAssinatura(r.error) }}>
+                  Master (anual)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {planoEfetivo !== 'free' && (
+            <button className="btn btn-ghost btn-sm" disabled={processando}
+              onClick={async () => { const r = await abrirPortal(); if (r.error) setErroAssinatura(r.error) }}>
+              Gerenciar assinatura
+            </button>
+          )}
         </div>
       )}
 
