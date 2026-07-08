@@ -45,13 +45,10 @@ export function useAssinatura() {
 
   const assinar = async (priceId: string): Promise<{ error: string | null }> => {
     setProcessando(true)
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
-    if (!token) { setProcessando(false); return { error: 'Não autenticado' } }
-
+    // supabase-js já anexa o Authorization com a sessão ativa automaticamente
+    // — não precisa (e não deve) montar esse header na mão.
     const { data, error } = await supabase.functions.invoke('create-checkout', {
       body: { price_id: priceId },
-      headers: { Authorization: `Bearer ${token}` },
     })
     setProcessando(false)
     if (error || !data?.url) return { error: error?.message ?? 'Falha ao iniciar o checkout' }
@@ -61,13 +58,7 @@ export function useAssinatura() {
 
   const abrirPortal = async (): Promise<{ error: string | null }> => {
     setProcessando(true)
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
-    if (!token) { setProcessando(false); return { error: 'Não autenticado' } }
-
-    const { data, error } = await supabase.functions.invoke('create-portal-session', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const { data, error } = await supabase.functions.invoke('create-portal-session')
     setProcessando(false)
     if (error || !data?.url) return { error: error?.message ?? 'Falha ao abrir o portal de assinatura' }
     window.location.href = data.url
