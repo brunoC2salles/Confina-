@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAssinatura, PRICE_IDS } from '@/hooks/useAssinatura'
 
@@ -144,6 +144,11 @@ export default function Login() {
             <div className="form-group">
               <label className="form-label">Senha</label>
               <input className="form-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+              {mode === 'login' && (
+                <div style={{ textAlign: 'right', marginTop: 6 }}>
+                  <Link to="/esqueci-senha" style={{ fontSize: 12, color: '#2e7d32', textDecoration: 'none' }}>Esqueci minha senha</Link>
+                </div>
+              )}
             </div>
             {error && (
               <div style={{ padding: '10px 14px', background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>
