@@ -45,10 +45,14 @@ export function useAssinatura() {
 
   const assinar = async (priceId: string): Promise<{ error: string | null }> => {
     setProcessando(true)
-    // supabase-js já anexa o Authorization com a sessão ativa automaticamente
-    // — não precisa (e não deve) montar esse header na mão.
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !sessionData.session) {
+      setProcessando(false)
+      return { error: 'Sessão expirada. Saia e entre de novo antes de assinar.' }
+    }
     const { data, error } = await supabase.functions.invoke('create-checkout', {
       body: { price_id: priceId },
+      headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
     })
     setProcessando(false)
     if (error || !data?.url) return { error: error?.message ?? 'Falha ao iniciar o checkout' }
@@ -58,7 +62,14 @@ export function useAssinatura() {
 
   const abrirPortal = async (): Promise<{ error: string | null }> => {
     setProcessando(true)
-    const { data, error } = await supabase.functions.invoke('create-portal-session')
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !sessionData.session) {
+      setProcessando(false)
+      return { error: 'Sessão expirada. Saia e entre de novo antes de gerenciar a assinatura.' }
+    }
+    const { data, error } = await supabase.functions.invoke('create-portal-session', {
+      headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+    })
     setProcessando(false)
     if (error || !data?.url) return { error: error?.message ?? 'Falha ao abrir o portal de assinatura' }
     window.location.href = data.url
