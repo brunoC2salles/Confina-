@@ -7,6 +7,8 @@ interface AuthCtx {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signUp: (email: string, password: string, nome: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
+  resetPassword: (email: string) => Promise<{ error: Error | null }>
+  updatePassword: (novaSenha: string) => Promise<{ error: Error | null }>
 }
 
 const Ctx = createContext<AuthCtx | undefined>(undefined)
@@ -43,6 +45,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error }
       },
       signOut: async () => { await supabase.auth.signOut() },
+      resetPassword: async (email) => {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: 'https://www.confinamais.com/redefinir-senha',
+        })
+        return { error }
+      },
+      updatePassword: async (novaSenha) => {
+        const { error } = await supabase.auth.updateUser({ password: novaSenha })
+        return { error }
+      },
     }}>
       {children}
     </Ctx.Provider>
