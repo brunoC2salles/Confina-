@@ -37,7 +37,7 @@ export default function Lotes() {
   const [searchParams] = useSearchParams()
   const {
     lotes, lotesAtivos, lotesEncerrados, ciclosPorLote, resumo, loading,
-    criarLote, editarCiclo, avancarCiclo, encerrarLote,
+    criarLote, editarCiclo, salvarCiclosLote, avancarCiclo, encerrarLote,
     criarAnimais, bifurcar, moverAliquota, proximoNumeroLote,
   } = useLotes()
   const { templates: dietasTemplates } = useDietas()
@@ -169,6 +169,7 @@ export default function Lotes() {
           todosLotes={lotes}
           ciclosPorLote={ciclosPorLote}
           editarCiclo={editarCiclo}
+          salvarCiclosLote={salvarCiclosLote}
           avancarCiclo={avancarCiclo}
           encerrarLote={encerrarLote}
           criarAnimais={criarAnimais}
@@ -833,7 +834,7 @@ function PainelProjecao({
 
 function DetalheLote({
   loteId, onClose, dietasTemplates, todosLotes, ciclosPorLote,
-  editarCiclo, avancarCiclo, encerrarLote, criarAnimais, bifurcar, moverAliquota, proximoNumeroLote,
+  editarCiclo, salvarCiclosLote, avancarCiclo, encerrarLote, criarAnimais, bifurcar, moverAliquota, proximoNumeroLote,
 }: {
   loteId: string
   onClose: () => void
@@ -841,6 +842,7 @@ function DetalheLote({
   todosLotes: Lote[]
   ciclosPorLote: Record<string, Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null; data_fim: string | null }>>
   editarCiclo: (id: string, patch: any) => Promise<{ error: string | null }>
+  salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }>) => Promise<{ error: string | null }>
   avancarCiclo: (loteId: string) => Promise<{ error: string | null }>
   encerrarLote: (loteId: string, motivo: MotivoEncerramento, obs?: string) => Promise<{ error: string | null }>
   criarAnimais: (input: CriarAnimaisInput) => Promise<{ error: string | null }>
@@ -1224,7 +1226,7 @@ function DetalheLote({
       {showEditarCiclos && (
         <ModalEditarCiclos
           lote={lote} ciclos={ciclos} dietasTemplates={dietasTemplates}
-          editarCiclo={editarCiclo}
+          salvarCiclosLote={salvarCiclosLote}
           onClose={() => setShowEditarCiclos(false)}
         />
       )}
@@ -1374,15 +1376,18 @@ function ModalEncerrarLote({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ModalEditarCiclos({
-  lote, ciclos, dietasTemplates, editarCiclo, onClose,
+  lote, ciclos, dietasTemplates, salvarCiclosLote, onClose,
 }: {
   lote: Lote
-  ciclos: Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }>
+  ciclos: Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null; data_fim: string | null }>
   dietasTemplates: Array<{ id: string; nome: string; gmd_esperado: number; pct_consumo_pv_ms: number; custo_kg_ms: number | null }>
-  editarCiclo: (id: string, patch: any) => Promise<{ error: string | null }>
+  salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }>) => Promise<{ error: string | null }>
   onClose: () => void
 }) {
-  const [linhas, setLinhas] = useState(() =>
+  type LinhaCiclo = { id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }
+
+  const [dataCriacao, setDataCriacao] = useState(lote.data_criacao)
+  const [linhas, setLinhas] = useState<LinhaCiclo[]>(() =>
     [...ciclos].sort((a, b) => a.numero - b.numero).map(c => ({
       id: c.id, numero: c.numero, nome: c.nome, tipo_ciclo: c.tipo_ciclo,
       dias_planejados: c.dias_planejados, dieta_id: c.dieta_id, gmd_esperado: c.gmd_esperado,
@@ -1391,67 +1396,120 @@ function ModalEditarCiclos({
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  const update = (idx: number, patch: Partial<typeof linhas[number]>) => {
+  // Pré-visualização das datas resultantes — recalculada a cada mudança,
+  // igual ao que vai ser gravado de verdade ao salvar.
+  const datasPreview = useMemo(() => {
+    const mapa: Record<number, { inicio: string; fim: string | null }> = {}
+    let cursor = new Date(dataCriacao + 'T00:00:00')
+    linhas.forEach((l, i) => {
+      const inicio = cursor.toISOString().slice(0, 10)
+      const proximo = new Date(cursor)
+      proximo.setDate(proximo.getDate() + (l.dias_planejados || 0))
+      const fim = i === linhas.length - 1 ? null : proximo.toISOString().slice(0, 10)
+      mapa[l.numero] = { inicio, fim }
+      cursor = proximo
+    })
+    return mapa
+  }, [dataCriacao, linhas])
+
+  const update = (idx: number, patch: Partial<LinhaCiclo>) => {
     setLinhas(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l))
   }
 
+  const adicionarCiclo = () => {
+    if (linhas.length >= 8) { setErro('Máximo de 8 ciclos por lote'); return }
+    setErro(null)
+    setLinhas(prev => [...prev, {
+      numero: prev.length + 1, nome: cicloLabelPadrao(prev.length + 1), tipo_ciclo: 'confinamento',
+      dias_planejados: 30, dieta_id: null, gmd_esperado: null,
+    }])
+  }
+
+  const removerUltimoCiclo = () => {
+    if (linhas.length <= 1) { setErro('O lote precisa ter ao menos um ciclo'); return }
+    setErro(null)
+    setLinhas(prev => prev.slice(0, -1))
+  }
+
   const salvar = async () => {
-    setSaving(true); setErro(null)
     for (const l of linhas) {
-      const res = await editarCiclo(l.id, {
-        nome: l.nome, tipo_ciclo: l.tipo_ciclo, dias_planejados: l.dias_planejados,
-        dieta_id: l.dieta_id, gmd_esperado: l.gmd_esperado,
-      })
-      if (res.error) { setErro(`Falha ao salvar o ciclo ${l.numero}: ${res.error}`); setSaving(false); return }
+      if (!l.nome.trim()) { setErro(`Ciclo ${l.numero}: informe um nome`); return }
+      if (!l.dias_planejados || l.dias_planejados <= 0) { setErro(`Ciclo ${l.numero}: dias planejados inválido`); return }
     }
+    setSaving(true); setErro(null)
+    const res = await salvarCiclosLote(lote.id, dataCriacao, linhas)
     setSaving(false)
+    if (res.error) { setErro(res.error); return }
     onClose()
   }
 
   return (
     <Modal open onClose={onClose} title={`Editar ciclos — ${lote.nome_lote}`}
-      subtitle="Vale para lotes criados na plataforma ou importados por planilha" size="lg">
+      subtitle="As datas de início/fim de cada ciclo são recalculadas automaticamente" size="lg">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {linhas.map((l, idx) => (
-          <div key={l.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#2e7d32' }}>
-                Ciclo {l.numero}{l.numero === lote.ciclo_atual ? ' (atual)' : ''}
-              </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--gray-500)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={l.tipo_ciclo === 'pastagem'}
-                  onChange={() => update(idx, { tipo_ciclo: l.tipo_ciclo === 'pastagem' ? 'confinamento' : 'pastagem' })} />
-                É pastagem
-              </label>
-            </div>
-            <div className="form-row-2">
-              <div className="form-group">
-                <label className="form-label">Nome</label>
-                <input className="form-input" value={l.nome} onChange={e => update(idx, { nome: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Dias planejados</label>
-                <input className="form-input" type="number" value={l.dias_planejados}
-                  onChange={e => update(idx, { dias_planejados: Number(e.target.value) })} />
-              </div>
-            </div>
-            <div className="form-row-2">
-              <div className="form-group">
-                <label className="form-label">Dieta</label>
-                <select className="form-input" value={l.dieta_id ?? ''}
-                  onChange={e => update(idx, { dieta_id: e.target.value || null })}>
-                  <option value="">Nenhuma (sem custo de alimentação calculado)</option>
-                  {dietasTemplates.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">GMD esperado (kg/dia)</label>
-                <input className="form-input" type="number" step="0.01" value={l.gmd_esperado ?? ''}
-                  onChange={e => update(idx, { gmd_esperado: e.target.value ? Number(e.target.value) : null })} />
-              </div>
-            </div>
+        <div className="form-group">
+          <label className="form-label">Data de entrada do lote</label>
+          <input className="form-input" type="date" value={dataCriacao} onChange={e => setDataCriacao(e.target.value)} style={{ maxWidth: 200 }} />
+          <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+            Muda o ponto de partida de todos os ciclos — as datas abaixo se ajustam sozinhas.
           </div>
-        ))}
+        </div>
+
+        {linhas.map((l, idx) => {
+          const preview = datasPreview[l.numero]
+          return (
+            <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#2e7d32' }}>
+                  Ciclo {l.numero}{l.numero === lote.ciclo_atual ? ' (atual)' : ''}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--gray-500)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={l.tipo_ciclo === 'pastagem'}
+                    onChange={() => update(idx, { tipo_ciclo: l.tipo_ciclo === 'pastagem' ? 'confinamento' : 'pastagem' })} />
+                  É pastagem
+                </label>
+              </div>
+              <div className="form-row-2">
+                <div className="form-group">
+                  <label className="form-label">Nome</label>
+                  <input className="form-input" value={l.nome} onChange={e => update(idx, { nome: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Dias planejados</label>
+                  <input className="form-input" type="number" value={l.dias_planejados}
+                    onChange={e => update(idx, { dias_planejados: Number(e.target.value) })} />
+                </div>
+              </div>
+              <div className="form-row-2">
+                <div className="form-group">
+                  <label className="form-label">Dieta</label>
+                  <select className="form-input" value={l.dieta_id ?? ''}
+                    onChange={e => update(idx, { dieta_id: e.target.value || null })}>
+                    <option value="">Nenhuma (sem custo de alimentação calculado)</option>
+                    {dietasTemplates.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">GMD esperado (kg/dia)</label>
+                  <input className="form-input" type="number" step="0.01" value={l.gmd_esperado ?? ''}
+                    onChange={e => update(idx, { gmd_esperado: e.target.value ? Number(e.target.value) : null })} />
+                </div>
+              </div>
+              {preview && (
+                <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                  {fmtData(preview.inicio)} até {preview.fim ? fmtData(preview.fim) : 'em aberto'}
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={adicionarCiclo} disabled={linhas.length >= 8}>+ Adicionar ciclo</button>
+          <button className="btn btn-ghost btn-sm" style={{ color: '#b91c1c' }} onClick={removerUltimoCiclo} disabled={linhas.length <= 1}>
+            Remover último ciclo
+          </button>
+        </div>
 
         {erro && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10, fontSize: 12, color: '#b91c1c' }}>
