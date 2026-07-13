@@ -89,6 +89,7 @@ export default function Consultoria() {
               <li>Relatos de carregamentos</li>
               <li>Acesso à comunidade de produtores e fornecedores</li>
               <li>Acesso gratuito à plataforma Confina+ por 1 ano</li>
+              <li>Vídeos tutoriais</li>
             </ul>
 
             <table className="cons-precos">
