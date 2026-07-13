@@ -1,4 +1,4 @@
-// src/pages/public/CalculadoraConfinamento.tsx
+// src/pages/CalculadoraConfinamento.tsx
 import { useState, FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { calcularConfinamento, CalculadoraResultado } from '@/lib/calculadoraConfinamento'
