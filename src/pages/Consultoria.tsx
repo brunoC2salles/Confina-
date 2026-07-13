@@ -1,10 +1,16 @@
 // src/pages/Consultoria.tsx
+import { MouseEvent } from 'react'
 import './consultoria.css'
 
 const WHATSAPP_NUMERO = '5555999275622'
 
 function linkWhatsApp(mensagem: string): string {
   return `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(mensagem)}`
+}
+
+function scrollParaProdutos(e: MouseEvent<HTMLAnchorElement>) {
+  e.preventDefault()
+  document.getElementById('produtos')?.scrollIntoView({ behavior: 'smooth' })
 }
 
 const MSG_PRODUTO_1 = 'Olá Ricardo, quero saber mais da consultoria Confina+! Vim em busca do produto Planejamento básico e plano de ação!'
@@ -23,18 +29,24 @@ export default function Consultoria() {
         <img src="/logo.png" alt="Confina+" className="cons-hero-logo" />
         <div className="cons-hero-overlay">
           <h1>
-            Levar mais resultados ao
+            Levar mais resultados ao seu manejo
             <br />
-            seu manejo é a nossa missão
+            é a nossa missão
           </h1>
+        </div>
+        <div className="cons-hero-scrim" />
+        <div className="cons-hero-cta-bottom">
           <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_GERAL)} target="_blank" rel="noreferrer">
             Falar com um especialista
+          </a>
+          <a className="cons-btn cons-btn-secundario" href="#produtos" onClick={scrollParaProdutos}>
+            Saber mais
           </a>
         </div>
       </section>
 
       {/* PRODUTOS 1, 2, 3 */}
-      <section className="cons-produtos">
+      <section className="cons-produtos" id="produtos">
         <h2 className="cons-section-title">Consultoria Confina+</h2>
 
         <div className="cons-grid">
