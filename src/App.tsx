@@ -16,12 +16,16 @@ import Ingredientes from '@/pages/Ingredientes'
 import Parceiros from '@/pages/Parceiros'
 import Relatorios from '@/pages/Relatorios'
 import Configuracoes from '@/pages/Configuracoes'
+import CalculadoraConfinamento from '@/pages/public/CalculadoraConfinamento'
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* Páginas públicas, sem autenticação */}
+          <Route path="/calculadoradeconfinamento" element={<CalculadoraConfinamento />} />
+
           <Route path="/login" element={<Login />} />
           <Route path="/esqueci-senha" element={<EsqueciSenha />} />
           <Route path="/redefinir-senha" element={<RedefinirSenha />} />
