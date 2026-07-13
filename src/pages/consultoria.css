@@ -8,17 +8,6 @@
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-.cons-header {
-  display: flex;
-  align-items: center;
-  padding: 24px 32px;
-  border-bottom: 1px solid #e8f5e9;
-}
-
-.cons-logo {
-  height: 48px;
-}
-
 .cons-section-title {
   font-family: 'Syne', sans-serif;
   font-weight: 800;
@@ -48,11 +37,19 @@
   display: block;
 }
 
+.cons-hero-logo {
+  position: absolute;
+  top: 28px;
+  left: 6%;
+  height: 44px;
+  z-index: 2;
+}
+
 .cons-hero-overlay {
   position: absolute;
-  top: 8%;
+  top: 16%;
   left: 6%;
-  max-width: 560px;
+  max-width: 820px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -63,11 +60,12 @@
 .cons-hero-overlay h1 {
   font-family: 'Syne', sans-serif;
   font-weight: 800;
-  font-size: clamp(24px, 3.6vw, 44px);
-  line-height: 1.2;
+  font-size: clamp(20px, 2.6vw, 36px);
+  line-height: 1.25;
   color: #1b5e20;
   text-align: left;
   margin: 0;
+  white-space: normal;
 }
 
 /* Botões */
@@ -325,21 +323,26 @@
     min-height: 420px;
   }
 
+  .cons-hero-logo {
+    top: 16px;
+    height: 32px;
+  }
+
   .cons-hero-overlay {
-    top: 7%;
+    top: 14%;
     left: 5%;
     right: 5%;
     max-width: none;
     gap: 14px;
   }
 
+  .cons-hero-overlay h1 {
+    white-space: normal;
+  }
+
   .cons-hero-overlay .cons-btn {
     padding: 12px 20px;
     font-size: 14px;
-  }
-
-  .cons-header {
-    padding: 16px 20px;
   }
 
   .cons-produtos,

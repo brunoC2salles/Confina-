@@ -17,18 +17,15 @@ const MSG_PARCERIA = 'Olá Ricardo, quero saber mais sobre parcerias com o Confi
 export default function Consultoria() {
   return (
     <div className="cons-page">
-      <header className="cons-header">
-        <img src="/logo.png" alt="Confina+" className="cons-logo" />
-      </header>
-
       {/* HERO */}
       <section className="cons-hero">
         <img src="/hero-consultoria.png" alt="Rebanho Angus Confina+" className="cons-hero-img" />
+        <img src="/logo.png" alt="Confina+" className="cons-hero-logo" />
         <div className="cons-hero-overlay">
           <h1>
-            Levar mais resultados ao seu manejo
+            Levar mais resultados ao
             <br />
-            é a nossa missão
+            seu manejo é a nossa missão
           </h1>
           <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_GERAL)} target="_blank" rel="noreferrer">
             Falar com um especialista
