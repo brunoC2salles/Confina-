@@ -874,6 +874,7 @@ function DetalheLote({
   const [showEncerrar, setShowEncerrar] = useState(false)
   const [showCustoOperacional, setShowCustoOperacional] = useState(false)
   const [showCompras, setShowCompras] = useState(false)
+  const [showEditarCiclos, setShowEditarCiclos] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   const ciclos = ciclosPorLote[loteId] ?? []
@@ -1009,6 +1010,9 @@ function DetalheLote({
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button className="btn btn-ghost btn-sm" onClick={handleAvancarCiclo} disabled={lote.ciclo_atual >= lote.num_ciclos}>
                 Avançar ciclo
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowEditarCiclos(true)}>
+                Editar ciclos
               </button>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowProjecao(v => !v)}>
                 {showProjecao ? 'Ocultar projeção' : 'Ver projeção'}
@@ -1217,6 +1221,14 @@ function DetalheLote({
         />
       )}
 
+      {showEditarCiclos && (
+        <ModalEditarCiclos
+          lote={lote} ciclos={ciclos} dietasTemplates={dietasTemplates}
+          editarCiclo={editarCiclo}
+          onClose={() => setShowEditarCiclos(false)}
+        />
+      )}
+
       {showProjecaoAnimal && (() => {
         const animal = animais.find(a => a.id === showProjecaoAnimal)
         if (!animal) return null
@@ -1348,6 +1360,109 @@ function ModalEncerrarLote({
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={confirmar} disabled={saving}>
             {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Encerrar lote'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL: EDITAR CICLOS DO LOTE (dieta, dias, tipo, GMD esperado)
+// Funciona pra qualquer lote — criado manualmente ou importado por planilha,
+// já que os dois usam a mesma tabela ciclos_lote.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ModalEditarCiclos({
+  lote, ciclos, dietasTemplates, editarCiclo, onClose,
+}: {
+  lote: Lote
+  ciclos: Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }>
+  dietasTemplates: Array<{ id: string; nome: string; gmd_esperado: number; pct_consumo_pv_ms: number; custo_kg_ms: number | null }>
+  editarCiclo: (id: string, patch: any) => Promise<{ error: string | null }>
+  onClose: () => void
+}) {
+  const [linhas, setLinhas] = useState(() =>
+    [...ciclos].sort((a, b) => a.numero - b.numero).map(c => ({
+      id: c.id, numero: c.numero, nome: c.nome, tipo_ciclo: c.tipo_ciclo,
+      dias_planejados: c.dias_planejados, dieta_id: c.dieta_id, gmd_esperado: c.gmd_esperado,
+    }))
+  )
+  const [saving, setSaving] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const update = (idx: number, patch: Partial<typeof linhas[number]>) => {
+    setLinhas(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l))
+  }
+
+  const salvar = async () => {
+    setSaving(true); setErro(null)
+    for (const l of linhas) {
+      const res = await editarCiclo(l.id, {
+        nome: l.nome, tipo_ciclo: l.tipo_ciclo, dias_planejados: l.dias_planejados,
+        dieta_id: l.dieta_id, gmd_esperado: l.gmd_esperado,
+      })
+      if (res.error) { setErro(`Falha ao salvar o ciclo ${l.numero}: ${res.error}`); setSaving(false); return }
+    }
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Editar ciclos — ${lote.nome_lote}`}
+      subtitle="Vale para lotes criados na plataforma ou importados por planilha" size="lg">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {linhas.map((l, idx) => (
+          <div key={l.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#2e7d32' }}>
+                Ciclo {l.numero}{l.numero === lote.ciclo_atual ? ' (atual)' : ''}
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--gray-500)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={l.tipo_ciclo === 'pastagem'}
+                  onChange={() => update(idx, { tipo_ciclo: l.tipo_ciclo === 'pastagem' ? 'confinamento' : 'pastagem' })} />
+                É pastagem
+              </label>
+            </div>
+            <div className="form-row-2">
+              <div className="form-group">
+                <label className="form-label">Nome</label>
+                <input className="form-input" value={l.nome} onChange={e => update(idx, { nome: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Dias planejados</label>
+                <input className="form-input" type="number" value={l.dias_planejados}
+                  onChange={e => update(idx, { dias_planejados: Number(e.target.value) })} />
+              </div>
+            </div>
+            <div className="form-row-2">
+              <div className="form-group">
+                <label className="form-label">Dieta</label>
+                <select className="form-input" value={l.dieta_id ?? ''}
+                  onChange={e => update(idx, { dieta_id: e.target.value || null })}>
+                  <option value="">Nenhuma (sem custo de alimentação calculado)</option>
+                  {dietasTemplates.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">GMD esperado (kg/dia)</label>
+                <input className="form-input" type="number" step="0.01" value={l.gmd_esperado ?? ''}
+                  onChange={e => update(idx, { gmd_esperado: e.target.value ? Number(e.target.value) : null })} />
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {erro && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10, fontSize: 12, color: '#b91c1c' }}>
+            {erro}
+          </div>
+        )}
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className="btn btn-primary" onClick={salvar} disabled={saving}>
+            {saving ? 'Salvando...' : 'Salvar alterações'}
           </button>
         </div>
       </div>
