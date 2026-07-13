@@ -17,6 +17,7 @@ import Parceiros from '@/pages/Parceiros'
 import Relatorios from '@/pages/Relatorios'
 import Configuracoes from '@/pages/Configuracoes'
 import CalculadoraConfinamento from '@/pages/CalculadoraConfinamento'
+import Consultoria from '@/pages/Consultoria'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <Routes>
           {/* Páginas públicas, sem autenticação */}
           <Route path="/calculadoradeconfinamento" element={<CalculadoraConfinamento />} />
+          <Route path="/consultoria" element={<Consultoria />} />
 
           <Route path="/login" element={<Login />} />
           <Route path="/esqueci-senha" element={<EsqueciSenha />} />
