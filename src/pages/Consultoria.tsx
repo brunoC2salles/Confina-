@@ -23,11 +23,17 @@ export default function Consultoria() {
 
       {/* HERO */}
       <section className="cons-hero">
-        <h1>Levar mais resultados ao seu manejo é a nossa missão</h1>
-        <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_GERAL)} target="_blank" rel="noreferrer">
-          Falar com um especialista
-        </a>
-        <img src="/hero-consultoria.png" alt="Pecuária de confinamento Confina+" className="cons-hero-img" />
+        <img src="/hero-consultoria.png" alt="Rebanho Angus Confina+" className="cons-hero-img" />
+        <div className="cons-hero-overlay">
+          <h1>
+            Levar mais resultados ao seu manejo
+            <br />
+            é a nossa missão
+          </h1>
+          <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_GERAL)} target="_blank" rel="noreferrer">
+            Falar com um especialista
+          </a>
+        </div>
       </section>
 
       {/* PRODUTOS 1, 2, 3 */}
@@ -122,32 +128,34 @@ export default function Consultoria() {
       </section>
 
       {/* PRODUTO 4 */}
-      <section className="cons-produto4">
-        <span className="cons-card-tag cons-card-tag-gold">Produto 4</span>
-        <h2>Dia de campo na propriedade modelo</h2>
-        <p className="cons-produto4-local">Fazenda Dona Lucy, São Gabriel (RS)</p>
+      <section className="cons-produto4-wrap">
+        <div className="cons-card cons-card-destaque cons-card-produto4">
+          <span className="cons-card-tag cons-card-tag-gold">Produto 4</span>
+          <h3>Dia de campo na propriedade modelo</h3>
+          <p className="cons-produto4-local">Fazenda Dona Lucy, São Gabriel (RS)</p>
 
-        <ul className="cons-lista">
-          <li>Análise completa de rotina e operação</li>
-          <li>Acesso aos demais produtores e fornecedores</li>
-          <li>Confraternização (churrasco e chopp)</li>
-          <li>Lançamento dos planos 2027 do ecossistema Confina+</li>
-        </ul>
+          <ul className="cons-lista">
+            <li>Análise completa de rotina e operação</li>
+            <li>Acesso aos demais produtores e fornecedores</li>
+            <li>Confraternização (churrasco e chopp)</li>
+            <li>Lançamento dos planos 2027 do ecossistema Confina+</li>
+          </ul>
 
-        <table className="cons-precos">
-          <tbody>
-            <tr><td>Clientes dos Produtos 1, 2 e 3</td><td>Gratuito</td></tr>
-            <tr><td>Clientes do Produto 2</td><td>Direito a 1 acompanhante</td></tr>
-            <tr><td>Assinantes da plataforma Confina+</td><td>R$ 250 (preço promocional)</td></tr>
-            <tr><td>Público em geral</td><td>R$ 750</td></tr>
-          </tbody>
-        </table>
+          <table className="cons-precos">
+            <tbody>
+              <tr><td>Clientes dos Produtos 1, 2 e 3</td><td>Gratuito</td></tr>
+              <tr><td>Clientes do Produto 2</td><td>Direito a 1 acompanhante</td></tr>
+              <tr><td>Assinantes da plataforma Confina+</td><td>R$ 250 (preço promocional)</td></tr>
+              <tr><td>Público em geral</td><td>R$ 750</td></tr>
+            </tbody>
+          </table>
 
-        <p className="cons-nota">Evento limitado. Próxima edição: 01/05/2027.</p>
+          <p className="cons-nota">Evento limitado. Próxima edição: 01/05/2027.</p>
 
-        <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_PRODUTO_4)} target="_blank" rel="noreferrer">
-          Entrar na lista de espera
-        </a>
+          <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_PRODUTO_4)} target="_blank" rel="noreferrer">
+            Entrar na lista de espera
+          </a>
+        </div>
       </section>
 
       {/* ESPECIALISTA */}

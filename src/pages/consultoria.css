@@ -30,27 +30,44 @@
 
 /* HERO */
 .cons-hero {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 56px 24px 0 24px;
-  text-align: center;
-}
-
-.cons-hero h1 {
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 40px;
-  line-height: 1.25;
-  color: #1b5e20;
-  margin-bottom: 24px;
+  position: relative;
+  width: 100%;
+  height: 92vh;
+  min-height: 560px;
+  max-height: 880px;
+  overflow: hidden;
 }
 
 .cons-hero-img {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  max-width: 900px;
-  border-radius: 16px;
-  margin-top: 32px;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
   display: block;
+}
+
+.cons-hero-overlay {
+  position: absolute;
+  top: 8%;
+  left: 6%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 20px;
+  z-index: 1;
+}
+
+.cons-hero-overlay h1 {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: clamp(24px, 3.6vw, 44px);
+  line-height: 1.2;
+  color: #1b5e20;
+  text-align: left;
+  margin: 0;
 }
 
 /* Botões */
@@ -212,40 +229,21 @@
 }
 
 /* PRODUTO 4 */
-.cons-produto4 {
-  max-width: 700px;
-  margin: 72px auto 0 auto;
-  padding: 40px 32px;
-  background: #e8f5e9;
-  border-radius: 16px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
+.cons-produto4-wrap {
+  max-width: 1200px;
+  margin: 56px auto 0 auto;
+  padding: 0 24px;
 }
 
-.cons-produto4 h2 {
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 24px;
-  color: #1b5e20;
+.cons-card-produto4 {
+  max-width: 520px;
+  margin: 0 auto;
 }
 
 .cons-produto4-local {
   font-size: 13px;
   color: #555555;
   margin-top: -8px;
-}
-
-.cons-produto4 .cons-lista {
-  text-align: left;
-  width: 100%;
-  max-width: 420px;
-}
-
-.cons-produto4 .cons-precos {
-  max-width: 420px;
 }
 
 /* ESPECIALISTA */
@@ -318,5 +316,40 @@
 @media (max-width: 900px) {
   .cons-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .cons-hero {
+    height: 70vh;
+    min-height: 420px;
+  }
+
+  .cons-hero-overlay {
+    top: 7%;
+    left: 5%;
+    right: 5%;
+    max-width: none;
+    gap: 14px;
+  }
+
+  .cons-hero-overlay .cons-btn {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
+
+  .cons-header {
+    padding: 16px 20px;
+  }
+
+  .cons-produtos,
+  .cons-especialista,
+  .cons-midia {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .cons-card {
+    padding: 20px;
   }
 }
