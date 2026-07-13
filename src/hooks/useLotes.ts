@@ -252,6 +252,61 @@ export function useLotes() {
     return { error: error?.message ?? null }
   }
 
+  // Reescreve todos os ciclos de um lote de uma vez: permite adicionar ciclo
+  // novo (linha sem id), editar os existentes, e SEMPRE recalcula data_inicio/
+  // data_fim de todos em cascata a partir de data_criacao — pra não deixar
+  // ciclo nenhum com data desencontrada depois de qualquer alteração. Isso é
+  // o que o motor de custo usa pra saber qual ciclo (e qual dieta) vale em
+  // cada dia, então precisa estar sempre consistente.
+  const salvarCiclosLote = async (
+    loteId: string,
+    dataCriacao: string,
+    ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }>
+  ) => {
+    if (!user) return { error: 'Não autenticado' }
+    if (ciclos.length === 0) return { error: 'O lote precisa ter ao menos um ciclo' }
+    if (ciclos.length > 8) return { error: 'Máximo de 8 ciclos por lote' }
+
+    const { error: eLote } = await supabase.from('lotes')
+      .update({ data_criacao: dataCriacao, num_ciclos: ciclos.length }).eq('id', loteId)
+    if (eLote) return { error: eLote.message }
+
+    const ordenados = [...ciclos].sort((a, b) => a.numero - b.numero)
+    let cursor = new Date(dataCriacao + 'T00:00:00')
+    for (let i = 0; i < ordenados.length; i++) {
+      const c = ordenados[i]
+      const dataInicio = cursor.toISOString().slice(0, 10)
+      const proximo = new Date(cursor)
+      proximo.setDate(proximo.getDate() + c.dias_planejados)
+      const dataFim = i === ordenados.length - 1 ? null : proximo.toISOString().slice(0, 10)
+
+      if (c.id) {
+        const { error } = await supabase.from('ciclos_lote').update({
+          numero: c.numero, nome: c.nome, tipo_ciclo: c.tipo_ciclo, dias_planejados: c.dias_planejados,
+          dieta_id: c.dieta_id, gmd_esperado: c.gmd_esperado, data_inicio: dataInicio, data_fim: dataFim,
+        }).eq('id', c.id)
+        if (error) return { error: `Ciclo ${c.numero}: ${error.message}` }
+      } else {
+        const { error } = await supabase.from('ciclos_lote').insert({
+          lote_id: loteId, numero: c.numero, nome: c.nome, tipo_ciclo: c.tipo_ciclo,
+          dias_planejados: c.dias_planejados, dieta_id: c.dieta_id, gmd_esperado: c.gmd_esperado,
+          data_inicio: dataInicio, data_fim: dataFim, user_id: user.id,
+        })
+        if (error) return { error: `Ciclo ${c.numero}: ${error.message}` }
+      }
+      cursor = proximo
+    }
+
+    await fetchLotes()
+    return { error: null }
+  }
+
+  const removerCiclo = async (cicloId: string) => {
+    const { error } = await supabase.from('ciclos_lote').delete().eq('id', cicloId)
+    if (!error) await fetchLotes()
+    return { error: error?.message ?? null }
+  }
+
   const avancarCiclo = async (loteId: string) => {
     const lote = lotes.find(l => l.id === loteId)
     if (!lote) return { error: 'Lote não encontrado' }
@@ -430,7 +485,7 @@ export function useLotes() {
     lotes, ciclosPorLote, resumo, loading,
     lotesAtivos, lotesEncerrados,
     fetchLotes, proximoNumeroLote,
-    criarLote, atualizarLote, editarCiclo, avancarCiclo, encerrarLote,
+    criarLote, atualizarLote, editarCiclo, salvarCiclosLote, removerCiclo, avancarCiclo, encerrarLote,
     criarAnimais, bifurcar, moverAliquota,
   }
 }
