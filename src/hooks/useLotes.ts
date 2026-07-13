@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
@@ -419,10 +419,16 @@ export function useLotes() {
     return { error: null }
   }
 
+  // Memoizado: sem isso, cada chamada do hook devolvia um array NOVO (mesmo
+  // com os mesmos lotes dentro), e qualquer efeito que dependesse desse valor
+  // (como o do Dashboard) entrava em loop — via de referência mudando a cada
+  // render, disparando o efeito de novo, gerando outro render, indefinidamente.
+  const lotesAtivos = useMemo(() => lotes.filter(l => l.status === 'ativo'), [lotes])
+  const lotesEncerrados = useMemo(() => lotes.filter(l => l.status === 'encerrado'), [lotes])
+
   return {
     lotes, ciclosPorLote, resumo, loading,
-    lotesAtivos: lotes.filter(l => l.status === 'ativo'),
-    lotesEncerrados: lotes.filter(l => l.status === 'encerrado'),
+    lotesAtivos, lotesEncerrados,
     fetchLotes, proximoNumeroLote,
     criarLote, atualizarLote, editarCiclo, avancarCiclo, encerrarLote,
     criarAnimais, bifurcar, moverAliquota,
