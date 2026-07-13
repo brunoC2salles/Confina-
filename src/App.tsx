@@ -16,7 +16,7 @@ import Ingredientes from '@/pages/Ingredientes'
 import Parceiros from '@/pages/Parceiros'
 import Relatorios from '@/pages/Relatorios'
 import Configuracoes from '@/pages/Configuracoes'
-import CalculadoraConfinamento from '@/pages/public/CalculadoraConfinamento'
+import CalculadoraConfinamento from '@/pages/CalculadoraConfinamento'
 
 export default function App() {
   return (
