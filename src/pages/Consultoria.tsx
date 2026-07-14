@@ -177,7 +177,7 @@ export default function Consultoria() {
           <ul className="cons-lista">
             <li>Engenheiro Agrônomo pela Universidade Federal de Santa Maria (2013)</li>
             <li>Pós-graduado em Gestão e Administração de Empresas pela FGV (2015)</li>
-            <li>Certificado no programa Profesionalización Ganadera, com ênfase em recria e engorda de bovinos de corte (Argentina, 2015)</li>
+            <li>Certificado no programa Profesionalización Ganadera, com ênfase em recria e engorda de bovinos de corte (Argentina, 2020)</li>
             <li>Mais de 2 anos de experiência em sistemas de produção argentinos e uruguaios</li>
           </ul>
         </div>
