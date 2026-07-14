@@ -72,7 +72,8 @@ export default function Consultoria() {
               <tbody>
                 <tr><td>0 a 350 animais</td><td>R$ 18.000<span className="cons-gdia">custo de 40 g/dia/animal</span></td></tr>
                 <tr><td>350 a 700 animais</td><td>R$ 28.000<span className="cons-gdia">custo de 35 g/dia/animal</span></td></tr>
-                <tr><td>700+ animais</td><td>R$ 42.000<span className="cons-gdia">custo de 30 g/dia/animal</span></td></tr>
+                <tr><td>700 a 1.500 animais</td><td>R$ 42.000<span className="cons-gdia">custo de 30 g/dia/animal</span></td></tr>
+                <tr><td>1.500+ animais</td><td>A consultar</td></tr>
               </tbody>
             </table>
             <p className="cons-nota">Investimento no período de 30 dias.</p>
@@ -109,7 +110,8 @@ export default function Consultoria() {
               <tbody>
                 <tr><td>0 a 350 animais</td><td>R$ 6.000/mês<span className="cons-gdia">custo de 10 g/dia/animal</span></td></tr>
                 <tr><td>350 a 700 animais</td><td>R$ 8.000/mês<span className="cons-gdia">custo de 9 g/dia/animal</span></td></tr>
-                <tr><td>700+ animais</td><td>R$ 11.000/mês<span className="cons-gdia">custo de 9 g/dia/animal</span></td></tr>
+                <tr><td>700 a 1.500 animais</td><td>R$ 11.000/mês<span className="cons-gdia">custo de 9 g/dia/animal</span></td></tr>
+                <tr><td>1.500+ animais</td><td>A consultar</td></tr>
               </tbody>
             </table>
             <p className="cons-nota">Investimento no período de 12 meses.</p>
@@ -140,7 +142,8 @@ export default function Consultoria() {
               <tbody>
                 <tr><td>0 a 350 animais</td><td>R$ 6.000<span className="cons-gdia">custo de 40 g/dia/animal</span></td></tr>
                 <tr><td>350 a 700 animais</td><td>R$ 8.000<span className="cons-gdia">custo de 35 g/dia/animal</span></td></tr>
-                <tr><td>700+ animais</td><td>R$ 11.000<span className="cons-gdia">custo de 30 g/dia/animal</span></td></tr>
+                <tr><td>700 a 1.500 animais</td><td>R$ 11.000<span className="cons-gdia">custo de 30 g/dia/animal</span></td></tr>
+                <tr><td>1.500+ animais</td><td>A consultar</td></tr>
               </tbody>
             </table>
             <p className="cons-nota">Investimento no período de 30 dias.</p>
