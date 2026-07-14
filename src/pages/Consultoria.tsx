@@ -62,13 +62,20 @@ export default function Consultoria() {
               <li>1 reunião de dúvidas</li>
             </ul>
 
+            <p className="cons-explicacao-gdia">
+              O valor abaixo do preço traduz o investimento em algo concreto: quantos gramas de ganho de
+              peso, por dia, por animal, esse valor representa ao longo do período. É o que esse plano
+              custa na rotina do confinamento.
+            </p>
+
             <table className="cons-precos">
               <tbody>
-                <tr><td>0 a 350 animais</td><td>R$ 18.000</td></tr>
-                <tr><td>350 a 700 animais</td><td>R$ 28.000</td></tr>
-                <tr><td>700+ animais</td><td>R$ 42.000</td></tr>
+                <tr><td>0 a 350 animais</td><td>R$ 18.000<span className="cons-gdia">custo de 40 g/dia/animal</span></td></tr>
+                <tr><td>350 a 700 animais</td><td>R$ 28.000<span className="cons-gdia">custo de 35 g/dia/animal</span></td></tr>
+                <tr><td>700+ animais</td><td>R$ 42.000<span className="cons-gdia">custo de 30 g/dia/animal</span></td></tr>
               </tbody>
             </table>
+            <p className="cons-nota">Investimento no período de 30 dias.</p>
 
             <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_PRODUTO_1)} target="_blank" rel="noreferrer">
               Quero esse plano
@@ -92,13 +99,20 @@ export default function Consultoria() {
               <li>Vídeos tutoriais</li>
             </ul>
 
+            <p className="cons-explicacao-gdia">
+              O valor abaixo do preço traduz o investimento em algo concreto: quantos gramas de ganho de
+              peso, por dia, por animal, esse valor representa ao longo do período. É o que esse plano
+              custa na rotina do confinamento.
+            </p>
+
             <table className="cons-precos">
               <tbody>
-                <tr><td>0 a 350 animais</td><td>R$ 6.000/mês</td></tr>
-                <tr><td>350 a 700 animais</td><td>R$ 8.000/mês</td></tr>
-                <tr><td>700+ animais</td><td>R$ 11.000/mês</td></tr>
+                <tr><td>0 a 350 animais</td><td>R$ 6.000/mês<span className="cons-gdia">custo de 10 g/dia/animal</span></td></tr>
+                <tr><td>350 a 700 animais</td><td>R$ 8.000/mês<span className="cons-gdia">custo de 9 g/dia/animal</span></td></tr>
+                <tr><td>700+ animais</td><td>R$ 11.000/mês<span className="cons-gdia">custo de 9 g/dia/animal</span></td></tr>
               </tbody>
             </table>
+            <p className="cons-nota">Investimento no período de 12 meses.</p>
             <p className="cons-nota">Contrato de 12 meses</p>
 
             <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_PRODUTO_2)} target="_blank" rel="noreferrer">
@@ -116,13 +130,20 @@ export default function Consultoria() {
               <li>Duração: 2 turnos (dia a combinar)</li>
             </ul>
 
+            <p className="cons-explicacao-gdia">
+              O valor abaixo do preço traduz o investimento em algo concreto: quantos gramas de ganho de
+              peso, por dia, por animal, esse valor representa ao longo do período. É o que esse plano
+              custa na rotina do confinamento.
+            </p>
+
             <table className="cons-precos">
               <tbody>
-                <tr><td>0 a 350 animais</td><td>R$ 6.000</td></tr>
-                <tr><td>350 a 700 animais</td><td>R$ 8.000</td></tr>
-                <tr><td>700+ animais</td><td>R$ 11.000</td></tr>
+                <tr><td>0 a 350 animais</td><td>R$ 6.000<span className="cons-gdia">custo de 40 g/dia/animal</span></td></tr>
+                <tr><td>350 a 700 animais</td><td>R$ 8.000<span className="cons-gdia">custo de 35 g/dia/animal</span></td></tr>
+                <tr><td>700+ animais</td><td>R$ 11.000<span className="cons-gdia">custo de 30 g/dia/animal</span></td></tr>
               </tbody>
             </table>
+            <p className="cons-nota">Investimento no período de 30 dias.</p>
 
             <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_PRODUTO_3)} target="_blank" rel="noreferrer">
               Quero essa visita
@@ -177,7 +198,7 @@ export default function Consultoria() {
           <ul className="cons-lista">
             <li>Engenheiro Agrônomo pela Universidade Federal de Santa Maria (2013)</li>
             <li>Pós-graduado em Gestão e Administração de Empresas pela FGV (2015)</li>
-            <li>Certificado no programa Profesionalización Ganadera, com ênfase em recria e engorda de bovinos de corte (Argentina, 2020)</li>
+            <li>Certificado no programa Profesionalización Ganadera, com ênfase em recria e engorda de bovinos de corte (Argentina, 2015)</li>
             <li>Mais de 2 anos de experiência em sistemas de produção argentinos e uruguaios</li>
           </ul>
         </div>

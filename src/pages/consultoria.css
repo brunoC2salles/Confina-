@@ -223,6 +223,23 @@
   border-bottom: none;
 }
 
+.cons-gdia {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: #999999;
+  margin-top: 2px;
+}
+
+.cons-explicacao-gdia {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #777777;
+  border-left: 2px solid #c99324;
+  padding-left: 12px;
+  margin: 4px 0 4px 0;
+}
+
 .cons-nota {
   font-size: 13px;
   color: #b45309;
