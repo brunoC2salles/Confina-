@@ -16,7 +16,6 @@ function scrollParaProdutos(e: MouseEvent<HTMLAnchorElement>) {
 const MSG_PRODUTO_1 = 'Olá Ricardo, quero saber mais da consultoria Confina+! Vim em busca do produto Planejamento básico e plano de ação!'
 const MSG_PRODUTO_2 = 'Olá Ricardo, quero saber mais da consultoria Confina+! Vim em busca do produto Planejamento e acompanhamento anual!'
 const MSG_PRODUTO_3 = 'Olá Ricardo, quero saber mais da consultoria Confina+! Vim em busca do produto Visita técnica!'
-const MSG_PRODUTO_4 = 'Olá Ricardo, quero saber mais da consultoria Confina+! Vim em busca do produto Dia de campo na propriedade modelo! Gostaria de entrar na lista de espera da Imersão Confina+ 2027.'
 const MSG_GERAL = 'Olá Ricardo, quero saber mais da consultoria Confina+!'
 const MSG_PARCERIA = 'Olá Ricardo, quero saber mais sobre parcerias com o Confina+! Represento uma marca ou fornecedor e gostaria de fazer parte do ecossistema Confina+.'
 
@@ -55,7 +54,7 @@ export default function Consultoria() {
             <span className="cons-card-tag">Produto 1</span>
             <h3>Planejamento básico e plano de ação</h3>
             <ul className="cons-lista">
-              <li>Planejamento de implementação de um confinamento desde o zero, com base na Calculadora de Confinamento</li>
+              <li>Planejamento de implementação de uma suplementação de alto volume desde o zero, com base na Calculadora de Suplementação de Alto Volume</li>
               <li>Planilha de custos e indicação de fornecedores</li>
               <li>1 reunião de reconhecimento</li>
               <li>Plano completo de ação para os próximos 12 meses</li>
@@ -65,7 +64,7 @@ export default function Consultoria() {
             <p className="cons-explicacao-gdia">
               O valor abaixo do preço traduz o investimento em algo concreto: quantos gramas de ganho de
               peso, por dia, por animal, esse valor representa ao longo do período. É o que esse plano
-              custa na rotina do confinamento.
+              custa na rotina da suplementação de alto volume.
             </p>
 
             <table className="cons-precos">
@@ -103,7 +102,7 @@ export default function Consultoria() {
             <p className="cons-explicacao-gdia">
               O valor abaixo do preço traduz o investimento em algo concreto: quantos gramas de ganho de
               peso, por dia, por animal, esse valor representa ao longo do período. É o que esse plano
-              custa na rotina do confinamento.
+              custa na rotina da suplementação de alto volume.
             </p>
 
             <table className="cons-precos">
@@ -135,7 +134,7 @@ export default function Consultoria() {
             <p className="cons-explicacao-gdia">
               O valor abaixo do preço traduz o investimento em algo concreto: quantos gramas de ganho de
               peso, por dia, por animal, esse valor representa ao longo do período. É o que esse plano
-              custa na rotina do confinamento.
+              custa na rotina da suplementação de alto volume.
             </p>
 
             <table className="cons-precos">
@@ -158,37 +157,6 @@ export default function Consultoria() {
           <p>Produto 1 é parcelável em até 6x sem juros.</p>
           <p>15% de desconto na Consultoria de Implementação (Produto 2) para quem já contratou o Produto 1.</p>
           <p>Todos os produtos estão sujeitos a lista de espera conforme o período do ano.</p>
-        </div>
-      </section>
-
-      {/* PRODUTO 4 */}
-      <section className="cons-produto4-wrap">
-        <div className="cons-card cons-card-destaque cons-card-produto4">
-          <span className="cons-card-tag cons-card-tag-gold">Produto 4</span>
-          <h3>Dia de campo na propriedade modelo</h3>
-          <p className="cons-produto4-local">Fazenda Dona Lucy, São Gabriel (RS)</p>
-
-          <ul className="cons-lista">
-            <li>Análise completa de rotina e operação</li>
-            <li>Acesso aos demais produtores e fornecedores</li>
-            <li>Confraternização (churrasco e chopp)</li>
-            <li>Lançamento dos planos 2027 do ecossistema Confina+</li>
-          </ul>
-
-          <table className="cons-precos">
-            <tbody>
-              <tr><td>Clientes dos Produtos 1, 2 e 3</td><td>Gratuito</td></tr>
-              <tr><td>Clientes do Produto 2</td><td>Direito a 1 acompanhante</td></tr>
-              <tr><td>Assinantes da plataforma Confina+</td><td>R$ 250 (preço promocional)</td></tr>
-              <tr><td>Público em geral</td><td>R$ 750</td></tr>
-            </tbody>
-          </table>
-
-          <p className="cons-nota">Evento limitado. Próxima edição: 01/05/2027.</p>
-
-          <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_PRODUTO_4)} target="_blank" rel="noreferrer">
-            Entrar na lista de espera
-          </a>
         </div>
       </section>
 

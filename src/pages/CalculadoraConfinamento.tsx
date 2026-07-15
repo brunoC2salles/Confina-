@@ -114,8 +114,8 @@ export default function CalculadoraConfinamento() {
         {!resultado ? (
           <>
             <div className="calc-intro">
-              <h1>Calculadora de Confinamento</h1>
-              <p>Descubra o investimento necessário para implantar um confinamento do zero, sob medida para a sua propriedade.</p>
+              <h1>Calculadora de Suplementação de Alto Volume</h1>
+              <p>Descubra o investimento necessário para implantar uma suplementação de alto volume do zero, sob medida para a sua propriedade.</p>
             </div>
 
             <form className="calc-form" onSubmit={handleSubmit}>
