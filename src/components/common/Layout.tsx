@@ -20,7 +20,12 @@ const NAV_GESTAO = [
   { to: '/config',     label: 'Configurações', end: false },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean
+  onNavigate: () => void
+}
+
+export function Sidebar({ isOpen, onNavigate }: SidebarProps) {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const [role, setRole] = useState<string>('produtor')
@@ -46,18 +51,18 @@ export function Sidebar() {
   } as React.CSSProperties)
 
   return (
-    <aside style={{ width: 224, background: '#fff', borderRight: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', height: '100vh', flexShrink: 0 }}>
+    <aside className={`sidebar${isOpen ? ' sidebar-open' : ''}`} style={{ width: 224, background: '#fff', borderRight: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', height: '100vh', flexShrink: 0 }}>
       <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <img src="/logo.png" alt="Confina+" style={{ height: 52, objectFit: 'contain' }} />
       </div>
       <nav style={{ padding: '12px 8px', flex: 1, overflowY: 'auto' }}>
         <div style={{ fontSize: '10px', color: '#bdbdbd', padding: '8px 12px 4px', letterSpacing: '0.6px', textTransform: 'uppercase' }}>Principal</div>
         {NAV_PRINCIPAL.map(n => (
-          <NavLink key={n.to} to={n.to} end={n.end} style={({ isActive }) => linkStyle(isActive)}>{n.label}</NavLink>
+          <NavLink key={n.to} to={n.to} end={n.end} onClick={onNavigate} style={({ isActive }) => linkStyle(isActive)}>{n.label}</NavLink>
         ))}
         <div style={{ fontSize: '10px', color: '#bdbdbd', padding: '16px 12px 4px', letterSpacing: '0.6px', textTransform: 'uppercase' }}>Gestão</div>
         {NAV_GESTAO.map(n => (
-          <NavLink key={n.to} to={n.to} end={n.end} style={({ isActive }) => linkStyle(isActive)}>{n.label}</NavLink>
+          <NavLink key={n.to} to={n.to} end={n.end} onClick={onNavigate} style={({ isActive }) => linkStyle(isActive)}>{n.label}</NavLink>
         ))}
       </nav>
       <div style={{ padding: '12px 8px', borderTop: '1px solid #f0f0f0' }}>
@@ -80,9 +85,35 @@ export function Sidebar() {
 }
 
 export function Layout() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  const closeSidebar = () => setIsSidebarOpen(false)
+
   return (
     <div className="app">
-      <Sidebar />
+      {/* Barra superior mobile: só aparece abaixo de 768px via CSS */}
+      <div className="mobile-topbar">
+        <button
+          className="hamburger-btn"
+          aria-label="Abrir menu"
+          onClick={() => setIsSidebarOpen(true)}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+        <img src="/logo.png" alt="Confina+" style={{ height: 32, objectFit: 'contain' }} />
+        <div style={{ width: 40 }} />
+      </div>
+
+      {/* Fundo escurecido ao abrir o menu no mobile */}
+      <div
+        className={`sidebar-backdrop${isSidebarOpen ? ' open' : ''}`}
+        onClick={closeSidebar}
+      />
+
+      <Sidebar isOpen={isSidebarOpen} onNavigate={closeSidebar} />
+
       <main className="main"><Outlet /></main>
     </div>
   )
