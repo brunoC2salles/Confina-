@@ -150,18 +150,7 @@ tbody tr:hover td { background: var(--gray-50); }
   .page { padding: 16px; }
 }
 
-/* ─── Impressão (nota de venda, relatórios) ────────────────────────────────
-   Qualquer conteúdo dentro de .print-area fica visível na impressão;
-   todo o resto do app (sidebar, botões, abas) é ocultado. */
-.print-area { display: none; }
-
-@media print {
-  body * { visibility: hidden; }
-  .print-area, .print-area * { visibility: visible; }
-  .print-area { display: block; position: absolute; top: 0; left: 0; width: 100%; padding: 24px; }
-  .no-print { display: none !important; }
-
-  /* ─── Sidebar retrátil (mobile) ─────────────────────────────────────────── */
+/* ─── Sidebar retrátil (mobile) ────────────────────────────────────────── */
 .mobile-topbar { display: none; }
 .hamburger-btn { display: none; }
 .sidebar-backdrop { display: none; }
@@ -177,7 +166,7 @@ tbody tr:hover td { background: var(--gray-50); }
 }
 
 @media (max-width: 768px) {
-  .app { flex-direction: column; position: relative; }
+  .app { flex-direction: column; position: relative; height: 100vh; overflow: hidden; }
 
   .mobile-topbar {
     display: flex; align-items: center; justify-content: space-between;
@@ -199,5 +188,17 @@ tbody tr:hover td { background: var(--gray-50); }
     background: rgba(0,0,0,0.4); z-index: 1100;
   }
 
-  .main { width: 100%; overflow-x: hidden; }
+  .main { width: 100%; overflow-x: hidden; overflow-y: auto; flex: 1; }
+}
+
+/* ─── Impressão (nota de venda, relatórios) ────────────────────────────────
+   Qualquer conteúdo dentro de .print-area fica visível na impressão;
+   todo o resto do app (sidebar, botões, abas) é ocultado. */
+.print-area { display: none; }
+
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { display: block; position: absolute; top: 0; left: 0; width: 100%; padding: 24px; }
+  .no-print { display: none !important; }
 }
