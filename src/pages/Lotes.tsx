@@ -1588,7 +1588,7 @@ function ModalCustosOperacionais({
                 <input className="form-input" type="date" value={data} onChange={e => setData(e.target.value)} />
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
               <div className="form-group">
                 <label className="form-label">Descrição (opcional)</label>
                 <input className="form-input" value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Ex: Vacina aftosa" />

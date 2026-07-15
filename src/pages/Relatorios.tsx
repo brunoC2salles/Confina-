@@ -128,13 +128,13 @@ export default function Relatorios() {
     <div className="page">
       <PageHeader title="Relatórios" subtitle="Consolidado financeiro por período"
         action={
-          <div style={{ display:'flex', gap:8 }} className="no-print">
+          <div style={{ display:'flex', gap:8, flexWrap: 'wrap' }} className="no-print">
             <button className="btn btn-ghost" onClick={exportCSV} disabled={!resumo}>Exportar CSV</button>
             <button className="btn btn-primary" onClick={() => window.print()} disabled={!resumo}>Exportar PDF</button>
           </div>
         }/>
 
-      <div className="no-print" style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:24 }}>
+      <div className="no-print" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(96px, 1fr))', gap:8, marginBottom:24 }}>
         {(Object.keys(diasPeriodo) as Periodo[]).map(p => (
           <button key={p} onClick={() => setPeriodo(p)}
             style={{ padding:'10px 8px', border:'1px solid', borderRadius:8, cursor:'pointer', textAlign:'center', background: periodo===p?'#e8f5e9':'#fff', borderColor: periodo===p?'#a5d6a7':'#e0e0e0', fontSize:12, fontWeight: periodo===p?500:400, color: periodo===p?'#1b5e20':'#555', fontFamily:'inherit', textTransform:'capitalize' }}>
@@ -168,7 +168,7 @@ export default function Relatorios() {
         </div>
       ) : (
         <>
-          <div className="no-print" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+          <div className="no-print" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:16 }}>
             <div className="card">
               <div style={{ fontWeight:600, marginBottom:14 }}>Receitas</div>
               <Row label="Venda de animais (com bônus)" value={fmt(resumo.receita_bruta)}/>
@@ -203,7 +203,7 @@ export default function Relatorios() {
           {(resumo.custo_pastagem > 0 || resumo.ganho_pastagem > 0) && (
             <div className="no-print card" style={{ marginTop: 16 }}>
               <div style={{ fontWeight: 600, marginBottom: 14 }}>Pastagem x Confinamento no período</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
                 <div>
                   <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 4 }}>Pastagem</div>
                   <Row label="Custo" value={fmt(resumo.custo_pastagem)} />

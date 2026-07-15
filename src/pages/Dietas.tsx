@@ -320,9 +320,9 @@ export default function Dietas() {
               action={<button className="btn btn-primary" onClick={() => { setForm(emptyForm()); setShowNova(true) }}>Criar dieta</button>} />
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 12 }}>
             {dietas.map(d => (
-              <div key={d.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div key={d.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
                 <div className="flex-between">
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 600 }}>{d.nome}</div>
@@ -331,9 +331,9 @@ export default function Dietas() {
                       {d.gmd_esperado ? ` · GMD est. ${d.gmd_esperado} kg/dia` : ''}
                     </div>
                   </div>
-                  {d.baseada_em && <span style={{ fontSize: 10, background: '#e8f5e9', color: '#2e7d32', padding: '2px 8px', borderRadius: 20, border: '1px solid #a5d6a7' }}>Template</span>}
+                  {d.baseada_em && <span style={{ fontSize: 10, background: '#e8f5e9', color: '#2e7d32', padding: '2px 8px', borderRadius: 20, border: '1px solid #a5d6a7', flexShrink: 0 }}>Template</span>}
                 </div>
-                <div style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--gray-500)' }}>
+                <div style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--gray-500)', flexWrap: 'wrap' }}>
                   <span>Consumo: <strong>{d.pct_consumo_pv_ms}% PV</strong></span>
                   <span>|</span>
                   <span>{d.pct_concentrado}% conc · {d.pct_volumoso}% vol</span>
@@ -349,7 +349,7 @@ export default function Dietas() {
                   </div>
                 )}
                 {d.descricao && <div style={{ fontSize: 12, color: '#737370', lineHeight: 1.5 }}>{d.descricao}</div>}
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center' }}
                     onClick={() => setShowDetalhe(d.id)}>Ver detalhes</button>
                   <button className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center' }}
@@ -370,9 +370,9 @@ export default function Dietas() {
               desc="O administrador ainda não criou templates base." />
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 12 }}>
             {dietasBase.map(db => (
-              <div key={db.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div key={db.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 600 }}>{db.nome}</div>
                   <div style={{ fontSize: 11, color: '#9e9e9e', marginTop: 2 }}>
@@ -522,13 +522,13 @@ export default function Dietas() {
               <div style={{ fontSize: 12, fontWeight: 500, color: '#2e7d32', marginBottom: 8 }}>
                 Simulação de custo — custo total: <strong>{fmt(custoKgMsTotal)}/kg MS</strong>
               </div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 120px', minWidth: 100 }}>
                   <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Peso médio (kg)</label>
                   <input className="form-input" type="number" value={simPeso}
                     onChange={e => setSimPeso(e.target.value)} style={{ marginTop: 2 }} />
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: '1 1 120px', minWidth: 100 }}>
                   <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Qtd animais</label>
                   <input className="form-input" type="number" value={simQtd}
                     onChange={e => setSimQtd(e.target.value)} style={{ marginTop: 2 }} />
@@ -572,6 +572,9 @@ export default function Dietas() {
 }
 
 // ─── Sub-componente: seção de ingredientes ────────────────────────────────────
+// Layout responsivo: cada campo é um bloco flex com rótulo próprio. Em telas
+// estreitas, os blocos quebram de linha automaticamente (flex-wrap) — sem
+// depender de grid fixo nem de breakpoint específico.
 
 function SecaoIngredientes({
   titulo, tipo, componentes, dispPorCategoria, dispPorKey, soma, custoKgMs,
@@ -594,6 +597,8 @@ function SecaoIngredientes({
 
   const jaAdicionados = new Set(doTipo.map(x => x.c._key))
 
+  const fieldLabelStyle: React.CSSProperties = { fontSize: 10, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2, display: 'block' }
+
   return (
     <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
       <div className="flex-between" style={{ marginBottom: 10 }}>
@@ -608,43 +613,45 @@ function SecaoIngredientes({
           Nenhum ingrediente. Adicione abaixo.
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 80px 80px 100px 28px', gap: 6, fontSize: 10, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 4px' }}>
-            <div>Ingrediente</div>
-            <div>% Part.</div>
-            <div>% MS</div>
-            <div>R$/kg MN</div>
-            <div />
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {doTipo.map(({ c, idx }) => {
             const disp = dispPorKey[c._key]
             const pctMsBase = disp?.pct_ms ?? c._pct_ms_base
             const pctMsAtual = c.pct_ms_manual ?? pctMsBase
             const precisaManual = pctMsBase == null || pctMsBase <= 0
             return (
-              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.4fr 80px 80px 100px 28px', gap: 6, alignItems: 'center' }}>
-                <div style={{ fontSize: 13 }}>
-                  <div style={{ fontWeight: 500 }}>{c._nome}</div>
+              <div key={idx} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end', padding: '8px 8px 10px', background: 'var(--gray-50)', borderRadius: 8 }}>
+                <div style={{ flex: '1 1 130px', minWidth: 110 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, overflowWrap: 'break-word' }}>{c._nome}</div>
                   <div style={{ fontSize: 10, color: 'var(--gray-400)' }}>
                     {categoriaLabel[c._categoria] ?? c._categoria}
                     {c.origem_ingrediente === 'ingrediente_produtor' && ' · próprio'}
                   </div>
                 </div>
-                <input className="form-input" type="number" step="0.1"
-                  value={c.pct_participacao || ''}
-                  onChange={e => onUpdate(idx, { pct_participacao: Number(e.target.value) })}
-                  style={{ fontSize: 13 }} placeholder="0" />
-                <input className="form-input" type="number" step="0.1"
-                  value={pctMsAtual ?? ''}
-                  onChange={e => onUpdate(idx, { pct_ms_manual: e.target.value ? Number(e.target.value) : null })}
-                  style={{ fontSize: 13, background: precisaManual ? '#fff8e1' : undefined }}
-                  placeholder={precisaManual ? 'preencha' : ''} />
-                <input className="form-input" type="number" step="0.0001"
-                  value={c.preco_kg || ''}
-                  onChange={e => onUpdate(idx, { preco_kg: Number(e.target.value) })}
-                  style={{ fontSize: 13 }} placeholder="0" />
+                <div style={{ flex: '0 1 76px', minWidth: 68 }}>
+                  <label style={fieldLabelStyle}>% Part.</label>
+                  <input className="form-input" type="number" step="0.1"
+                    value={c.pct_participacao || ''}
+                    onChange={e => onUpdate(idx, { pct_participacao: Number(e.target.value) })}
+                    style={{ fontSize: 13 }} placeholder="0" />
+                </div>
+                <div style={{ flex: '0 1 76px', minWidth: 68 }}>
+                  <label style={fieldLabelStyle}>% MS</label>
+                  <input className="form-input" type="number" step="0.1"
+                    value={pctMsAtual ?? ''}
+                    onChange={e => onUpdate(idx, { pct_ms_manual: e.target.value ? Number(e.target.value) : null })}
+                    style={{ fontSize: 13, background: precisaManual ? '#fff8e1' : undefined }}
+                    placeholder={precisaManual ? 'preencha' : ''} />
+                </div>
+                <div style={{ flex: '0 1 90px', minWidth: 78 }}>
+                  <label style={fieldLabelStyle}>R$/kg MN</label>
+                  <input className="form-input" type="number" step="0.0001"
+                    value={c.preco_kg || ''}
+                    onChange={e => onUpdate(idx, { preco_kg: Number(e.target.value) })}
+                    style={{ fontSize: 13 }} placeholder="0" />
+                </div>
                 <button type="button" onClick={() => onRemove(idx)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 18 }}>×</button>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 18, padding: '0 2px 6px', flexShrink: 0 }}>×</button>
               </div>
             )
           })}
@@ -764,13 +771,13 @@ function ModalDetalhe({
 
       <div style={{ background: 'var(--green-bg)', borderRadius: 8, padding: '12px 14px' }}>
         <div style={{ fontSize: 12, fontWeight: 500, color: '#2e7d32', marginBottom: 8 }}>Simulação de custo</div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-          <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 120px', minWidth: 100 }}>
             <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Peso médio (kg)</label>
             <input className="form-input" type="number" value={simPeso}
               onChange={e => setSimPeso(e.target.value)} style={{ marginTop: 2 }} />
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: '1 1 120px', minWidth: 100 }}>
             <label style={{ fontSize: 11, color: 'var(--gray-500)' }}>Qtd animais</label>
             <input className="form-input" type="number" value={simQtd}
               onChange={e => setSimQtd(e.target.value)} style={{ marginTop: 2 }} />
