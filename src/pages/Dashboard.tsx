@@ -121,14 +121,14 @@ export default function Dashboard() {
       </div>
 
       <div style={{ fontSize: 10, color: '#bdbdbd', letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: 10 }}>Ações rápidas</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 24 }}>
         {acoes.map(a => (
           <button key={a.label} onClick={() => navigate(a.rota)}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: 16, background: '#fff', border: '1px solid #f0f0f0', borderRadius: 12, textAlign: 'left', transition: 'all 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', fontFamily: 'inherit' }}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: 16, background: '#fff', border: '1px solid #f0f0f0', borderRadius: 12, textAlign: 'left', transition: 'all 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', fontFamily: 'inherit', minWidth: 0 }}
             onMouseOver={e => { e.currentTarget.style.borderColor = '#a5d6a7'; e.currentTarget.style.background = '#f9fef9' }}
             onMouseOut={e => { e.currentTarget.style.borderColor = '#f0f0f0'; e.currentTarget.style.background = '#fff' }}>
-            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#e8f5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: '#2e7d32', fontWeight: 700, lineHeight: 1 }}>+</div>
-            <div>
+            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#e8f5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: '#2e7d32', fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>+</div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{a.label}</div>
               <div style={{ fontSize: 11, color: '#9e9e9e', marginTop: 2 }}>{a.sub}</div>
             </div>
@@ -139,29 +139,29 @@ export default function Dashboard() {
       {erroMetricas && <ErroCard msg={erroMetricas} />}
 
       {!loadMetricas && cardsAtivos.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cardsAtivos.length},1fr)`, gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 24 }}>
           {cardsAtivos.map(m => (
-            <div key={m.label} style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0' }}>
+            <div key={m.label} style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0', minWidth: 0 }}>
               <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>{m.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 600 }}>{m.value}</div>
+              <div style={{ fontSize: 22, fontWeight: 600, overflowWrap: 'break-word' }}>{m.value}</div>
             </div>
           ))}
         </div>
       )}
 
       {!loadMetricas && metricas.qtdVendidos > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
-          <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
+          <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0', minWidth: 0 }}>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>Receita líquida acumulada</div>
-            <div style={{ fontSize: 20, fontWeight: 600 }}>{fmt(metricas.receitaTotal)}</div>
+            <div style={{ fontSize: 20, fontWeight: 600, overflowWrap: 'break-word' }}>{fmt(metricas.receitaTotal)}</div>
           </div>
-          <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0' }}>
+          <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0', minWidth: 0 }}>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>Custo total acumulado</div>
-            <div style={{ fontSize: 20, fontWeight: 600, color: '#b91c1c' }}>{fmt(metricas.custoTotal)}</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: '#b91c1c', overflowWrap: 'break-word' }}>{fmt(metricas.custoTotal)}</div>
           </div>
-          <div style={{ background: metricas.lucroTotal >= 0 ? '#e8f5e9' : '#ffebee', borderRadius: 10, padding: 16, border: `1px solid ${metricas.lucroTotal >= 0 ? '#a5d6a7' : '#ffcdd2'}` }}>
+          <div style={{ background: metricas.lucroTotal >= 0 ? '#e8f5e9' : '#ffebee', borderRadius: 10, padding: 16, border: `1px solid ${metricas.lucroTotal >= 0 ? '#a5d6a7' : '#ffcdd2'}`, minWidth: 0 }}>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>Lucro líquido — {metricas.qtdVendidos} animal(is) vendido(s)</div>
-            <div style={{ fontSize: 20, fontWeight: 600, color: metricas.lucroTotal >= 0 ? '#1b5e20' : '#b91c1c' }}>{fmt(metricas.lucroTotal)}</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: metricas.lucroTotal >= 0 ? '#1b5e20' : '#b91c1c', overflowWrap: 'break-word' }}>{fmt(metricas.lucroTotal)}</div>
           </div>
         </div>
       )}
@@ -169,15 +169,15 @@ export default function Dashboard() {
       {/* Só aparece se houver animais vendidos que passaram por algum ciclo
           marcado como pastagem — senão a quebra fica sempre zerada e é ruído. */}
       {!loadMetricas && (metricas.custoPastagemTotal > 0 || metricas.ganhoPastagemTotal > 0) && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
-          <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
+          <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0', minWidth: 0 }}>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>Pastagem — custo e ganho (vendidos)</div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{fmt(metricas.custoPastagemTotal)}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, overflowWrap: 'break-word' }}>{fmt(metricas.custoPastagemTotal)}</div>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginTop: 2 }}>{fmtNum(metricas.ganhoPastagemTotal, 0)} kg ganhos</div>
           </div>
-          <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0' }}>
+          <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0', minWidth: 0 }}>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>Confinamento — custo e ganho (vendidos)</div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{fmt(metricas.custoConfinamentoTotal)}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, overflowWrap: 'break-word' }}>{fmt(metricas.custoConfinamentoTotal)}</div>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginTop: 2 }}>{fmtNum(metricas.ganhoConfinamentoTotal, 0)} kg ganhos</div>
           </div>
         </div>
