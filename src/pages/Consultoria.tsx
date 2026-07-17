@@ -165,7 +165,7 @@ export default function Consultoria() {
         <h2 className="cons-section-title">Sobre o especialista</h2>
         <div className="cons-especialista-conteudo">
           <h3>Ricardo Schuch</h3>
-          <p className="cons-especialista-local">Fazenda Dona Lucy II, São Gabriel (RS)</p>
+          <p className="cons-especialista-local">São Gabriel (RS)</p>
           <ul className="cons-lista">
             <li>Engenheiro Agrônomo pela Universidade Federal de Santa Maria (2013)</li>
             <li>Pós-graduado em Gestão e Administração de Empresas pela FGV (2015)</li>
