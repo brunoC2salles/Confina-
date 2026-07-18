@@ -71,7 +71,7 @@ export default function Login() {
         setSuccess(`Conta criada! Levando você pro checkout do plano ${PLANO_LABEL[planoEscolhido]}...`)
         const res = await assinar(PRICE_IDS[planoEscolhido])
         if (res.error) {
-          setError(`Conta criada, mas não consegui abrir o checkout: ${res.error}. Você pode assinar depois em Configurações → Conta.`)
+          setError(`Conta criada, mas não consegui abrir o checkout: ${res.error}. Você pode assinar depois em Configurações, aba Conta.`)
           setLoading(false)
           navigate('/')
         }

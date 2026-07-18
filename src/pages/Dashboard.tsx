@@ -107,7 +107,7 @@ export default function Dashboard() {
       {upgrade === 'cancelado' && (
         <Modal open onClose={() => setSearchParams(p => { p.delete('upgrade'); return p })} title="Assinatura não concluída">
           <div style={{ padding: '4px 0 16px', fontSize: 14, color: 'var(--gray-500)' }}>
-            Nenhuma cobrança foi feita. Quando quiser, é só tentar de novo em Configurações → Conta.
+            Nenhuma cobrança foi feita. Quando quiser, é só tentar de novo em Configurações, aba Conta.
           </div>
           <button className="btn btn-primary" onClick={() => setSearchParams(p => { p.delete('upgrade'); return p })}>
             Fechar
