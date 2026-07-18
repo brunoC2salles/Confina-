@@ -23,8 +23,12 @@ export const projetarPeso = (pi: number, gmd: number, dias: number) =>
 export const diasParaPeso = (atual: number, alvo: number, gmd: number) =>
   gmd > 0 ? Math.ceil((alvo - atual) / gmd) : 0
 
+// Fonte única do rendimento de carcaça padrão (em %), usado quando o peso
+// não cai em nenhuma faixa configurada pelo produtor.
+export const RENDIMENTO_PADRAO_PCT = 54
+
 export const obterRendimento = (peso: number, faixas: RendimentoFaixa[]) =>
-  faixas.find(f => peso >= f.peso_min && peso <= f.peso_max)?.rendimento_percentual ?? 54
+  faixas.find(f => peso >= f.peso_min && peso <= f.peso_max)?.rendimento_percentual ?? RENDIMENTO_PADRAO_PCT
 
 export const obterBonus = (peso: number, faixas: BonusFaixa[]) =>
   faixas.find(f => peso >= f.peso_min && peso <= f.peso_max)?.bonus_por_kg ?? 0
