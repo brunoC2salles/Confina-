@@ -10,7 +10,7 @@
 //   STRIPE_SECRET_KEY
 //   STRIPE_WEBHOOK_SECRET   (gerado ao criar o endpoint no painel do Stripe)
 //
-// Configurar no painel do Stripe (Developers → Webhooks) um endpoint
+// Configurar no painel do Stripe (Developers, Webhooks) um endpoint
 // apontando pra URL desta function, escutando os eventos:
 //   checkout.session.completed
 //   customer.subscription.updated
