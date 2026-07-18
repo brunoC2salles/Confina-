@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { RENDIMENTO_PADRAO_PCT } from '@/lib/calculations'
 
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ const ARROBA_KG = 15
 
 function getRendimento(peso: number, faixas: InputProjecao['faixas_rendimento']): number {
   const f = faixas.find(f => peso >= f.peso_min && peso <= f.peso_max)
-  return f ? f.rendimento_pct / 100 : 0.54
+  return f ? f.rendimento_pct / 100 : RENDIMENTO_PADRAO_PCT / 100
 }
 
 function getBonus(peso: number, faixas: InputProjecao['faixas_bonus']): number {

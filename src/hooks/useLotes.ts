@@ -13,6 +13,7 @@ import {
   type PeriodoLote, type CicloInfo, type DietaInfo, type ResultadoAnimalNaData, type CustoOperacionalInfo,
 } from '@/lib/custoAnimal'
 import { obterRendimento, obterBonus } from '@/lib/calculations'
+import { LIMITE_LOTES_ATIVOS, type Plano } from '@/hooks/useAssinatura'
 
 // ─── Tipos de entrada ───────────────────────────────────────────────────────────
 
@@ -179,14 +180,13 @@ export function useLotes() {
     // ou por essa mesma função ser chamada logo após um upgrade.
     const { data: profileData } = await supabase
       .from('profiles').select('plano, plano_status').eq('id', user.id).single()
-    const planoEfetivo = (profileData?.plano_status === 'ativo' ? profileData?.plano : 'free') ?? 'free'
-    const LIMITES: Record<string, number> = { free: 5, pro: 20, master: Infinity }
-    const limite = LIMITES[planoEfetivo] ?? 5
+    const planoEfetivo = ((profileData?.plano_status === 'ativo' ? profileData?.plano : 'free') ?? 'free') as Plano
+    const limite = LIMITE_LOTES_ATIVOS[planoEfetivo] ?? LIMITE_LOTES_ATIVOS.free
     if (Number.isFinite(limite)) {
       const { count } = await supabase
         .from('lotes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'ativo')
       if ((count ?? 0) >= limite) {
-        return { error: `Seu plano (${planoEfetivo}) permite até ${limite} lotes ativos. Encerre um lote existente ou faça upgrade em Configurações → Conta.` }
+        return { error: `Seu plano (${planoEfetivo}) permite até ${limite} lotes ativos. Encerre um lote existente ou faça upgrade em Configurações, aba Conta.` }
       }
     }
 
