@@ -76,6 +76,7 @@ export default function Consultoria() {
               </tbody>
             </table>
             <p className="cons-nota">Investimento no período de 30 dias.</p>
+            <p className="cons-nota">Vagas limitadas. Sujeito à lista de espera.</p>
 
             <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_PRODUTO_1)} target="_blank" rel="noreferrer">
               Quero esse plano
@@ -115,6 +116,7 @@ export default function Consultoria() {
             </table>
             <p className="cons-nota">Investimento no período de 12 meses.</p>
             <p className="cons-nota">Contrato de 12 meses</p>
+            <p className="cons-nota">Vagas limitadas. Sujeito à lista de espera.</p>
 
             <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_PRODUTO_2)} target="_blank" rel="noreferrer">
               Quero esse plano
@@ -128,7 +130,7 @@ export default function Consultoria() {
             <ul className="cons-lista">
               <li>Visita do especialista à propriedade do cliente para análise geral de parâmetros</li>
               <li>Geração de relatório de análise</li>
-              <li>Duração: 2 turnos (dia a combinar)</li>
+              <li>Duração: 1 turno (dia a combinar)</li>
             </ul>
 
             <p className="cons-explicacao-gdia">
@@ -146,6 +148,7 @@ export default function Consultoria() {
               </tbody>
             </table>
             <p className="cons-nota">Investimento no período de 30 dias.</p>
+            <p className="cons-nota">Vagas limitadas. Sujeito à lista de espera.</p>
 
             <a className="cons-btn cons-btn-primary" href={linkWhatsApp(MSG_PRODUTO_3)} target="_blank" rel="noreferrer">
               Quero essa visita
@@ -156,7 +159,8 @@ export default function Consultoria() {
         <div className="cons-observacoes">
           <p>Produto 1 é parcelável em até 6x sem juros.</p>
           <p>15% de desconto na Consultoria de Implementação (Produto 2) para quem já contratou o Produto 1.</p>
-          <p>Todos os produtos estão sujeitos a lista de espera conforme o período do ano.</p>
+          <p>Preços válidos para o Rio Grande do Sul. Para o restante do Brasil, consulte-nos.</p>
+          <p>Os valores não incluem deslocamento e hospedagem, quando necessários.</p>
         </div>
       </section>
 
@@ -165,7 +169,7 @@ export default function Consultoria() {
         <h2 className="cons-section-title">Sobre o especialista</h2>
         <div className="cons-especialista-conteudo">
           <h3>Ricardo Schuch</h3>
-          <p className="cons-especialista-local">São Gabriel (RS)</p>
+          <p className="cons-especialista-local">Fazenda Dona Lucy II, São Gabriel (RS)</p>
           <ul className="cons-lista">
             <li>Engenheiro Agrônomo pela Universidade Federal de Santa Maria (2013)</li>
             <li>Pós-graduado em Gestão e Administração de Empresas pela FGV (2015)</li>
