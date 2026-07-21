@@ -57,6 +57,9 @@ export interface Dieta {
   pct_concentrado: number
   pct_volumoso: number
   custo_kg_ms: number | null
+  custo_manual_ativo: boolean
+  custo_manual_valor: number | null
+  custo_manual_unidade: 'kg' | 'ton' | null
   user_id: string
   componentes?: ComponenteDieta[]
 }
@@ -203,6 +206,9 @@ export function useDietas() {
     pct_consumo_pv_ms: number
     pct_concentrado: number
     pct_volumoso: number
+    custo_manual_ativo?: boolean
+    custo_manual_valor?: number | null
+    custo_manual_unidade?: 'kg' | 'ton' | null
     componentes: Array<Omit<ComponenteDieta, 'id' | 'dieta_id' | 'insumo' | 'ingrediente_produtor'>>
   }) => {
     if (!user) return { error: 'Não autenticado' }
@@ -233,6 +239,9 @@ export function useDietas() {
       pct_concentrado: input.pct_concentrado,
       pct_volumoso: input.pct_volumoso,
       custo_kg_ms,
+      custo_manual_ativo: input.custo_manual_ativo ?? false,
+      custo_manual_valor: input.custo_manual_ativo ? (input.custo_manual_valor ?? null) : null,
+      custo_manual_unidade: input.custo_manual_ativo ? (input.custo_manual_unidade ?? null) : null,
       user_id: user.id,
     }).select().single()
     if (e1) return { error: e1.message }
@@ -266,6 +275,9 @@ export function useDietas() {
     pct_consumo_pv_ms: number
     pct_concentrado: number
     pct_volumoso: number
+    custo_manual_ativo?: boolean
+    custo_manual_valor?: number | null
+    custo_manual_unidade?: 'kg' | 'ton' | null
     componentes: Array<Omit<ComponenteDieta, 'id' | 'dieta_id' | 'insumo' | 'ingrediente_produtor'>>
   }) => {
     if (!user) return { error: 'Não autenticado' }
@@ -295,6 +307,9 @@ export function useDietas() {
       pct_concentrado: input.pct_concentrado,
       pct_volumoso: input.pct_volumoso,
       custo_kg_ms,
+      custo_manual_ativo: input.custo_manual_ativo ?? false,
+      custo_manual_valor: input.custo_manual_ativo ? (input.custo_manual_valor ?? null) : null,
+      custo_manual_unidade: input.custo_manual_ativo ? (input.custo_manual_unidade ?? null) : null,
     }).eq('id', id)
     if (e1) return { error: e1.message }
 
