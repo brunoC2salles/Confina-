@@ -5,7 +5,9 @@
 //  - histórico de pesagens reais (reinicia a base de projeção quando existe)
 //  - os lotes por onde o animal passou (via movimentacoes_animais)
 //  - os ciclos de cada lote nesse período (dieta e GMD esperado vigentes)
-//  - o custo por kg de MS vigente em cada dieta na data (dietas_historico_custo)
+//  - o custo por kg de MS vigente em cada dieta na data (dietas_historico_custo),
+//    OU o custo manual da dieta (custo_manual_ativo/custo_manual_valor), quando
+//    o produtor optar por informar um preço geral em vez de custear por insumo
 //  - custos operacionais lançados no lote (sanitário, maquinário, mão de obra,
 //    medicamentos, outros), rateados igualmente entre os animais que estavam
 //    ativos NAQUELE LOTE na data exata do lançamento (rateio histórico — se
@@ -41,6 +43,13 @@ export interface HistoricoCustoPonto {
 export interface DietaInfo {
   pct_consumo_pv_ms: number | null
   historico: HistoricoCustoPonto[]
+  // ─── Custo manual (opcional) ────────────────────────────────────────────────
+  // Quando custoManualAtivo = true, o custo por kg de MS do dia usa
+  // custoManualValorPorKg em vez de custoVigenteNoDia(historico). O valor aqui
+  // já deve vir CONVERTIDO PARA R$/KG pelo chamador (ex.: se o produtor
+  // cadastrou custo_manual_unidade = 'ton', dividir por 1000 antes de passar).
+  custoManualAtivo?: boolean
+  custoManualValorPorKg?: number | null
 }
 
 export interface PesagemPonto {
@@ -149,6 +158,15 @@ function custoVigenteNoDia(dia: number, historico: HistoricoCustoPonto[]): numbe
   return null
 }
 
+// Resolve o custo por kg de MS do dia: usa o valor manual da dieta quando
+// ativado; caso contrário, usa o histórico de custo vigente na data.
+function resolverCustoKgMsNoDia(dia: number, dietaInfo: DietaInfo): number | null {
+  if (dietaInfo.custoManualAtivo) {
+    return dietaInfo.custoManualValorPorKg ?? null
+  }
+  return custoVigenteNoDia(dia, dietaInfo.historico)
+}
+
 // ─── Cálculo principal ──────────────────────────────────────────────────────────
 
 export function calcularAnimalNaData(
@@ -222,7 +240,7 @@ export function calcularAnimalNaData(
 
     const dietaInfo = ciclo?.dieta_id ? dietas[ciclo.dieta_id] : undefined
     if (dietaInfo?.pct_consumo_pv_ms != null) {
-      const custoKgMs = custoVigenteNoDia(dia, dietaInfo.historico)
+      const custoKgMs = resolverCustoKgMsNoDia(dia, dietaInfo)
       if (custoKgMs != null) {
         const custoHoje = peso * (dietaInfo.pct_consumo_pv_ms / 100) * custoKgMs
         custoAlimentacao += custoHoje
