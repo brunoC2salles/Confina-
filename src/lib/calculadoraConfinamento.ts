@@ -35,7 +35,7 @@ export interface CalculadoraResultado {
 }
 
 // ── Regras de negócio 2026 ──────────────────────────────────────────────
-const AREA_RECOMENDADA_POR_ANIMAL = 80        // m²
+const AREA_RECOMENDADA_POR_ANIMAL = 200       // m²
 const CAPACIDADE_POR_COCHO = 80               // animais por cocho de 8m (16m de bandeja / 0,20m)
 const METRO_LINEAR_COCHO_POR_ANIMAL = 0.20    // m
 const METRO_LINEAR_BEBEDOURO_POR_ANIMAL = 0.03 // m
