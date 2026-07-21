@@ -660,14 +660,31 @@ export function useCustoEngine() {
       const dietaIds = Array.from(new Set(ciclos.map(c => c.dieta_id).filter((x): x is string => !!x)))
       if (dietaIds.length > 0) {
         const [{ data: dietasData }, { data: historicoData }] = await Promise.all([
-          supabase.from('dietas').select('id, pct_consumo_pv_ms').in('id', dietaIds),
+          supabase.from('dietas').select('id, pct_consumo_pv_ms, custo_manual_ativo, custo_manual_valor, custo_manual_unidade').in('id', dietaIds),
           supabase.from('dietas_historico_custo').select('dieta_id, custo_kg_ms, vigente_desde, vigente_ate').in('dieta_id', dietaIds),
         ])
-        for (const d of (dietasData ?? []) as Array<{ id: string; pct_consumo_pv_ms: number | null }>) {
-          dietas[d.id] = { pct_consumo_pv_ms: d.pct_consumo_pv_ms, historico: [] }
+        for (const d of (dietasData ?? []) as Array<{
+          id: string
+          pct_consumo_pv_ms: number | null
+          custo_manual_ativo: boolean
+          custo_manual_valor: number | null
+          custo_manual_unidade: 'kg' | 'ton' | null
+        }>) {
+          // custo_manual_valor é cadastrado por kg ou por ton (custo_manual_unidade);
+          // o motor de cálculo (custoAnimal.ts) trabalha sempre em R$/kg de MS,
+          // então a conversão ton -> kg acontece aqui, na borda de leitura.
+          const custoManualValorPorKg = d.custo_manual_ativo && d.custo_manual_valor != null
+            ? (d.custo_manual_unidade === 'ton' ? d.custo_manual_valor / 1000 : d.custo_manual_valor)
+            : null
+          dietas[d.id] = {
+            pct_consumo_pv_ms: d.pct_consumo_pv_ms,
+            historico: [],
+            custoManualAtivo: d.custo_manual_ativo,
+            custoManualValorPorKg,
+          }
         }
         for (const h of (historicoData ?? []) as Array<{ dieta_id: string; custo_kg_ms: number | null; vigente_desde: string; vigente_ate: string | null }>) {
-          if (!dietas[h.dieta_id]) dietas[h.dieta_id] = { pct_consumo_pv_ms: null, historico: [] }
+          if (!dietas[h.dieta_id]) dietas[h.dieta_id] = { pct_consumo_pv_ms: null, historico: [], custoManualAtivo: false, custoManualValorPorKg: null }
           dietas[h.dieta_id].historico.push({ custo_kg_ms: h.custo_kg_ms, vigente_desde: h.vigente_desde, vigente_ate: h.vigente_ate })
         }
         for (const d of Object.values(dietas)) {
