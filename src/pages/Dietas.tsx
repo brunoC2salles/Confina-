@@ -35,6 +35,9 @@ interface FormDieta {
   pct_consumo_pv_ms: string
   pct_concentrado: string
   pct_volumoso: string
+  custo_manual_ativo: boolean
+  custo_manual_valor: string
+  custo_manual_unidade: 'kg' | 'ton'
   componentes: CompForm[]
 }
 
@@ -44,6 +47,9 @@ const emptyForm = (): FormDieta => ({
   pct_consumo_pv_ms: '2.2',
   pct_concentrado: '100',
   pct_volumoso: '0',
+  custo_manual_ativo: false,
+  custo_manual_valor: '',
+  custo_manual_unidade: 'ton',
   componentes: [],
 })
 
@@ -97,7 +103,7 @@ export default function Dietas() {
         insumo_id: ing.origem === 'insumo_padrao' ? ing.id : null,
         ingrediente_produtor_id: ing.origem === 'ingrediente_produtor' ? ing.id : null,
         pct_participacao: 0,
-        preco_kg: 0,
+        preco_kg: ing.preco_kg_padrao ?? 0,
         pct_ms_manual: null,
       }],
     }))
@@ -127,10 +133,26 @@ export default function Dietas() {
         insumo_id: ing.insumo_id,
         ingrediente_produtor_id: null,
         pct_participacao: ing.pct_participacao ?? 0,
-        preco_kg: 0,
+        // preço default = preço de referência do insumo (ex: preço do PDF/base cadastrada),
+        // o produtor pode editar depois com o que realmente pagou
+        preco_kg: disp?.preco_kg_padrao ?? ing.insumo?.preco_referencia ?? 0,
         pct_ms_manual: null,
       }
     })
+
+    // Se algum ingrediente do template não tem % MS cadastrado, o custo por
+    // ingrediente (que depende de MS) não pode ser calculado — sugerimos ligar
+    // o custo manual já preenchido com a média ponderada dos preços de
+    // referência (equivalente ao custo "as-fed" da ração pronta, ex.: o
+    // R$/ton informado na ficha de balanceamento do nutricionista).
+    const faltaMs = comps.some(c => (c.pct_ms_manual ?? c._pct_ms_base) == null)
+    const custoPorLado = (tipo: 'concentrado' | 'volumoso') =>
+      comps.filter(c => c.tipo === tipo)
+        .reduce((s, c) => s + (Number(c.preco_kg) || 0) * (Number(c.pct_participacao) || 0) / 100, 0)
+    const pctC = db.pct_concentrado ?? 100
+    const pctV = db.pct_volumoso ?? 0
+    const custoAsFedPorKg = custoPorLado('concentrado') * (pctC / 100) + custoPorLado('volumoso') * (pctV / 100)
+
     setForm(f => ({
       ...f,
       baseada_em: db.id,
@@ -141,6 +163,9 @@ export default function Dietas() {
       pct_consumo_pv_ms: db.pct_consumo_pv_ms != null ? String(db.pct_consumo_pv_ms) : f.pct_consumo_pv_ms,
       pct_concentrado: db.pct_concentrado != null ? String(db.pct_concentrado) : f.pct_concentrado,
       pct_volumoso: db.pct_volumoso != null ? String(db.pct_volumoso) : f.pct_volumoso,
+      custo_manual_ativo: faltaMs,
+      custo_manual_valor: faltaMs ? (custoAsFedPorKg * 1000).toFixed(2) : f.custo_manual_valor,
+      custo_manual_unidade: faltaMs ? 'ton' : f.custo_manual_unidade,
       componentes: comps,
     }))
   }, [ingredientesDisponiveis])
@@ -205,9 +230,13 @@ export default function Dietas() {
     for (const c of form.componentes) {
       if (c.pct_participacao <= 0) return `${c._nome}: % participação deve ser > 0`
       if (c.preco_kg < 0) return `${c._nome}: preço inválido`
-      const pctMs = c.pct_ms_manual ?? c._pct_ms_base
-      if (pctMs == null || pctMs <= 0) return `${c._nome}: % MS não informado — preencha no campo "% MS"`
+      if (!form.custo_manual_ativo) {
+        const pctMs = c.pct_ms_manual ?? c._pct_ms_base
+        if (pctMs == null || pctMs <= 0) return `${c._nome}: % MS não informado — preencha no campo "% MS"`
+      }
     }
+    if (form.custo_manual_ativo && (!form.custo_manual_valor || Number(form.custo_manual_valor) <= 0))
+      return 'Informe o custo manual da ração (deve ser maior que zero)'
     return null
   }
 
@@ -229,6 +258,9 @@ export default function Dietas() {
       pct_consumo_pv_ms: Number(form.pct_consumo_pv_ms),
       pct_concentrado: pctConc,
       pct_volumoso: pctVol,
+      custo_manual_ativo: form.custo_manual_ativo,
+      custo_manual_valor: form.custo_manual_ativo ? Number(form.custo_manual_valor) : null,
+      custo_manual_unidade: form.custo_manual_ativo ? form.custo_manual_unidade : null,
       componentes: form.componentes.map(c => ({
         tipo: c.tipo,
         origem_ingrediente: c.origem_ingrediente,
@@ -277,6 +309,9 @@ export default function Dietas() {
       pct_consumo_pv_ms: String(d.pct_consumo_pv_ms),
       pct_concentrado: String(d.pct_concentrado),
       pct_volumoso: String(d.pct_volumoso),
+      custo_manual_ativo: d.custo_manual_ativo ?? false,
+      custo_manual_valor: d.custo_manual_valor != null ? String(d.custo_manual_valor) : '',
+      custo_manual_unidade: d.custo_manual_unidade ?? 'ton',
       componentes: comps,
     })
     setShowEditar(id)
@@ -480,6 +515,36 @@ export default function Dietas() {
             {Math.abs(pctConc + pctVol - 100) > 0.01 && (
               <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 6 }}>
                 Concentrado + Volumoso deve somar 100 (atual: {(pctConc + pctVol).toFixed(1)})
+              </div>
+            )}
+          </div>
+
+          {/* Custo manual (preço geral da ração) */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+              <input type="checkbox" checked={form.custo_manual_ativo}
+                onChange={e => setForm(f => ({ ...f, custo_manual_ativo: e.target.checked }))} />
+              Usar custo manual (preço geral da ração)
+            </label>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4, marginBottom: form.custo_manual_ativo ? 10 : 0 }}>
+              Use quando não tiver o % de Matéria Seca de cada ingrediente. O preço informado passa a valer para a ração inteira, no lugar do cálculo por ingrediente.
+            </div>
+            {form.custo_manual_ativo && (
+              <div className="form-row-2">
+                <div className="form-group">
+                  <label className="form-label">Custo da ração</label>
+                  <input className="form-input" type="number" step="0.01" placeholder="1036.84"
+                    value={form.custo_manual_valor}
+                    onChange={e => setForm(f => ({ ...f, custo_manual_valor: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Unidade</label>
+                  <select className="form-input" value={form.custo_manual_unidade}
+                    onChange={e => setForm(f => ({ ...f, custo_manual_unidade: e.target.value as 'kg' | 'ton' }))}>
+                    <option value="kg">R$ por kg</option>
+                    <option value="ton">R$ por tonelada</option>
+                  </select>
+                </div>
               </div>
             )}
           </div>
