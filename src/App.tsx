@@ -6,6 +6,7 @@ import Login from '@/pages/Login'
 import EsqueciSenha from '@/pages/EsqueciSenha'
 import RedefinirSenha from '@/pages/RedefinirSenha'
 import Dashboard from '@/pages/Dashboard'
+import FazendaHoje from '@/pages/FazendaHoje'
 import Lotes from '@/pages/Lotes'
 import Vendas from '@/pages/Vendas'
 import Ranking from '@/pages/Ranking'
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/redefinir-senha" element={<RedefinirSenha />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
+            <Route path="fazenda-hoje" element={<FazendaHoje />} />
             <Route path="lotes"        element={<Lotes />} />
             <Route path="vendas"       element={<Vendas />} />
             <Route path="ranking"      element={<Ranking />} />
