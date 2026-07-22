@@ -368,32 +368,36 @@ export function useDietas() {
       if (e2) return { error: e2.message }
     }
 
-    // Só versiona se o preço por kg de MS realmente mudou — evita abrir uma
-    // versão nova toda vez que a dieta é salva sem alteração de custo.
-    const precoMudou = custoAntigoKgMs == null || Math.abs(custoAntigoKgMs - custo_kg_ms) > 0.0001
-    if (precoMudou) {
-      if (historicoAberto) {
-        // Já existe uma versão em aberto: fecha ela na data de vigência escolhida.
-        const { error: eFecha } = await supabase.from('dietas_historico_custo')
-          .update({ vigente_ate: input.vigente_desde }).eq('id', historicoAberto.id)
-        if (eFecha) return { error: eFecha.message }
-      } else if (custoAntigoKgMs != null) {
-        // Dieta nunca teve histórico registrado (ex: criada antes desse recurso
-        // existir) — cria uma versão retroativa com o preço antigo, cobrindo
-        // tudo antes da data de vigência escolhida, pra não deixar dias sem
-        // custo de alimentação calculado.
-        const { error: eBackfill } = await supabase.from('dietas_historico_custo').insert({
-          dieta_id: id, custo_kg_ms: custoAntigoKgMs, vigente_desde: '1970-01-01',
-          vigente_ate: input.vigente_desde, user_id: user.id,
-        })
-        if (eBackfill) return { error: eBackfill.message }
-      }
+    // Só versiona se o preço por kg de MS realmente mudou (e existe um valor
+    // numérico pra registrar — evita abrir uma versão nova toda vez que a
+    // dieta é salva sem alteração de custo, ou quando o custo não pôde ser
+    // calculado por falta de % MS de algum ingrediente).
+    if (custo_kg_ms != null) {
+      const precoMudou = custoAntigoKgMs == null || Math.abs(custoAntigoKgMs - custo_kg_ms) > 0.0001
+      if (precoMudou) {
+        if (historicoAberto) {
+          // Já existe uma versão em aberto: fecha ela na data de vigência escolhida.
+          const { error: eFecha } = await supabase.from('dietas_historico_custo')
+            .update({ vigente_ate: input.vigente_desde }).eq('id', historicoAberto.id)
+          if (eFecha) return { error: eFecha.message }
+        } else if (custoAntigoKgMs != null) {
+          // Dieta nunca teve histórico registrado (ex: criada antes desse recurso
+          // existir) — cria uma versão retroativa com o preço antigo, cobrindo
+          // tudo antes da data de vigência escolhida, pra não deixar dias sem
+          // custo de alimentação calculado.
+          const { error: eBackfill } = await supabase.from('dietas_historico_custo').insert({
+            dieta_id: id, custo_kg_ms: custoAntigoKgMs, vigente_desde: '1970-01-01',
+            vigente_ate: input.vigente_desde, user_id: user.id,
+          })
+          if (eBackfill) return { error: eBackfill.message }
+        }
 
-      const { error: eNovo } = await supabase.from('dietas_historico_custo').insert({
-        dieta_id: id, custo_kg_ms, vigente_desde: input.vigente_desde,
-        vigente_ate: null, user_id: user.id,
-      })
-      if (eNovo) return { error: eNovo.message }
+        const { error: eNovo } = await supabase.from('dietas_historico_custo').insert({
+          dieta_id: id, custo_kg_ms, vigente_desde: input.vigente_desde,
+          vigente_ate: null, user_id: user.id,
+        })
+        if (eNovo) return { error: eNovo.message }
+      }
     }
 
     await fetchDietas()
