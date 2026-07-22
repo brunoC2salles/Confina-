@@ -111,6 +111,29 @@ const TIPO_SAIDA_STATUS: Record<SaidaTipo, AnimalStatus> = {
   transferencia: 'transferido', morte: 'morto',
 }
 
+// Gera o código de cada animal (prefixo + brinco) e resolve colisões: como o
+// prefixo do lote agora pode ser vazio ou repetido entre lotes, dois animais
+// podem gerar o mesmo código-base. Quando isso acontece, acrescenta um sufixo
+// numérico ("-2", "-3"...) até ficar único para aquele usuário. Reserva os
+// códigos já atribuídos dentro do próprio lote de chamadas para não colidir
+// entre si também.
+export async function gerarCodigosUnicos(userId: string, prefixo: string, brincos: string[]): Promise<string[]> {
+  const { data: existentesData } = await supabase.from('animais').select('codigo').eq('user_id', userId)
+  const existentes = new Set((existentesData ?? []).map((a: { codigo: string }) => a.codigo))
+
+  return brincos.map(brinco => {
+    const codigoBase = gerarCodigoAnimal(prefixo, brinco)
+    let codigo = codigoBase
+    let n = 2
+    while (existentes.has(codigo)) {
+      codigo = `${codigoBase}-${n}`
+      n++
+    }
+    existentes.add(codigo)
+    return codigo
+  })
+}
+
 // ─── Hook: lotes (lista + CRUD) ────────────────────────────────────────────────
 
 export function useLotes() {
@@ -189,10 +212,6 @@ export function useLotes() {
         return { error: `Seu plano (${planoEfetivo}) permite até ${limite} lotes ativos. Encerre um lote existente ou faça upgrade em Configurações, aba Conta.` }
       }
     }
-
-    const { data: loteExistente } = await supabase
-      .from('lotes').select('id').eq('user_id', user.id).eq('prefixo', input.prefixo).eq('status', 'ativo').maybeSingle()
-    if (loteExistente) return { error: `Já existe um lote ativo usando o prefixo "${input.prefixo}"` }
 
     const { data: lote, error: e1 } = await supabase.from('lotes').insert({
       nome_lote: input.nome_lote,
@@ -391,8 +410,9 @@ export function useLotes() {
     }).select().single()
     if (eCompra) return { error: eCompra.message }
 
-    const rows = input.linhas.map(l => ({
-      codigo: gerarCodigoAnimal(lote.prefixo, l.brinco),
+    const codigos = await gerarCodigosUnicos(user.id, lote.prefixo, input.linhas.map(l => l.brinco))
+    const rows = input.linhas.map((l, i) => ({
+      codigo: codigos[i],
       brinco: l.brinco,
       peso_entrada: l.peso,
       data_entrada: input.data_entrada,

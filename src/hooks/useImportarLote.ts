@@ -2,8 +2,7 @@ import { useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import { useLotes, useVendas, type CicloInput, type RegistrarVendaInput } from './useLotes'
-import { gerarCodigoAnimal } from '@/lib/custoAnimal'
+import { useLotes, useVendas, gerarCodigosUnicos, type CicloInput, type RegistrarVendaInput } from './useLotes'
 import type { Dieta } from './useDietas'
 import type { TipoCiclo, CategoriaCustoOperacional } from '@/types'
 
@@ -87,7 +86,6 @@ export function useImportarLote() {
 
       const loteRow = linhasLote[0] ?? {}
       if (!loteRow.nome_lote) errors.push({ aba: 'Lote', linha: 2, mensagem: 'nome_lote é obrigatório' })
-      if (!loteRow.prefixo) errors.push({ aba: 'Lote', linha: 2, mensagem: 'prefixo é obrigatório' })
       const dataCriacao = paraDataStr(loteRow.data_criacao)
       if (!dataCriacao) errors.push({ aba: 'Lote', linha: 2, mensagem: 'data_criacao inválida ou ausente (use AAAA-MM-DD)' })
 
@@ -224,7 +222,7 @@ export function useImportarLote() {
       const resLote = await criarLote({
         nome_lote: String(loteRow.nome_lote),
         codigo_lote: codigoLote,
-        prefixo: String(loteRow.prefixo),
+        prefixo: loteRow.prefixo ? String(loteRow.prefixo) : '',
         data_criacao: dataCriacao!,
         num_ciclos: ciclos.length,
         raca_predominante: loteRow.raca_predominante ?? undefined,
@@ -270,7 +268,10 @@ export function useImportarLote() {
       const porCompra: Record<string, AnimalRow[]> = {}
       for (const a of animaisValidados) (porCompra[a.id_compra] ??= []).push(a)
 
-      const prefixoLote = String(loteRow.prefixo)
+      const prefixoLote = loteRow.prefixo ? String(loteRow.prefixo) : ''
+      const codigosGerados = await gerarCodigosUnicos(user.id, prefixoLote, animaisValidados.map(a => a.brinco))
+      const codigoPorAnimalRow = new Map<AnimalRow, string>()
+      animaisValidados.forEach((a, i) => codigoPorAnimalRow.set(a, codigosGerados[i]))
       const brincoParaAnimalId: Record<string, string> = {}
       for (const [idCompra, animaisDaCompra] of Object.entries(porCompra)) {
         const compra = comprasPorId[idCompra]
@@ -294,7 +295,7 @@ export function useImportarLote() {
         }
 
         const rows = animaisDaCompra.map(a => ({
-          codigo: gerarCodigoAnimal(prefixoLote, a.brinco), brinco: a.brinco,
+          codigo: codigoPorAnimalRow.get(a)!, brinco: a.brinco,
           peso_entrada: a.peso, data_entrada: a.data_entrada,
           origem: a.origem, raca: a.raca, valor_compra: a.peso * compra.preco_kg,
           preco_kg_compra_no_lote: compra.preco_kg, compra_id: compraRow.id,
