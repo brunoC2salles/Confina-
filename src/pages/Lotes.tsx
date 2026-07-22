@@ -38,7 +38,7 @@ export default function Lotes() {
   const {
     lotes, lotesAtivos, lotesEncerrados, ciclosPorLote, resumo, loading,
     criarLote, editarCiclo, salvarCiclosLote, avancarCiclo, encerrarLote,
-    criarAnimais, bifurcar, moverAliquota, proximoNumeroLote,
+    criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
   } = useLotes()
   const { templates: dietasTemplates } = useDietas()
 
@@ -175,6 +175,7 @@ export default function Lotes() {
           criarAnimais={criarAnimais}
           bifurcar={bifurcar}
           moverAliquota={moverAliquota}
+          excluirAnimal={excluirAnimal}
           proximoNumeroLote={proximoNumeroLote}
         />
       )}
@@ -834,7 +835,7 @@ function PainelProjecao({
 
 function DetalheLote({
   loteId, onClose, dietasTemplates, todosLotes, ciclosPorLote,
-  editarCiclo, salvarCiclosLote, avancarCiclo, encerrarLote, criarAnimais, bifurcar, moverAliquota, proximoNumeroLote,
+  editarCiclo, salvarCiclosLote, avancarCiclo, encerrarLote, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
 }: {
   loteId: string
   onClose: () => void
@@ -848,6 +849,7 @@ function DetalheLote({
   criarAnimais: (input: CriarAnimaisInput) => Promise<{ error: string | null }>
   bifurcar: (input: any) => Promise<{ error: string | null; lote?: Lote }>
   moverAliquota: (input: any) => Promise<{ error: string | null }>
+  excluirAnimal: (animalId: string) => Promise<{ error: string | null }>
   proximoNumeroLote: () => string
 }) {
   const navigate = useNavigate()
@@ -871,6 +873,7 @@ function DetalheLote({
   const [showMover, setShowMover] = useState(false)
   const [showVenda, setShowVenda] = useState(false)
   const [showPesagem, setShowPesagem] = useState<string | null>(null)
+  const [showExcluirAnimal, setShowExcluirAnimal] = useState<string | null>(null)
   const [showProjecaoAnimal, setShowProjecaoAnimal] = useState<string | null>(null)
   const [showProjecao, setShowProjecao] = useState(false)
   const [showEncerrar, setShowEncerrar] = useState(false)
@@ -943,6 +946,13 @@ function DetalheLote({
     const res = await moverAliquota({ animal_ids: Array.from(selecionados), lote_destino_id: loteDestinoId, data: hojeStr() })
     if (!res.error) { setShowMover(false); setSelecionados(new Set()); await fetch() }
     else setErro(res.error)
+  }
+
+  const handleExcluirAnimal = async (animalId: string) => {
+    const res = await excluirAnimal(animalId)
+    if (!res.error) { setShowExcluirAnimal(null); setSelecionados(prev => { const n = new Set(prev); n.delete(animalId); return n }); await fetch() }
+    else setErro(res.error)
+    return res
   }
 
   const handleAvancarCiclo = async () => {
@@ -1138,6 +1148,7 @@ function DetalheLote({
                         <div style={{ display: 'flex', gap: 4 }}>
                           {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowPesagem(a.id)}>Pesar</button>}
                           <button className="btn btn-ghost btn-sm" onClick={() => setShowProjecaoAnimal(a.id)}>Projeção</button>
+                          {loteAtivo && <button className="btn btn-ghost btn-sm" style={{ color: '#b91c1c' }} onClick={() => setShowExcluirAnimal(a.id)}>Excluir</button>}
                         </div>
                       </td>
                     </tr>
@@ -1199,6 +1210,14 @@ function DetalheLote({
             if (!res.error) { setShowPesagem(null); await recalcular() }
             return res
           }}
+        />
+      )}
+
+      {showExcluirAnimal && (
+        <ModalConfirmarExclusaoAnimal
+          animal={animais.find(a => a.id === showExcluirAnimal)!}
+          onClose={() => setShowExcluirAnimal(null)}
+          onConfirmar={() => handleExcluirAnimal(showExcluirAnimal)}
         />
       )}
 
@@ -1362,6 +1381,48 @@ function ModalEncerrarLote({
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={confirmar} disabled={saving}>
             {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Encerrar lote'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL: CONFIRMAR EXCLUSÃO DE ANIMAL
+// Exclusão definitiva — usada para corrigir animal digitado errado no lote.
+// Remove o registro e tudo que depende dele (pesagens, movimentações, custos
+// variáveis); a compra da leva é recalculada ou removida automaticamente.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ModalConfirmarExclusaoAnimal({
+  animal, onClose, onConfirmar,
+}: {
+  animal: Animal
+  onClose: () => void
+  onConfirmar: () => Promise<{ error: string | null }>
+}) {
+  const [saving, setSaving] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const confirmar = async () => {
+    setSaving(true); setErro(null)
+    const res = await onConfirmar()
+    setSaving(false)
+    if (res.error) setErro(res.error)
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Excluir animal" subtitle={`Código ${animal.codigo} · Brinco ${animal.brinco}`} size="sm">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>
+          Esta ação é definitiva: o registro do animal, suas pesagens e movimentações serão apagados. Se ele fizer parte de uma compra com outros animais, o total da compra será recalculado. Use quando o animal foi cadastrado por engano — não para registrar venda, morte ou saída.
+        </div>
+        {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" style={{ background: '#b91c1c' }} onClick={confirmar} disabled={saving}>
+            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Excluir definitivamente'}
           </button>
         </div>
       </div>
