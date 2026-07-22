@@ -46,6 +46,7 @@ export default function Lotes() {
   const [showNovoLote, setShowNovoLote] = useState(false)
   const [loteRecemCriado, setLoteRecemCriado] = useState<string | null>(null)
   const [showDetalhe, setShowDetalhe] = useState<string | null>(searchParams.get('detalhe'))
+  const [highlightAnimalId] = useState<string | null>(searchParams.get('animal'))
   const [showVendaGlobal, setShowVendaGlobal] = useState(false)
   const [erroGlobal, setErroGlobal] = useState<string | null>(null)
 
@@ -165,6 +166,7 @@ export default function Lotes() {
         <DetalheLote
           loteId={showDetalhe}
           onClose={() => setShowDetalhe(null)}
+          highlightAnimalId={highlightAnimalId}
           dietasTemplates={dietasTemplates}
           todosLotes={lotes}
           ciclosPorLote={ciclosPorLote}
@@ -833,11 +835,12 @@ function PainelProjecao({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function DetalheLote({
-  loteId, onClose, dietasTemplates, todosLotes, ciclosPorLote,
+  loteId, onClose, highlightAnimalId, dietasTemplates, todosLotes, ciclosPorLote,
   editarCiclo, salvarCiclosLote, avancarCiclo, encerrarLote, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
 }: {
   loteId: string
   onClose: () => void
+  highlightAnimalId?: string | null
   dietasTemplates: Array<{ id: string; nome: string; gmd_esperado: number; pct_consumo_pv_ms: number; custo_kg_ms: number | null }>
   todosLotes: Lote[]
   ciclosPorLote: Record<string, Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null; data_fim: string | null }>>
@@ -926,6 +929,12 @@ function DetalheLote({
   }, [animais, calcularEmLote])
 
   useEffect(() => { recalcular() }, [recalcular])
+
+  useEffect(() => {
+    if (!highlightAnimalId || loading) return
+    const el = document.querySelector(`[data-animal-id="${highlightAnimalId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [highlightAnimalId, loading, animais])
 
   // Custo acumulado exibido = alimentação + operacional (motor) + custos variáveis do animal —
   // mesma composição usada em useVendas e na página de Ranking, para não mostrar um número aqui
@@ -1163,8 +1172,9 @@ function DetalheLote({
                   const ganho = pesoAtual - a.peso_entrada
                   const custoTotal = custoTotalAnimal(a.id)
                   const custoPorKg = r && ganho > 0 ? custoTotal / ganho : null
+                  const destacado = a.id === highlightAnimalId
                   return (
-                    <tr key={a.id}>
+                    <tr key={a.id} data-animal-id={a.id} style={destacado ? { background: 'var(--green-bg)' } : undefined}>
                       {loteAtivo && <td><input type="checkbox" checked={selecionados.has(a.id)} onChange={() => toggleSelecionado(a.id)} /></td>}
                       <td><strong>{a.codigo}</strong></td>
                       <td>{fmtNum(a.peso_entrada, 1)} kg</td>
