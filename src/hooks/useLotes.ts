@@ -271,6 +271,22 @@ export function useLotes() {
       .update({ data_criacao: dataCriacao, num_ciclos: ciclos.length }).eq('id', loteId)
     if (eLote) return { error: eLote.message }
 
+    // Apaga do banco qualquer ciclo que existia antes e não está mais na lista
+    // final (ex: usuário removeu um ciclo no modal). Sem isso, a linha antiga
+    // permanece com o numero antigo e pode colidir com o numero de um ciclo
+    // novo inserido depois, violando a constraint única (lote_id, numero).
+    const idsMantidos = ciclos.filter(c => c.id).map(c => c.id as string)
+    const { data: existentes, error: eExistentes } = await supabase
+      .from('ciclos_lote').select('id').eq('lote_id', loteId)
+    if (eExistentes) return { error: eExistentes.message }
+    const idsParaRemover = (existentes ?? [])
+      .map(e => e.id as string)
+      .filter(id => !idsMantidos.includes(id))
+    if (idsParaRemover.length > 0) {
+      const { error: eDel } = await supabase.from('ciclos_lote').delete().in('id', idsParaRemover)
+      if (eDel) return { error: eDel.message }
+    }
+
     const ordenados = [...ciclos].sort((a, b) => a.numero - b.numero)
     let cursor = new Date(dataCriacao + 'T00:00:00')
     for (let i = 0; i < ordenados.length; i++) {
