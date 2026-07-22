@@ -880,9 +880,34 @@ function DetalheLote({
   const [showCustoOperacional, setShowCustoOperacional] = useState(false)
   const [showCompras, setShowCompras] = useState(false)
   const [showEditarCiclos, setShowEditarCiclos] = useState(false)
+  const [showDuplicados, setShowDuplicados] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   const ciclos = ciclosPorLote[loteId] ?? []
+
+  // Grupos de brincos duplicados dentro deste lote: mesmo brinco + mesmo
+  // peso de entrada + mesma data de entrada — sinal de lançamento repetido
+  // por engano (ex.: importação rodada duas vezes). Brinco repetido com
+  // dados diferentes não entra aqui, pois pode ser só coincidência de
+  // numeração entre remessas distintas.
+  const gruposDuplicados = useMemo(() => {
+    const mapa: Record<string, Animal[]> = {}
+    for (const a of animais) {
+      const chave = `${a.brinco}|${a.peso_entrada}|${a.data_entrada}`
+      if (!mapa[chave]) mapa[chave] = []
+      mapa[chave].push(a)
+    }
+    return Object.values(mapa).filter(g => g.length > 1)
+  }, [animais])
+
+  const handleExcluirSelecionados = async (ids: string[]) => {
+    for (const id of ids) {
+      const res = await excluirAnimal(id)
+      if (res.error) return res
+    }
+    await fetch()
+    return { error: null }
+  }
 
   const recalcular = useCallback(async () => {
     if (animais.length === 0) { setResultados({}); setCustosVariaveisPorAnimal({}); return }
@@ -1096,6 +1121,13 @@ function DetalheLote({
           </div>
         )}
 
+        {gruposDuplicados.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff8e1', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+            <span>{gruposDuplicados.length} brinco(s) com lançamento duplicado neste lote (mesmo peso e data de entrada).</span>
+            <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setShowDuplicados(true)}>Ver duplicados</button>
+          </div>
+        )}
+
         {loading || calculando ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
             <div className="spinner" style={{ width: 24, height: 24 }} />
@@ -1218,6 +1250,18 @@ function DetalheLote({
           animal={animais.find(a => a.id === showExcluirAnimal)!}
           onClose={() => setShowExcluirAnimal(null)}
           onConfirmar={() => handleExcluirAnimal(showExcluirAnimal)}
+        />
+      )}
+
+      {showDuplicados && (
+        <ModalDuplicados
+          grupos={gruposDuplicados}
+          onClose={() => setShowDuplicados(false)}
+          onExcluir={async ids => {
+            const res = await handleExcluirSelecionados(ids)
+            if (!res.error) setShowDuplicados(false)
+            return res
+          }}
         />
       )}
 
@@ -1381,6 +1425,76 @@ function ModalEncerrarLote({
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={confirmar} disabled={saving}>
             {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Encerrar lote'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL: BRINCOS DUPLICADOS
+// Lista os grupos de animais com mesmo brinco + peso + data de entrada
+// dentro do lote, para o produtor escolher manualmente quais exemplares
+// excluir (mantendo pelo menos um de cada grupo).
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ModalDuplicados({
+  grupos, onClose, onExcluir,
+}: {
+  grupos: Animal[][]
+  onClose: () => void
+  onExcluir: (ids: string[]) => Promise<{ error: string | null }>
+}) {
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const toggle = (id: string) => {
+    setSelecionados(prev => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id); else n.add(id)
+      return n
+    })
+  }
+
+  const confirmar = async () => {
+    if (selecionados.size === 0) { setErro('Marque ao menos um animal para excluir'); return }
+    setSaving(true); setErro(null)
+    const res = await onExcluir(Array.from(selecionados))
+    setSaving(false)
+    if (res.error) setErro(res.error)
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Brincos duplicados"
+      subtitle={`${grupos.length} grupo(s) com mesmo brinco, peso e data de entrada`} size="lg">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ fontSize: 13, color: 'var(--gray-600)' }}>
+          Marque os exemplares que devem ser excluídos em cada grupo. Mantenha ao menos um de cada — a exclusão é definitiva e apaga pesagens, movimentações e recalcula a compra correspondente.
+        </div>
+
+        {grupos.map((grupo, gi) => (
+          <div key={gi} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Brinco {grupo[0].brinco} · {grupo.length} lançamentos</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {grupo.map(a => (
+                <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, background: selecionados.has(a.id) ? '#ffebee' : 'var(--gray-50)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={selecionados.has(a.id)} onChange={() => toggle(a.id)} />
+                  <span style={{ fontSize: 13 }}>
+                    <strong>{a.codigo}</strong> · {fmtNum(a.peso_entrada, 1)} kg · entrada {fmtData(a.data_entrada)} · criado em {fmtData(a.created_at.slice(0, 10))}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" style={{ background: '#b91c1c' }} onClick={confirmar} disabled={saving || selecionados.size === 0}>
+            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : `Excluir ${selecionados.size || ''} selecionado(s)`}
           </button>
         </div>
       </div>
