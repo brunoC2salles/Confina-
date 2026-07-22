@@ -474,6 +474,46 @@ export function useLotes() {
     return { error: null }
   }
 
+  // Exclusão definitiva de um animal (ex.: digitado errado no lote).
+  // Remove o registro de `animais` — pesagens, movimentações e custos
+  // variáveis do animal caem junto por CASCADE no banco. Se o animal
+  // pertencia a uma compra (leva), a compra é recalculada com base nos
+  // animais restantes; se não sobrar nenhum, a compra também é excluída.
+  const excluirAnimal = async (animalId: string) => {
+    if (!user) return { error: 'Não autenticado' }
+
+    const { data: animal, error: eGet } = await supabase
+      .from('animais').select('id, compra_id').eq('id', animalId).maybeSingle()
+    if (eGet) return { error: eGet.message }
+    if (!animal) return { error: 'Animal não encontrado' }
+
+    const { error: eDel } = await supabase.from('animais').delete().eq('id', animalId)
+    if (eDel) return { error: eDel.message }
+
+    if (animal.compra_id) {
+      const { data: restantes, error: eRest } = await supabase
+        .from('animais').select('peso_entrada, valor_compra').eq('compra_id', animal.compra_id)
+      if (eRest) return { error: eRest.message }
+
+      if (!restantes || restantes.length === 0) {
+        const { error: eDelCompra } = await supabase.from('compras').delete().eq('id', animal.compra_id)
+        if (eDelCompra) return { error: eDelCompra.message }
+      } else {
+        const pesoTotal = restantes.reduce((s, r) => s + r.peso_entrada, 0)
+        const valorTotal = restantes.reduce((s, r) => s + r.valor_compra, 0)
+        const { error: eUpdCompra } = await supabase.from('compras').update({
+          quantidade_animais: restantes.length,
+          peso_total: pesoTotal,
+          valor_total: valorTotal,
+        }).eq('id', animal.compra_id)
+        if (eUpdCompra) return { error: eUpdCompra.message }
+      }
+    }
+
+    await fetchLotes()
+    return { error: null }
+  }
+
   // Memoizado: sem isso, cada chamada do hook devolvia um array NOVO (mesmo
   // com os mesmos lotes dentro), e qualquer efeito que dependesse desse valor
   // (como o do Dashboard) entrava em loop — via de referência mudando a cada
@@ -486,7 +526,7 @@ export function useLotes() {
     lotesAtivos, lotesEncerrados,
     fetchLotes, proximoNumeroLote,
     criarLote, atualizarLote, editarCiclo, salvarCiclosLote, removerCiclo, avancarCiclo, encerrarLote,
-    criarAnimais, bifurcar, moverAliquota,
+    criarAnimais, bifurcar, moverAliquota, excluirAnimal,
   }
 }
 
