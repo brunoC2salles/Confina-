@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 
 const NAV_PRINCIPAL = [
   { to: '/',              label: 'Dashboard',    end: true  },
+  { to: '/fazenda-hoje',  label: 'Fazenda Hoje', end: false },
   { to: '/lotes',         label: 'Lotes',        end: false },
   { to: '/vendas',        label: 'Vendas',       end: false },
   { to: '/ranking',       label: 'Ranking',      end: false },
