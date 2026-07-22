@@ -1152,7 +1152,6 @@ function DetalheLote({
                   <th>Peso entrada</th>
                   <th>Peso hoje (est.)</th>
                   <th>Dias</th>
-                  <th>Rendimento</th>
                   <th>Custo acumulado</th>
                   <th>Custo/kg ganho</th>
                   <th></th>
@@ -1163,7 +1162,6 @@ function DetalheLote({
                   const r = resultados[a.id]
                   const pesoAtual = r?.peso ?? a.peso_entrada
                   const ganho = pesoAtual - a.peso_entrada
-                  const rendPct = r ? obterRendimento(pesoAtual, rendimentos) : null
                   const custoTotal = custoTotalAnimal(a.id)
                   const custoPorKg = r && ganho > 0 ? custoTotal / ganho : null
                   return (
@@ -1173,7 +1171,6 @@ function DetalheLote({
                       <td>{fmtNum(a.peso_entrada, 1)} kg</td>
                       <td>{r ? `${fmtNum(r.peso, 1)} kg` : '—'}</td>
                       <td>{r ? r.diasConfinamento : '—'}</td>
-                      <td>{rendPct != null ? `${fmtNum(rendPct, 1)}%` : '—'}</td>
                       <td>{r ? fmt(custoTotal) : '—'}</td>
                       <td>{custoPorKg != null ? `${fmt(custoPorKg)}/kg` : '—'}</td>
                       <td>
