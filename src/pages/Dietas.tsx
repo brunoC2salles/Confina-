@@ -38,8 +38,11 @@ interface FormDieta {
   custo_manual_ativo: boolean
   custo_manual_valor: string
   custo_manual_unidade: 'kg' | 'ton'
+  vigente_desde: string
   componentes: CompForm[]
 }
+
+const hojeStr = () => new Date().toISOString().slice(0, 10)
 
 const emptyForm = (): FormDieta => ({
   nome: '', descricao: '', gmd_esperado: '', ciclo_recomendado: '',
@@ -50,6 +53,7 @@ const emptyForm = (): FormDieta => ({
   custo_manual_ativo: false,
   custo_manual_valor: '',
   custo_manual_unidade: 'ton',
+  vigente_desde: hojeStr(),
   componentes: [],
 })
 
@@ -216,6 +220,7 @@ export default function Dietas() {
   const validarForm = (): string | null => {
     if (!form.nome.trim()) return 'Nome obrigatório'
     if (!form.gmd_esperado || Number(form.gmd_esperado) <= 0) return 'GMD esperado obrigatório'
+    if (showEditar && !form.vigente_desde) return 'Informe a data de vigência do novo preço'
     const pcpv = Number(form.pct_consumo_pv_ms)
     if (!pcpv || pcpv <= 0 || pcpv > 10) return '% consumo do PV em MS deve ser > 0 e ≤ 10'
     if (Math.abs(pctConc + pctVol - 100) > 0.01) return '% concentrado + % volumoso deve somar 100'
@@ -261,6 +266,7 @@ export default function Dietas() {
       custo_manual_ativo: form.custo_manual_ativo,
       custo_manual_valor: form.custo_manual_ativo ? Number(form.custo_manual_valor) : null,
       custo_manual_unidade: form.custo_manual_ativo ? form.custo_manual_unidade : null,
+      vigente_desde: form.vigente_desde,
       componentes: form.componentes.map(c => ({
         tipo: c.tipo,
         origem_ingrediente: c.origem_ingrediente,
@@ -312,6 +318,7 @@ export default function Dietas() {
       custo_manual_ativo: d.custo_manual_ativo ?? false,
       custo_manual_valor: d.custo_manual_valor != null ? String(d.custo_manual_valor) : '',
       custo_manual_unidade: d.custo_manual_unidade ?? 'ton',
+      vigente_desde: hojeStr(),
       componentes: comps,
     })
     setShowEditar(id)
@@ -376,6 +383,11 @@ export default function Dietas() {
                 {d.custo_kg_ms != null && (
                   <div style={{ fontSize: 12, color: '#2e7d32' }}>
                     Custo: <strong>{fmt(d.custo_kg_ms)}/kg MS</strong>
+                    {d.custo_vigente_desde && (
+                      <span style={{ color: 'var(--gray-400)', fontWeight: 400 }}>
+                        {' '}· válido desde {d.custo_vigente_desde.split('-').reverse().join('/')}
+                      </span>
+                    )}
                   </div>
                 )}
                 {(d.componentes?.length ?? 0) > 0 && (
@@ -548,6 +560,20 @@ export default function Dietas() {
               </div>
             )}
           </div>
+
+          {/* Data de vigência do preço — só faz sentido ao editar uma dieta existente */}
+          {showEditar && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+              <div className="form-group" style={{ maxWidth: 220 }}>
+                <label className="form-label">Novo preço válido a partir de</label>
+                <input className="form-input" type="date" value={form.vigente_desde}
+                  onChange={e => setForm(f => ({ ...f, vigente_desde: e.target.value }))} />
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                Se o preço da dieta mudou, o custo de cada animal continua correto: os dias antes dessa data usam o preço antigo, e a partir dela usa o novo. Deixe hoje se o preço acabou de mudar; escolha uma data passada se já mudou há alguns dias e você só está atualizando agora.
+              </div>
+            </div>
+          )}
 
           {/* Seção Concentrado */}
           {pctConc > 0 && (
@@ -793,6 +819,9 @@ function ModalDetalhe({
           <div style={{ background: 'var(--green-bg)', borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 140 }}>
             <div style={{ fontSize: 11, color: 'var(--green)' }}>Custo/kg MS</div>
             <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--green-dark)' }}>{fmt(dieta.custo_kg_ms)}</div>
+            {dieta.custo_vigente_desde && (
+              <div style={{ fontSize: 11, color: 'var(--green)' }}>válido desde {dieta.custo_vigente_desde.split('-').reverse().join('/')}</div>
+            )}
           </div>
         )}
       </div>

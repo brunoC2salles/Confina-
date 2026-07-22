@@ -102,7 +102,7 @@ export default function Lotes() {
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 600 }}>{lote.nome_lote}</div>
                     <div style={{ fontSize: 11, color: '#9e9e9e', marginTop: 2 }}>
-                      {lote.codigo_lote} · prefixo &quot;{lote.prefixo}&quot;
+                      {lote.codigo_lote}{lote.prefixo ? ` · prefixo "${lote.prefixo}"` : ''}
                     </div>
                   </div>
                   <span style={{ fontSize: 11, background: lote.status === 'encerrado' ? '#f5f5f5' : '#e8f5e9', color: lote.status === 'encerrado' ? '#757575' : '#2e7d32', padding: '2px 8px', borderRadius: 20, border: `1px solid ${lote.status === 'encerrado' ? '#e0e0e0' : '#a5d6a7'}` }}>
@@ -276,7 +276,6 @@ function FormLoteBase({
     if (step === 1) {
       if (!nomeLote.trim()) return 'Informe o nome do lote'
       if (!codigoLote.trim()) return 'Informe o código do lote'
-      if (!prefixo.trim()) return 'Informe o prefixo para os códigos de animal'
       if (!dataCriacao) return loteOrigem ? 'Informe a data da bifurcação' : 'Informe a data de criação'
     }
     if (step === 2) {
@@ -343,10 +342,10 @@ function FormLoteBase({
           </div>
           <div className="form-row-2">
             <div className="form-group">
-              <label className="form-label">Prefixo dos animais</label>
+              <label className="form-label">Prefixo dos animais (opcional)</label>
               <input className="form-input" value={prefixo} onChange={e => setPrefixo(e.target.value.toUpperCase())} placeholder="Ex: A" maxLength={6} />
               <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
-                Brinco 33 vira o código {prefixo || 'A'}33
+                Brinco 33 vira o código {prefixo ? `${prefixo}33` : '33'}. Pode repetir ou deixar em branco — se colidir com outro animal, o sistema ajusta sozinho.
               </div>
             </div>
             <div className="form-group">
