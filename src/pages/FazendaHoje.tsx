@@ -29,6 +29,7 @@ interface LinhaHoje extends AnimalHoje {
   dietaId: string | null
   dietaNome: string
   dataPrevistaFim: string | null
+  emEspera: boolean
 }
 
 const addDias = (dataStr: string, dias: number): string => {
@@ -36,6 +37,8 @@ const addDias = (dataStr: string, dias: number): string => {
   d.setDate(d.getDate() + dias)
   return d.toISOString().slice(0, 10)
 }
+
+const hojeISO = (): string => new Date().toISOString().slice(0, 10)
 
 export default function FazendaHoje() {
   const navigate = useNavigate()
@@ -50,6 +53,7 @@ export default function FazendaHoje() {
   const [filtroCiclo, setFiltroCiclo] = useState('todos')
   const [filtroFornecedor, setFiltroFornecedor] = useState('todos')
   const [filtroDieta, setFiltroDieta] = useState('todos')
+  const [somenteEspera, setSomenteEspera] = useState(false)
   const [busca, setBusca] = useState('')
 
   const carregar = useCallback(async () => {
@@ -83,21 +87,31 @@ export default function FazendaHoje() {
   // Ciclo "de agora" de um lote é o ciclo_atual do lote — a mesma noção usada
   // no resto do app (Lotes.tsx, motor de custo). Não é histórico por animal.
   // A data prevista de fim é calculada (data_inicio + dias_planejados) pois o
-  // ciclo só ganha data_fim real quando é encerrado.
+  // ciclo só ganha data_fim real quando é encerrado (avançarCiclo). Por isso
+  // essa data pode ficar no passado sem que nada mude automaticamente: é só
+  // uma projeção, o sistema nunca fecha o ciclo sozinho.
+  //
+  // "emEspera": true quando a data prevista já passou E o lote não tem, em
+  // ciclos_lote, nenhum ciclo com número maior que o ciclo_atual (ou seja,
+  // não há próximo ciclo cadastrado pra assumir esses animais).
   const cicloAtualDoLote = useCallback((loteId: string | null) => {
     if (!loteId) return null
     const lote = lotes.find(l => l.id === loteId)
     if (!lote) return null
-    const ciclo = (ciclosPorLote[loteId] ?? []).find(c => c.numero === lote.ciclo_atual)
+    const ciclosDoLote = ciclosPorLote[loteId] ?? []
+    const ciclo = ciclosDoLote.find(c => c.numero === lote.ciclo_atual)
     const dataPrevistaFim = ciclo?.data_inicio && ciclo?.dias_planejados
       ? addDias(ciclo.data_inicio, ciclo.dias_planejados)
       : null
+    const temProximoCiclo = ciclosDoLote.some(c => c.numero > lote.ciclo_atual)
+    const emEspera = !!dataPrevistaFim && dataPrevistaFim < hojeISO() && !temProximoCiclo
     return {
       numero: lote.ciclo_atual,
       nome: ciclo?.nome ?? `Ciclo ${lote.ciclo_atual}`,
       tipoCiclo: ciclo?.tipo_ciclo ?? null,
       dietaId: ciclo?.dieta_id ?? null,
       dataPrevistaFim,
+      emEspera,
     }
   }, [lotes, ciclosPorLote])
 
@@ -113,6 +127,7 @@ export default function FazendaHoje() {
       dietaId: ciclo?.dietaId ?? null,
       dietaNome: ciclo?.dietaId ? (dietaNomePorId[ciclo.dietaId] ?? 'Dieta removida') : 'Sem dieta / Pastagem',
       dataPrevistaFim: ciclo?.dataPrevistaFim ?? null,
+      emEspera: ciclo?.emEspera ?? false,
     }
   }), [animais, lotes, cicloAtualDoLote, dietaNomePorId])
 
@@ -133,26 +148,36 @@ export default function FazendaHoje() {
     return Object.entries(mapa).sort((a, b) => a[1].localeCompare(b[1]))
   }, [linhas])
 
-  const filtradas = useMemo(() => linhas.filter(l =>
+  // Filtros de lote/ciclo/fornecedor/dieta, sem aplicar ainda o filtro de
+  // "somente em espera" — usado pra contar quantos animais em espera existem
+  // dentro do recorte atual, independente de o filtro de espera estar ligado.
+  const filtradasBase = useMemo(() => linhas.filter(l =>
     (filtroLote === 'todos' || l.lote_id === filtroLote) &&
     (filtroCiclo === 'todos' || String(l.cicloNumero) === filtroCiclo) &&
     (filtroFornecedor === 'todos' || l.fornecedor === filtroFornecedor) &&
     (filtroDieta === 'todos' || (l.dietaId ?? 'sem-dieta') === filtroDieta)
   ), [linhas, filtroLote, filtroCiclo, filtroFornecedor, filtroDieta])
 
+  const qtdEmEspera = useMemo(() => filtradasBase.filter(l => l.emEspera).length, [filtradasBase])
+
+  const filtradas = useMemo(
+    () => filtradasBase.filter(l => !somenteEspera || l.emEspera),
+    [filtradasBase, somenteEspera]
+  )
+
   // Cards por ciclo: agrupados por lote + ciclo, pois a data prevista e o tipo
   // de ciclo variam entre lotes mesmo quando o número do ciclo é o mesmo.
   const gruposCiclo = useMemo(() => {
     const mapa: Record<string, {
       loteId: string; loteNome: string; cicloNumero: number | null; cicloNome: string
-      tipoCiclo: string | null; dataPrevistaFim: string | null; qtd: number
+      tipoCiclo: string | null; dataPrevistaFim: string | null; emEspera: boolean; qtd: number
     }> = {}
     for (const l of filtradas) {
       const chave = `${l.lote_id ?? 'sem-lote'}__${l.cicloNumero}`
       if (!mapa[chave]) {
         mapa[chave] = {
           loteId: l.lote_id ?? '', loteNome: l.loteNome, cicloNumero: l.cicloNumero, cicloNome: l.cicloNome,
-          tipoCiclo: l.tipoCiclo, dataPrevistaFim: l.dataPrevistaFim, qtd: 0,
+          tipoCiclo: l.tipoCiclo, dataPrevistaFim: l.dataPrevistaFim, emEspera: l.emEspera, qtd: 0,
         }
       }
       mapa[chave].qtd++
@@ -187,8 +212,9 @@ export default function FazendaHoje() {
 
   const limparFiltros = () => {
     setFiltroLote('todos'); setFiltroCiclo('todos'); setFiltroFornecedor('todos'); setFiltroDieta('todos')
+    setSomenteEspera(false)
   }
-  const filtrosAtivos = filtroLote !== 'todos' || filtroCiclo !== 'todos' || filtroFornecedor !== 'todos' || filtroDieta !== 'todos'
+  const filtrosAtivos = filtroLote !== 'todos' || filtroCiclo !== 'todos' || filtroFornecedor !== 'todos' || filtroDieta !== 'todos' || somenteEspera
 
   if (loading || loadingLotes || loadingDietas) {
     return <div style={{ padding: 40, textAlign: 'center', color: 'var(--gray-400)' }}>Carregando...</div>
@@ -263,6 +289,26 @@ export default function FazendaHoje() {
         )}
       </div>
 
+      {qtdEmEspera > 0 && (
+        <div
+          className="card"
+          onClick={() => setSomenteEspera(v => !v)}
+          style={{
+            marginBottom: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            border: somenteEspera ? '2px solid #c99324' : '1px solid var(--border)',
+            background: somenteEspera ? 'rgba(201,147,36,0.08)' : undefined,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Animais em Espera</div>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>
+              Ciclo com data prevista de encerramento já passada e sem próximo ciclo cadastrado no lote
+            </div>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#c99324' }}>{qtdEmEspera}</div>
+        </div>
+      )}
+
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
         {filtradas.length} animal{filtradas.length !== 1 ? 'is' : ''} ativo{filtradas.length !== 1 ? 's' : ''} nesse filtro
       </div>
@@ -297,6 +343,11 @@ export default function FazendaHoje() {
                 {g.dataPrevistaFim && (
                   <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
                     Previsto até {fmtData(g.dataPrevistaFim)}
+                  </div>
+                )}
+                {g.emEspera && (
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#c99324', marginTop: 4 }}>
+                    Aguardando novo ciclo
                   </div>
                 )}
               </div>
