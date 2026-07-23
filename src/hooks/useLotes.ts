@@ -9,9 +9,9 @@ import type {
 } from '@/types'
 import {
   calcularAnimalNaData, construirPeriodosDeMovimentacoes, gerarCodigoAnimal,
-  encontrarLoteAtivo, toDay,
+  encontrarLoteAtivo, toDay, projetarPesoPorDia,
   type PeriodoLote, type CicloInfo, type DietaInfo, type ResultadoAnimalNaData, type CustoOperacionalInfo,
-  type CustoRacaoRealPorDia,
+  type CustoRacaoRealPorDia, type CustoRacaoRealDiaInfo,
 } from '@/lib/custoAnimal'
 import { obterRendimento, obterBonus } from '@/lib/calculations'
 import { LIMITE_LOTES_ATIVOS, type Plano } from '@/hooks/useAssinatura'
@@ -718,13 +718,17 @@ export function useCustoEngine() {
         for (const m of (todasMovsDosLotes ?? []) as Array<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>) {
           (movsPorAnimalTodos[m.animal_id] ??= []).push(m)
         }
-        const periodosPorAnimalTodos = Object.entries(movsPorAnimalTodos).map(
-          ([, movs]) => construirPeriodosDeMovimentacoes(movs)
-        )
+        // Mantém o animal_id (não descarta em um array solto) porque o rateio
+        // proporcional ao peso precisa cruzar cada animal com seu peso_entrada
+        // e pesagens — não só contar cabeças.
+        const periodosPorAnimalTodos: Record<string, PeriodoLote[]> = {}
+        for (const [animalId, movs] of Object.entries(movsPorAnimalTodos)) {
+          periodosPorAnimalTodos[animalId] = construirPeriodosDeMovimentacoes(movs)
+        }
 
         const contarAtivosNoDia = (loteId: string, dia: number): number => {
           let count = 0
-          for (const periodos of periodosPorAnimalTodos) {
+          for (const periodos of Object.values(periodosPorAnimalTodos)) {
             const periodo = encontrarLoteAtivo(dia, periodos)
             if (periodo && periodo.lote_id === loteId) count++
           }
@@ -740,28 +744,83 @@ export function useCustoEngine() {
         // ─── Custo real de ração: cada lançamento vale desde sua data_inicio
         // até o início do próximo lançamento do mesmo lote (ou até hoje, se
         // for o mais recente) — mesma ideia de uma pesagem reiniciar a base
-        // do peso, aqui reiniciando a base do custo de ração. O valor_total
-        // é dividido pelos dias do intervalo e depois rateado, dia a dia,
-        // pelos animais ativos NAQUELE LOTE naquele dia específico.
+        // do peso, aqui reiniciando a base do custo de ração. O valor_total é
+        // dividido pelos dias do intervalo e depois rateado, dia a dia,
+        // PROPORCIONALMENTE AO PESO de cada animal ativo naquele lote naquele
+        // dia (animal mais pesado consome mais ração) — com fallback pra
+        // rateio igual por cabeça se o peso total do dia vier zerado.
         if (racaoReal.length > 0) {
           const hojeDia = toDay(new Date().toISOString().slice(0, 10))
           const porLote: Record<string, Array<{ valor_total: number; data_inicio: string }>> = {}
           for (const r of racaoReal) (porLote[r.lote_id] ??= []).push(r)
 
+          // Peso de cada animal precisa vir de TODOS os que já passaram pelos
+          // lotes com custo real lançado, não só dos animais do cálculo atual
+          // — por isso busca peso_entrada/data_entrada/pesagens de novo aqui,
+          // para o conjunto completo de animal_ids encontrado acima.
+          const animalIdsEnvolvidos = Object.keys(periodosPorAnimalTodos)
+          const animaisBasicoPorId: Record<string, { peso_entrada: number; data_entrada: string }> = {}
+          const pesagensPorAnimalTodos: Record<string, Array<{ data: string; peso: number }>> = {}
+          if (animalIdsEnvolvidos.length > 0) {
+            const [{ data: animaisBasicoData }, { data: pesagensTodasData }] = await Promise.all([
+              supabase.from('animais').select('id, peso_entrada, data_entrada').in('id', animalIdsEnvolvidos),
+              supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', animalIdsEnvolvidos),
+            ])
+            for (const a of (animaisBasicoData ?? []) as Array<{ id: string; peso_entrada: number; data_entrada: string }>) {
+              animaisBasicoPorId[a.id] = { peso_entrada: a.peso_entrada, data_entrada: a.data_entrada }
+            }
+            for (const p of (pesagensTodasData ?? []) as Array<{ animal_id: string; data: string; peso: number }>) {
+              (pesagensPorAnimalTodos[p.animal_id] ??= []).push({ data: p.data, peso: p.peso })
+            }
+          }
+
           for (const [loteId, lancamentos] of Object.entries(porLote)) {
             const ordenados = [...lancamentos].sort((a, b) => a.data_inicio.localeCompare(b.data_inicio))
+            const diaInicioLote = toDay(ordenados[0].data_inicio)
+            const diaFimLote = hojeDia + 1
+
+            // Soma o peso projetado de cada animal que esteve ativo NESSE
+            // LOTE em cada dia do intervalo total (do primeiro lançamento até
+            // hoje) — um único passe por animal cobre todos os lançamentos
+            // do lote, em vez de recalcular por lançamento.
+            const pesoTotalPorDia: Record<number, number> = {}
+            const qtdAtivaPorDia: Record<number, number> = {}
+            for (const animalId of animalIdsEnvolvidos) {
+              const periodosDoAnimal = periodosPorAnimalTodos[animalId] ?? []
+              const estevAlgumDiaNesseLote = periodosDoAnimal.some(p => p.lote_id === loteId)
+              if (!estevAlgumDiaNesseLote) continue
+              const animalBasico = animaisBasicoPorId[animalId]
+              if (!animalBasico) continue
+              const pesoPorDiaDoAnimal = projetarPesoPorDia(
+                animalBasico, pesagensPorAnimalTodos[animalId] ?? [], periodosDoAnimal, ciclos,
+                diaInicioLote, diaFimLote,
+              )
+              for (const [diaStr, peso] of Object.entries(pesoPorDiaDoAnimal)) {
+                const dia = Number(diaStr)
+                const periodo = encontrarLoteAtivo(dia, periodosDoAnimal)
+                if (!periodo || periodo.lote_id !== loteId) continue
+                pesoTotalPorDia[dia] = (pesoTotalPorDia[dia] ?? 0) + peso
+                qtdAtivaPorDia[dia] = (qtdAtivaPorDia[dia] ?? 0) + 1
+              }
+            }
+
             const mapaDias: CustoRacaoRealPorDia = {}
             for (let i = 0; i < ordenados.length; i++) {
               const atual = ordenados[i]
               const proximo = ordenados[i + 1]
               const diaInicio = toDay(atual.data_inicio)
-              const diaFimExclusivo = proximo ? toDay(proximo.data_inicio) : hojeDia + 1
+              const diaFimExclusivo = proximo ? toDay(proximo.data_inicio) : diaFimLote
               const numDias = Math.max(diaFimExclusivo - diaInicio, 1)
               const valorPorDiaDoLote = atual.valor_total / numDias
               for (let dia = diaInicio; dia < diaFimExclusivo; dia++) {
-                const qtdHistorica = contarAtivosNoDia(loteId, dia)
-                const qtdAtiva = qtdHistorica > 0 ? qtdHistorica : (qtdAtivaAtualPorLote[loteId] ?? 1)
-                mapaDias[dia] = valorPorDiaDoLote / qtdAtiva
+                const qtdHistorica = qtdAtivaPorDia[dia] ?? 0
+                const qtdAtivaDia = qtdHistorica > 0 ? qtdHistorica : (qtdAtivaAtualPorLote[loteId] ?? 1)
+                const info: CustoRacaoRealDiaInfo = {
+                  valorTotalDia: valorPorDiaDoLote,
+                  pesoTotalDia: pesoTotalPorDia[dia] ?? 0,
+                  qtdAtivaDia,
+                }
+                mapaDias[dia] = info
               }
             }
             custosRacaoRealPorLote[loteId] = mapaDias
