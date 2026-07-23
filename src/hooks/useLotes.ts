@@ -5,12 +5,13 @@ import type {
   Lote, CicloLote, Animal, Movimentacao, Pesagem, SaidaGrupo,
   CustoVariavelAnimal, AnimalStatus, SaidaTipo, SaidaModo,
   CustoOperacionalLote, CategoriaCustoOperacional, MotivoEncerramento,
-  Compra, TipoCiclo,
+  Compra, TipoCiclo, CustoRacaoRealLote,
 } from '@/types'
 import {
   calcularAnimalNaData, construirPeriodosDeMovimentacoes, gerarCodigoAnimal,
   encontrarLoteAtivo, toDay,
   type PeriodoLote, type CicloInfo, type DietaInfo, type ResultadoAnimalNaData, type CustoOperacionalInfo,
+  type CustoRacaoRealPorDia,
 } from '@/lib/custoAnimal'
 import { obterRendimento, obterBonus } from '@/lib/calculations'
 import { LIMITE_LOTES_ATIVOS, type Plano } from '@/hooks/useAssinatura'
@@ -637,6 +638,7 @@ interface ContextoCusto {
   ciclos: CicloInfo[]
   dietas: Record<string, DietaInfo>
   custosOperacionaisPorLote: Record<string, CustoOperacionalInfo[]>
+  custosRacaoRealPorLote: Record<string, CustoRacaoRealPorDia>
 }
 
 export function useCustoEngine() {
@@ -644,7 +646,7 @@ export function useCustoEngine() {
 
   const construirContexto = useCallback(async (animalIds: string[]): Promise<ContextoCusto> => {
     if (!user || animalIds.length === 0) {
-      return { animaisPorId: {}, pesagensPorAnimal: {}, periodosPorAnimal: {}, ciclos: [], dietas: {}, custosOperacionaisPorLote: {} }
+      return { animaisPorId: {}, pesagensPorAnimal: {}, periodosPorAnimal: {}, ciclos: [], dietas: {}, custosOperacionaisPorLote: {}, custosRacaoRealPorLote: {} }
     }
 
     const [{ data: animaisData }, { data: pesagensData }, { data: movsData }] = await Promise.all([
@@ -679,12 +681,14 @@ export function useCustoEngine() {
     let ciclos: CicloInfo[] = []
     const dietas: Record<string, DietaInfo> = {}
     const custosOperacionaisPorLote: Record<string, CustoOperacionalInfo[]> = {}
+    const custosRacaoRealPorLote: Record<string, CustoRacaoRealPorDia> = {}
 
     if (loteIdsEnvolvidos.size > 0) {
       const loteIdsArr = Array.from(loteIdsEnvolvidos)
-      const [{ data: ciclosData }, { data: custosOpData }, { data: ativosData }] = await Promise.all([
+      const [{ data: ciclosData }, { data: custosOpData }, { data: racaoRealData }, { data: ativosData }] = await Promise.all([
         supabase.from('ciclos_lote').select('lote_id, numero, tipo_ciclo, dieta_id, gmd_esperado, data_inicio, data_fim').in('lote_id', loteIdsArr),
         supabase.from('custos_operacionais_lote').select('lote_id, valor, data_lancamento').in('lote_id', loteIdsArr),
+        supabase.from('custos_racao_real_lote').select('lote_id, valor_total, data_inicio').in('lote_id', loteIdsArr),
         supabase.from('animais').select('lote_atual_id').eq('status', 'ativo').in('lote_atual_id', loteIdsArr),
       ])
       ciclos = (ciclosData ?? []) as CicloInfo[]
@@ -697,12 +701,14 @@ export function useCustoEngine() {
       }
 
       const custosOp = (custosOpData ?? []) as Array<{ lote_id: string; valor: number; data_lancamento: string }>
+      const racaoReal = (racaoRealData ?? []) as Array<{ lote_id: string; valor_total: number; data_inicio: string }>
 
-      if (custosOp.length > 0) {
+      if (custosOp.length > 0 || racaoReal.length > 0) {
         // rateio histórico: busca TODAS as movimentações desses lotes (qualquer
         // animal que já passou por eles, não só o lote em cálculo), reconstrói
-        // os períodos de cada um e conta quantos estavam no lote na data exata
-        // de cada lançamento
+        // os períodos de cada um e conta quantos estavam no lote em qualquer
+        // data pedida — usado tanto pelo custo operacional (um dia) quanto
+        // pelo custo real de ração (todos os dias do intervalo de vigência)
         const { data: todasMovsDosLotes } = await supabase
           .from('movimentacoes_animais')
           .select('animal_id, tipo, lote_origem_id, lote_destino_id, data')
@@ -716,8 +722,7 @@ export function useCustoEngine() {
           ([, movs]) => construirPeriodosDeMovimentacoes(movs)
         )
 
-        const contarAtivosNaData = (loteId: string, data: string): number => {
-          const dia = toDay(data)
+        const contarAtivosNoDia = (loteId: string, dia: number): number => {
           let count = 0
           for (const periodos of periodosPorAnimalTodos) {
             const periodo = encontrarLoteAtivo(dia, periodos)
@@ -727,9 +732,40 @@ export function useCustoEngine() {
         }
 
         for (const c of custosOp) {
-          const qtdHistorica = contarAtivosNaData(c.lote_id, c.data_lancamento)
+          const qtdHistorica = contarAtivosNoDia(c.lote_id, toDay(c.data_lancamento))
           const qtdAtivaNaData = qtdHistorica > 0 ? qtdHistorica : (qtdAtivaAtualPorLote[c.lote_id] ?? 1)
           ;(custosOperacionaisPorLote[c.lote_id] ??= []).push({ valor: c.valor, data_lancamento: c.data_lancamento, qtdAtivaNaData })
+        }
+
+        // ─── Custo real de ração: cada lançamento vale desde sua data_inicio
+        // até o início do próximo lançamento do mesmo lote (ou até hoje, se
+        // for o mais recente) — mesma ideia de uma pesagem reiniciar a base
+        // do peso, aqui reiniciando a base do custo de ração. O valor_total
+        // é dividido pelos dias do intervalo e depois rateado, dia a dia,
+        // pelos animais ativos NAQUELE LOTE naquele dia específico.
+        if (racaoReal.length > 0) {
+          const hojeDia = toDay(new Date().toISOString().slice(0, 10))
+          const porLote: Record<string, Array<{ valor_total: number; data_inicio: string }>> = {}
+          for (const r of racaoReal) (porLote[r.lote_id] ??= []).push(r)
+
+          for (const [loteId, lancamentos] of Object.entries(porLote)) {
+            const ordenados = [...lancamentos].sort((a, b) => a.data_inicio.localeCompare(b.data_inicio))
+            const mapaDias: CustoRacaoRealPorDia = {}
+            for (let i = 0; i < ordenados.length; i++) {
+              const atual = ordenados[i]
+              const proximo = ordenados[i + 1]
+              const diaInicio = toDay(atual.data_inicio)
+              const diaFimExclusivo = proximo ? toDay(proximo.data_inicio) : hojeDia + 1
+              const numDias = Math.max(diaFimExclusivo - diaInicio, 1)
+              const valorPorDiaDoLote = atual.valor_total / numDias
+              for (let dia = diaInicio; dia < diaFimExclusivo; dia++) {
+                const qtdHistorica = contarAtivosNoDia(loteId, dia)
+                const qtdAtiva = qtdHistorica > 0 ? qtdHistorica : (qtdAtivaAtualPorLote[loteId] ?? 1)
+                mapaDias[dia] = valorPorDiaDoLote / qtdAtiva
+              }
+            }
+            custosRacaoRealPorLote[loteId] = mapaDias
+          }
         }
       }
 
@@ -769,7 +805,7 @@ export function useCustoEngine() {
       }
     }
 
-    return { animaisPorId, pesagensPorAnimal, periodosPorAnimal, ciclos, dietas, custosOperacionaisPorLote }
+    return { animaisPorId, pesagensPorAnimal, periodosPorAnimal, ciclos, dietas, custosOperacionaisPorLote, custosRacaoRealPorLote }
   }, [user])
 
   const calcularEmLote = useCallback(async (
@@ -786,6 +822,7 @@ export function useCustoEngine() {
         ctx.periodosPorAnimal[animalId] ?? [],
         ctx.ciclos, ctx.dietas,
         ctx.custosOperacionaisPorLote,
+        ctx.custosRacaoRealPorLote,
       )
     }
     return resultado
@@ -832,6 +869,57 @@ export function useCustosOperacionais(loteId: string | null) {
   const total = custos.reduce((s, c) => s + c.valor, 0)
 
   return { custos, loading, total, adicionarCusto, removerCusto }
+}
+
+// ─── Hook: custo real de ração de um lote (recalibração) ───────────────────────
+// Cada lançamento vale desde data_inicio até o próximo lançamento (ou até
+// hoje, se for o mais recente), substituindo o custo de alimentação estimado
+// do motor nesse intervalo. Suporta editar e excluir, diferente do custo
+// operacional (que só permite excluir), pois o produtor pode errar o valor
+// ou a data ao lançar.
+
+export function useCustosRacaoReal(loteId: string | null) {
+  const { user } = useAuth()
+  const [custos, setCustos] = useState<CustoRacaoRealLote[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetch = useCallback(async () => {
+    if (!user || !loteId) { setCustos([]); setLoading(false); return }
+    setLoading(true)
+    const { data } = await supabase
+      .from('custos_racao_real_lote').select('*')
+      .eq('lote_id', loteId).order('data_inicio', { ascending: false })
+    setCustos((data ?? []) as CustoRacaoRealLote[])
+    setLoading(false)
+  }, [user, loteId])
+
+  useEffect(() => { fetch() }, [fetch])
+
+  const adicionarCustoRacaoReal = async (input: { data_inicio: string; valor_total: number; observacoes?: string }) => {
+    if (!user || !loteId) return { error: 'Não autenticado' }
+    const { error } = await supabase.from('custos_racao_real_lote').insert({
+      lote_id: loteId, data_inicio: input.data_inicio, valor_total: input.valor_total,
+      observacoes: input.observacoes ?? null, user_id: user.id,
+    })
+    if (!error) await fetch()
+    return { error: error?.message ?? null }
+  }
+
+  const editarCustoRacaoReal = async (id: string, input: { data_inicio: string; valor_total: number; observacoes?: string }) => {
+    const { error } = await supabase.from('custos_racao_real_lote').update({
+      data_inicio: input.data_inicio, valor_total: input.valor_total, observacoes: input.observacoes ?? null,
+    }).eq('id', id)
+    if (!error) await fetch()
+    return { error: error?.message ?? null }
+  }
+
+  const removerCustoRacaoReal = async (id: string) => {
+    const { error } = await supabase.from('custos_racao_real_lote').delete().eq('id', id)
+    if (!error) await fetch()
+    return { error: error?.message ?? null }
+  }
+
+  return { custos, loading, adicionarCustoRacaoReal, editarCustoRacaoReal, removerCustoRacaoReal }
 }
 
 // ─── Hook: compras (fornecedor + preço) de um lote ─────────────────────────────
