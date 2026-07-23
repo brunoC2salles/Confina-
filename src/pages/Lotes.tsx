@@ -870,6 +870,14 @@ function DetalheLote({
   const [resultados, setResultados] = useState<Record<string, ResultadoAnimalNaData>>({})
   const [custosVariaveisPorAnimal, setCustosVariaveisPorAnimal] = useState<Record<string, number>>({})
   const [calculando, setCalculando] = useState(false)
+  // ─── Peso projetado numa data escolhida (independente do "hoje") ──────────
+  // Separado de `resultados` de propósito: `resultados` é sempre calculado
+  // para hoje e alimenta custo, venda e os cards de resumo — não pode mudar
+  // com a data escolhida aqui, ou o valor pré-preenchido numa venda ficaria
+  // errado. Esta segunda projeção é só para consulta visual.
+  const [dataProjecao, setDataProjecao] = useState(hojeStr())
+  const [resultadosNaData, setResultadosNaData] = useState<Record<string, ResultadoAnimalNaData>>({})
+  const [calculandoProjecao, setCalculandoProjecao] = useState(false)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [showAdicionarAnimais, setShowAdicionarAnimais] = useState(false)
   const [showBifurcar, setShowBifurcar] = useState(false)
@@ -931,6 +939,17 @@ function DetalheLote({
   }, [animais, calcularEmLote])
 
   useEffect(() => { recalcular() }, [recalcular])
+
+  const recalcularProjecao = useCallback(async () => {
+    if (animais.length === 0) { setResultadosNaData({}); return }
+    setCalculandoProjecao(true)
+    const animalIds = animais.map(a => a.id)
+    const res = await calcularEmLote(animalIds, dataProjecao)
+    setResultadosNaData(res)
+    setCalculandoProjecao(false)
+  }, [animais, calcularEmLote, dataProjecao])
+
+  useEffect(() => { recalcularProjecao() }, [recalcularProjecao])
 
   useEffect(() => {
     if (!highlightAnimalId || loading) return
@@ -1037,7 +1056,7 @@ function DetalheLote({
 
   return (
     <Modal open onClose={onClose} title={lote.nome_lote}
-      subtitle={`${lote.codigo_lote} · Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="lg">
+      subtitle={`${lote.codigo_lote} · Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="xl">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {!loteAtivo && (
@@ -1153,6 +1172,20 @@ function DetalheLote({
           </div>
         )}
 
+        {animais.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--gray-50)', borderRadius: 8, padding: '10px 14px' }}>
+            <label className="form-label" style={{ margin: 0 }}>Ver peso projetado em</label>
+            <input className="form-input" type="date" value={dataProjecao}
+              onChange={e => setDataProjecao(e.target.value)} style={{ maxWidth: 170 }} />
+            {dataProjecao !== hojeStr() && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setDataProjecao(hojeStr())}>Voltar para hoje</button>
+            )}
+            <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>
+              Estimativa pela projeção estatística (GMD esperado de cada ciclo) — não é uma pesagem real.
+            </span>
+          </div>
+        )}
+
         {loading || calculando ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
             <div className="spinner" style={{ width: 24, height: 24 }} />
@@ -1176,6 +1209,7 @@ function DetalheLote({
                   <th>Código</th>
                   <th>Peso entrada</th>
                   <th>Peso hoje (est.)</th>
+                  <th>Peso em {fmtData(dataProjecao)} (est.)</th>
                   <th>Dias</th>
                   <th>Custo acumulado</th>
                   <th>Custo/kg ganho</th>
@@ -1185,6 +1219,7 @@ function DetalheLote({
               <tbody>
                 {animais.map(a => {
                   const r = resultados[a.id]
+                  const rProjecao = resultadosNaData[a.id]
                   const pesoAtual = r?.peso ?? a.peso_entrada
                   const ganho = pesoAtual - a.peso_entrada
                   const custoTotal = custoTotalAnimal(a.id)
@@ -1196,11 +1231,14 @@ function DetalheLote({
                       <td><strong>{a.codigo}</strong></td>
                       <td>{fmtNum(a.peso_entrada, 1)} kg</td>
                       <td>{r ? `${fmtNum(r.peso, 1)} kg` : '—'}</td>
+                      <td>
+                        {calculandoProjecao ? '…' : rProjecao ? `${fmtNum(rProjecao.peso, 1)} kg` : '—'}
+                      </td>
                       <td>{r ? r.diasConfinamento : '—'}</td>
                       <td>{r ? fmt(custoTotal) : '—'}</td>
                       <td>{custoPorKg != null ? `${fmt(custoPorKg)}/kg` : '—'}</td>
                       <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 4, whiteSpace: 'nowrap' }}>
                           {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowPesagem(a.id)}>Pesar</button>}
                           <button className="btn btn-ghost btn-sm" onClick={() => setShowProjecaoAnimal(a.id)}>Projeção</button>
                           {loteAtivo && <button className="btn btn-ghost btn-sm" style={{ color: '#b91c1c' }} onClick={() => setShowExcluirAnimal(a.id)}>Excluir</button>}
