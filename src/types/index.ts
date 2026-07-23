@@ -182,6 +182,21 @@ export interface CustoOperacionalLote {
   created_at: string
 }
 
+// ─── Custo real de ração do lote ───────────────────────────────────────────
+// Recalibra o custo de alimentação estimado pelo motor (dieta x %MS x custo/kg)
+// com o valor real gasto pelo produtor. Vale a partir de data_inicio até o
+// próximo lançamento (ou até hoje, se for o mais recente) — mesma ideia de
+// uma pesagem reiniciar a base do peso, mas para o custo de ração.
+export interface CustoRacaoRealLote {
+  id: string
+  lote_id: string
+  data_inicio: string
+  valor_total: number
+  observacoes: string | null
+  user_id: string
+  created_at: string
+}
+
 export interface DietaHistoricoCusto {
   id: string
   dieta_id: string
