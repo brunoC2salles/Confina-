@@ -13,6 +13,11 @@
 //    ativos NAQUELE LOTE na data exata do lançamento (rateio histórico — se
 //    naquele dia não havia nenhum animal registrado, cai no fallback da
 //    quantidade ativa atual, resolvido antes de chegar aqui)
+//  - custo real de ração lançado pelo produtor no lote (recalibração): quando
+//    existe, SUBSTITUI o custo de alimentação estimado por dieta a partir da
+//    data do lançamento até o próximo lançamento (ou até hoje), rateado por
+//    dia entre os animais ativos naquele dia (mesmo princípio do rateio
+//    histórico acima, resolvido antes de chegar aqui)
 //
 // O cálculo é feito dia a dia (não há acumulação em background), conforme
 // decisão de manter o custo histórico correto mesmo se o preço de uma dieta
@@ -62,6 +67,14 @@ export interface CustoOperacionalInfo {
   data_lancamento: string
   qtdAtivaNaData: number   // já resolvida: histórica no dia do lançamento, com fallback para a atual se não houver ninguém registrado naquele dia
 }
+
+// ─── Custo real de ração (recalibração) ────────────────────────────────────
+// Já vem pré-resolvido por dia e por animal (rateio histórico feito em
+// useLotes.ts, mesmo padrão do custo operacional): para cada dia coberto por
+// um lançamento de custo real, o valor aqui é o quanto CADA animal ativo
+// naquele dia deve absorver. Quando um dia está presente neste mapa, ele
+// SUBSTITUI o cálculo por dieta (%MS x custo/kg) daquele dia — não soma.
+export type CustoRacaoRealPorDia = Record<number, number> // dia (toDay) -> valor por animal no dia
 
 export interface ResultadoAnimalNaData {
   peso: number
@@ -177,6 +190,7 @@ export function calcularAnimalNaData(
   ciclos: CicloInfo[],
   dietas: Record<string, DietaInfo>,
   custosOperacionaisPorLote: Record<string, CustoOperacionalInfo[]> = {},
+  custosRacaoRealPorLote: Record<string, CustoRacaoRealPorDia> = {},
 ): ResultadoAnimalNaData {
   const diaEntrada = toDay(animal.data_entrada)
   const diaAlvo = toDay(dataAlvo)
@@ -238,14 +252,25 @@ export function calcularAnimalNaData(
     if (ehPastagem) ganhoPesoPastagem += ganhoHoje
     else ganhoPesoConfinamento += ganhoHoje
 
-    const dietaInfo = ciclo?.dieta_id ? dietas[ciclo.dieta_id] : undefined
-    if (dietaInfo?.pct_consumo_pv_ms != null) {
-      const custoKgMs = resolverCustoKgMsNoDia(dia, dietaInfo)
-      if (custoKgMs != null) {
-        const custoHoje = peso * (dietaInfo.pct_consumo_pv_ms / 100) * custoKgMs
-        custoAlimentacao += custoHoje
-        if (ehPastagem) custoAlimentacaoPastagem += custoHoje
-        else custoAlimentacaoConfinamento += custoHoje
+    // Custo real de ração lançado pelo produtor para este lote, neste dia,
+    // substitui o cálculo estimado por dieta (%MS x custo/kg) — não soma aos
+    // dois. Fora do período coberto por um lançamento real, cai no cálculo
+    // estimado normalmente.
+    const custoRacaoRealHoje = periodo ? custosRacaoRealPorLote[periodo.lote_id]?.[dia] : undefined
+    if (custoRacaoRealHoje != null) {
+      custoAlimentacao += custoRacaoRealHoje
+      if (ehPastagem) custoAlimentacaoPastagem += custoRacaoRealHoje
+      else custoAlimentacaoConfinamento += custoRacaoRealHoje
+    } else {
+      const dietaInfo = ciclo?.dieta_id ? dietas[ciclo.dieta_id] : undefined
+      if (dietaInfo?.pct_consumo_pv_ms != null) {
+        const custoKgMs = resolverCustoKgMsNoDia(dia, dietaInfo)
+        if (custoKgMs != null) {
+          const custoHoje = peso * (dietaInfo.pct_consumo_pv_ms / 100) * custoKgMs
+          custoAlimentacao += custoHoje
+          if (ehPastagem) custoAlimentacaoPastagem += custoHoje
+          else custoAlimentacaoConfinamento += custoHoje
+        }
       }
     }
 
