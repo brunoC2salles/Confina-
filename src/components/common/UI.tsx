@@ -2,7 +2,7 @@
 import { ReactNode, useEffect } from 'react'
 
 export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
-  { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode; size?: 'sm'|'md'|'lg' }) {
+  { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode; size?: 'sm'|'md'|'lg'|'xl' }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     if (open) document.addEventListener('keydown', h)
@@ -11,7 +11,7 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
   if (!open) return null
   return (
     <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className={`modal${size === 'lg' ? ' modal-lg' : size === 'sm' ? ' modal-sm' : ''}`}>
+      <div className={`modal${size === 'xl' ? ' modal-xl' : size === 'lg' ? ' modal-lg' : size === 'sm' ? ' modal-sm' : ''}`}>
         <div className="modal-header">
           <h2 style={{ fontSize: '17px', fontWeight: 600 }}>{title}</h2>
           {subtitle && <p style={{ fontSize: '13px', color: '#9e9e9e', marginTop: '4px' }}>{subtitle}</p>}
