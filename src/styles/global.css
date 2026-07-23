@@ -94,6 +94,7 @@ tbody tr:hover td { background: var(--gray-50); }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal { background: var(--white); border-radius: var(--r-xl); width: 100%; max-width: 520px; max-height: 85vh; box-shadow: var(--shadow-lg); animation: mIn .18s ease; display: flex; flex-direction: column; overflow: hidden; }
 .modal-lg { max-width: 760px; }
+.modal-xl { max-width: 1100px; }
 .modal-sm { max-width: 420px; }
 .modal-header { padding: 24px 24px 16px 24px; flex-shrink: 0; }
 .modal-body { padding: 0 24px 24px 24px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
