@@ -9,7 +9,7 @@ import { useFaixas } from '@/hooks/useFaixas'
 import { useParceiros } from '@/hooks/useHooks'
 import { useProjecao, type CicloProjecao, type PontoProjecao } from '@/hooks/useProjecao'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
-import { fmt, fmtNum, fmtData, obterRendimento, obterBonus } from '@/lib/calculations'
+import { fmt, fmtNum, fmtData, obterRendimento, obterBonus, ordenarPorBrinco } from '@/lib/calculations'
 import type {
   Lote, Animal, SaidaTipo, SaidaModo, RendimentoFaixa, BonusFaixa, TipoCiclo, Compra,
   CustoOperacionalLote, CategoriaCustoOperacional, MotivoEncerramento, CustoRacaoRealLote,
@@ -2146,8 +2146,8 @@ function ModalVenda({
   const carregarAnimaisDoLote = async (loteId: string) => {
     setLoteFiltro(loteId)
     if (loteId === '__preselecionado__' || loteId === '') { setAnimaisDisponiveis(animaisPreSelecionados ?? []); return }
-    const { data: rows } = await supabase.from('animais').select('*').eq('lote_atual_id', loteId).eq('status', 'ativo').order('brinco')
-    setAnimaisDisponiveis((rows ?? []) as Animal[])
+    const { data: rows } = await supabase.from('animais').select('*').eq('lote_atual_id', loteId).eq('status', 'ativo')
+    setAnimaisDisponiveis(ordenarPorBrinco((rows ?? []) as Animal[]))
   }
 
   const toggleSelecionado = (id: string) => {
