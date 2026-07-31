@@ -32,3 +32,14 @@ export const obterRendimento = (peso: number, faixas: RendimentoFaixa[]) =>
 
 export const obterBonus = (peso: number, faixas: BonusFaixa[]) =>
   faixas.find(f => peso >= f.peso_min && peso <= f.peso_max)?.bonus_por_kg ?? 0
+
+// Ordenação numérica crescente de brincos (brinco é texto no banco, então
+// order('brinco') no Supabase ordena alfabeticamente: 1, 10, 1000, 11...).
+// Usa comparação numérica nativa (localeCompare numeric), que também trata
+// brincos de animais bifurcados como "394-2" de forma natural (fica logo
+// após o 394).
+export const compararBrincos = (a: string, b: string) =>
+  a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' })
+
+export const ordenarPorBrinco = <T extends { brinco: string }>(itens: T[]): T[] =>
+  [...itens].sort((a, b) => compararBrincos(a.brinco, b.brinco))
