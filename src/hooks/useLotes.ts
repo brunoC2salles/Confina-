@@ -13,6 +13,7 @@ import {
   type PeriodoLote, type CicloInfo, type DietaInfo, type ResultadoAnimalNaData, type CustoOperacionalInfo,
   type CustoRacaoRealPorDia, type CustoRacaoRealDiaInfo,
 } from '@/lib/custoAnimal'
+import { ordenarPorBrinco } from '@/lib/calculations'
 import { obterRendimento, obterBonus } from '@/lib/calculations'
 import { LIMITE_LOTES_ATIVOS, type Plano } from '@/hooks/useAssinatura'
 
@@ -580,8 +581,7 @@ export function useAnimaisDoLote(loteId: string | null) {
     const { data } = await supabase
       .from('animais').select('*')
       .eq('user_id', user.id).eq('lote_atual_id', loteId).eq('status', 'ativo')
-      .order('brinco')
-    setAnimais((data ?? []) as Animal[])
+    setAnimais(ordenarPorBrinco((data ?? []) as Animal[]))
     setLoading(false)
   }, [user, loteId])
 
