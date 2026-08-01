@@ -1085,6 +1085,7 @@ function DetalheLote({
           <ResumoCard label="Peso médio hoje" valor={`${fmtNum(pesoMedioHoje, 1)} kg`} />
           <ResumoCard label="Custo acumulado" valor={fmt(custoTotalHoje)} destaque />
           <ResumoCard label="Valor de compra total" valor={fmt(valorCompraTotal)} />
+          <ResumoCard label="Data de registro" valor={fmtData(lote.data_criacao)} />
         </div>
 
         {loteAtivo && (
@@ -1224,7 +1225,7 @@ function DetalheLote({
                   <th>Dias</th>
                   <th>Custo acumulado</th>
                   <th>Custo/kg ganho</th>
-                  <th></th>
+                  <th style={{ position: 'sticky', right: 0, background: 'var(--gray-50)', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.15)' }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -1249,7 +1250,7 @@ function DetalheLote({
                       <td>{r ? r.diasConfinamento : '—'}</td>
                       <td>{r ? fmt(custoTotal) : '—'}</td>
                       <td>{custoPorKg != null ? `${fmt(custoPorKg)}/kg` : '—'}</td>
-                      <td>
+                      <td style={{ position: 'sticky', right: 0, background: destacado ? 'var(--green-bg)' : 'var(--white)', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.15)' }}>
                         <div style={{ display: 'flex', gap: 4, whiteSpace: 'nowrap' }}>
                           {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowPesagem(a.id)}>Pesar</button>}
                           {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowEditarEntrada(a.id)}>Editar</button>}
