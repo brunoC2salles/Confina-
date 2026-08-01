@@ -639,8 +639,18 @@ export function useAnimaisDoLote(loteId: string | null) {
       .from('animais')
       .update({ peso_entrada: input.peso_entrada, data_entrada: input.data_entrada })
       .eq('id', input.animal_id)
-    if (!error) await fetch()
-    return { error: error?.message ?? null }
+    if (error) return { error: error.message }
+    // Mantém a movimentação de entrada (usada na reconstrução dos períodos do
+    // motor de custo) sincronizada com a data_entrada — sem isso, o motor de
+    // custo não encontra lote/ciclo ativo nos dias entre a nova data_entrada
+    // e a data antiga da movimentação, e o GMD/custo daquele intervalo fica
+    // incorretamente zerado mesmo com data_entrada corrigida.
+    await supabase
+      .from('movimentacoes_animais')
+      .update({ data: input.data_entrada })
+      .eq('animal_id', input.animal_id).eq('tipo', 'entrada')
+    await fetch()
+    return { error: null }
   }
 
   return {
