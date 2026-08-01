@@ -867,7 +867,7 @@ function DetalheLote({
   const lote = todosLotes.find(l => l.id === loteId)
   const lotesAtivos = todosLotes.filter(l => l.status === 'ativo')
   const loteAtivo = lote?.status === 'ativo'
-  const { animais, loading, fetch, registrarPesagem } = useAnimaisDoLote(loteId)
+  const { animais, loading, fetch, registrarPesagem, editarEntrada } = useAnimaisDoLote(loteId)
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
   const { custos: custosOperacionais, loading: loadingCustosOp, total: totalCustoOperacional, adicionarCusto, removerCusto } = useCustosOperacionais(loteId)
@@ -893,6 +893,7 @@ function DetalheLote({
   const [showMover, setShowMover] = useState(false)
   const [showVenda, setShowVenda] = useState(false)
   const [showPesagem, setShowPesagem] = useState<string | null>(null)
+  const [showEditarEntrada, setShowEditarEntrada] = useState<string | null>(null)
   const [showExcluirAnimal, setShowExcluirAnimal] = useState<string | null>(null)
   const [showProjecaoAnimal, setShowProjecaoAnimal] = useState<string | null>(null)
   const [showProjecao, setShowProjecao] = useState(false)
@@ -1251,6 +1252,7 @@ function DetalheLote({
                       <td>
                         <div style={{ display: 'flex', gap: 4, whiteSpace: 'nowrap' }}>
                           {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowPesagem(a.id)}>Pesar</button>}
+                          {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowEditarEntrada(a.id)}>Editar</button>}
                           <button className="btn btn-ghost btn-sm" onClick={() => setShowProjecaoAnimal(a.id)}>Projeção</button>
                           {loteAtivo && <button className="btn btn-ghost btn-sm" style={{ color: '#b91c1c' }} onClick={() => setShowExcluirAnimal(a.id)}>Excluir</button>}
                         </div>
@@ -1312,6 +1314,18 @@ function DetalheLote({
           onConfirmar={async (peso, data) => {
             const res = await registrarPesagem({ animal_id: showPesagem, peso, data })
             if (!res.error) { setShowPesagem(null); await recalcular() }
+            return res
+          }}
+        />
+      )}
+
+      {showEditarEntrada && (
+        <ModalEditarEntrada
+          animal={animais.find(a => a.id === showEditarEntrada)!}
+          onClose={() => setShowEditarEntrada(null)}
+          onConfirmar={async (peso, data) => {
+            const res = await editarEntrada({ animal_id: showEditarEntrada, peso_entrada: peso, data_entrada: data })
+            if (!res.error) { setShowEditarEntrada(null); await recalcular() }
             return res
           }}
         />
@@ -1452,6 +1466,60 @@ function ModalPesagem({
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={confirmar} disabled={saving}>
             {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Registrar'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL: EDITAR PESO/DATA DE ENTRADA
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ModalEditarEntrada({
+  animal, onClose, onConfirmar,
+}: {
+  animal: Animal
+  onClose: () => void
+  onConfirmar: (peso: number, data: string) => Promise<{ error: string | null }>
+}) {
+  const [peso, setPeso] = useState(String(animal.peso_entrada))
+  const [data, setData] = useState(animal.data_entrada)
+  const [erro, setErro] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const confirmar = async () => {
+    const p = Number(peso)
+    if (!p || p <= 0) { setErro('Peso inválido'); return }
+    if (!data) { setErro('Informe a data de entrada'); return }
+    setSaving(true)
+    const res = await onConfirmar(p, data)
+    setSaving(false)
+    if (res.error) setErro(res.error)
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Editar entrada — ${animal.codigo}`} size="sm">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+          Corrige o peso e a data de entrada cadastrados para este animal.
+        </div>
+        <div className="form-row-2">
+          <div className="form-group">
+            <label className="form-label">Peso de entrada (kg)</label>
+            <input className="form-input" type="number" step="0.1" value={peso} onChange={e => setPeso(e.target.value)} autoFocus />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Data de entrada</label>
+            <input className="form-input" type="date" value={data} onChange={e => setData(e.target.value)} />
+          </div>
+        </div>
+        {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={confirmar} disabled={saving}>
+            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar'}
           </button>
         </div>
       </div>
