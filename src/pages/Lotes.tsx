@@ -149,6 +149,7 @@ export default function Lotes() {
           dietasTemplates={dietasTemplates}
           onCancelar={() => setShowNovoLote(false)}
           onConfirmar={handleCriarLote}
+          prefixosAtivos={lotesAtivos.map(l => l.prefixo)}
         />
       </Modal>
 
@@ -214,7 +215,7 @@ export default function Lotes() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function FormLoteBase({
-  codigoSugerido, dietasTemplates, onConfirmar, onCancelar, tituloConfirmar = 'Criar lote', loteOrigem,
+  codigoSugerido, dietasTemplates, onConfirmar, onCancelar, tituloConfirmar = 'Criar lote', loteOrigem, prefixosAtivos,
 }: {
   codigoSugerido: string
   dietasTemplates: Array<{ id: string; nome: string; gmd_esperado: number; pct_consumo_pv_ms: number; custo_kg_ms: number | null }>
@@ -222,6 +223,7 @@ function FormLoteBase({
   onCancelar: () => void
   tituloConfirmar?: string
   loteOrigem?: Lote
+  prefixosAtivos: string[]
 }) {
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
@@ -288,6 +290,12 @@ function FormLoteBase({
       if (!nomeLote.trim()) return 'Informe o nome do lote'
       if (!codigoLote.trim()) return 'Informe o código do lote'
       if (!dataCriacao) return loteOrigem ? 'Informe a data da bifurcação' : 'Informe a data de criação'
+      const prefixoNormalizado = prefixo.trim().toUpperCase()
+      if (prefixosAtivos.some(p => (p ?? '').toUpperCase() === prefixoNormalizado)) {
+        return prefixoNormalizado
+          ? `Já existe um lote ativo usando o prefixo "${prefixoNormalizado}". Escolha outro prefixo.`
+          : 'Já existe um lote ativo sem prefixo definido. Defina um prefixo (ex: A, B, C) para este lote.'
+      }
     }
     if (step === 2) {
       for (const c of ciclos) {
@@ -356,7 +364,7 @@ function FormLoteBase({
               <label className="form-label">Prefixo dos animais (opcional)</label>
               <input className="form-input" value={prefixo} onChange={e => setPrefixo(e.target.value.toUpperCase())} placeholder="Ex: A" maxLength={6} />
               <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
-                Brinco 33 vira o código {prefixo ? `${prefixo}33` : '33'}. Pode repetir ou deixar em branco — se colidir com outro animal, o sistema ajusta sozinho.
+                Brinco 33 vira o código {prefixo ? `${prefixo}33` : '33'}. Precisa ser diferente do prefixo de qualquer outro lote ativo — inclusive deixar em branco conta como um prefixo.
               </div>
             </div>
             <div className="form-group">
@@ -1283,6 +1291,7 @@ function DetalheLote({
             onConfirmar={handleBifurcar}
             tituloConfirmar="Confirmar bifurcação"
             loteOrigem={lote}
+            prefixosAtivos={lotesAtivos.map(l => l.prefixo)}
           />
         </Modal>
       )}
