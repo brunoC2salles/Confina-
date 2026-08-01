@@ -627,9 +627,25 @@ export function useAnimaisDoLote(loteId: string | null) {
     return { error: error?.message ?? null }
   }
 
+  const editarEntrada = async (input: { animal_id: string; peso_entrada: number; data_entrada: string }) => {
+    if (!user) return { error: 'Não autenticado' }
+    const { data: pesagensExistentes } = await supabase
+      .from('pesagens').select('data').eq('animal_id', input.animal_id)
+    const temPesagemAnterior = (pesagensExistentes ?? []).some(p => (p as { data: string }).data < input.data_entrada)
+    if (temPesagemAnterior) {
+      return { error: 'Já existe pesagem registrada antes dessa data de entrada. Ajuste ou exclua a pesagem antes de mudar a data.' }
+    }
+    const { error } = await supabase
+      .from('animais')
+      .update({ peso_entrada: input.peso_entrada, data_entrada: input.data_entrada })
+      .eq('id', input.animal_id)
+    if (!error) await fetch()
+    return { error: error?.message ?? null }
+  }
+
   return {
     animais, loading, fetch,
-    registrarPesagem, registrarPesagemLote,
+    registrarPesagem, registrarPesagemLote, editarEntrada,
     buscarPesagens, buscarMovimentacoes, buscarCustosVariaveis, adicionarCustoVariavel,
   }
 }
