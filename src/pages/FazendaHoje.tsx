@@ -17,6 +17,7 @@ interface AnimalHoje {
   codigo: string
   brinco: string
   peso_entrada: number
+  data_entrada: string | null
   lote_id: string | null
   fornecedor: string
 }
@@ -61,7 +62,7 @@ export default function FazendaHoje() {
     setLoading(true)
     const { data } = await supabase
       .from('animais')
-      .select('id, codigo, brinco, peso_entrada, lote_atual_id, compras(origem_texto, parceiros(nome))')
+      .select('id, codigo, brinco, peso_entrada, data_entrada, lote_atual_id, compras(origem_texto, parceiros(nome))')
       .eq('user_id', user.id).eq('status', 'ativo')
 
     const lista: AnimalHoje[] = (data ?? []).map((a: any) => ({
@@ -69,6 +70,7 @@ export default function FazendaHoje() {
       codigo: a.codigo,
       brinco: a.brinco,
       peso_entrada: a.peso_entrada,
+      data_entrada: a.data_entrada,
       lote_id: a.lote_atual_id,
       fornecedor: a.compras?.parceiros?.nome ?? a.compras?.origem_texto ?? 'Não informado',
     }))
@@ -171,6 +173,7 @@ export default function FazendaHoje() {
     const mapa: Record<string, {
       loteId: string; loteNome: string; cicloNumero: number | null; cicloNome: string
       tipoCiclo: string | null; dataPrevistaFim: string | null; emEspera: boolean; qtd: number
+      dataEntradaMin: string | null; dataEntradaMax: string | null
     }> = {}
     for (const l of filtradas) {
       const chave = `${l.lote_id ?? 'sem-lote'}__${l.cicloNumero}`
@@ -178,9 +181,15 @@ export default function FazendaHoje() {
         mapa[chave] = {
           loteId: l.lote_id ?? '', loteNome: l.loteNome, cicloNumero: l.cicloNumero, cicloNome: l.cicloNome,
           tipoCiclo: l.tipoCiclo, dataPrevistaFim: l.dataPrevistaFim, emEspera: l.emEspera, qtd: 0,
+          dataEntradaMin: null, dataEntradaMax: null,
         }
       }
       mapa[chave].qtd++
+      if (l.data_entrada) {
+        const g = mapa[chave]
+        if (!g.dataEntradaMin || l.data_entrada < g.dataEntradaMin) g.dataEntradaMin = l.data_entrada
+        if (!g.dataEntradaMax || l.data_entrada > g.dataEntradaMax) g.dataEntradaMax = l.data_entrada
+      }
     }
     return Object.values(mapa).sort((a, b) =>
       a.loteNome.localeCompare(b.loteNome) || (a.cicloNumero ?? 0) - (b.cicloNumero ?? 0)
@@ -340,6 +349,15 @@ export default function FazendaHoje() {
                 </div>
                 <div style={{ fontSize: 30, fontWeight: 700, color: 'var(--green-dark)', marginTop: 8 }}>{g.qtd}</div>
                 <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>animal{g.qtd !== 1 ? 'is' : ''} ativo{g.qtd !== 1 ? 's' : ''}</div>
+                {g.dataEntradaMin && (
+                  <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>
+                    entrada: <strong>
+                      {g.dataEntradaMin === g.dataEntradaMax
+                        ? fmtData(g.dataEntradaMin)
+                        : `${fmtData(g.dataEntradaMin)} a ${fmtData(g.dataEntradaMax!)}`}
+                    </strong>
+                  </div>
+                )}
                 {g.dataPrevistaFim && (
                   <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
                     Previsto até {fmtData(g.dataPrevistaFim)}

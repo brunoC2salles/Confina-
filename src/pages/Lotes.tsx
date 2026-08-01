@@ -93,7 +93,7 @@ export default function Lotes() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
           {listaAtual.map(lote => {
-            const r = resumo[lote.id] ?? { qtdAtiva: 0, pesoMedioEntrada: 0 }
+            const r = resumo[lote.id] ?? { qtdAtiva: 0, pesoMedioEntrada: 0, dataEntradaMin: null, dataEntradaMax: null }
             const ciclos = ciclosPorLote[lote.id] ?? []
             const cicloAtual = ciclos.find(c => c.numero === lote.ciclo_atual)
             return (
@@ -112,9 +112,18 @@ export default function Lotes() {
                       : `Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}`}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--gray-500)' }}>
+                <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--gray-500)', flexWrap: 'wrap' }}>
                   <span><strong>{r.qtdAtiva}</strong> animais ativos</span>
                   {r.qtdAtiva > 0 && <span>peso médio entrada: <strong>{fmtNum(r.pesoMedioEntrada, 1)} kg</strong></span>}
+                  {r.dataEntradaMin && (
+                    <span>
+                      entrada: <strong>
+                        {r.dataEntradaMin === r.dataEntradaMax
+                          ? fmtData(r.dataEntradaMin)
+                          : `${fmtData(r.dataEntradaMin)} a ${fmtData(r.dataEntradaMax!)}`}
+                      </strong>
+                    </span>
+                  )}
                 </div>
                 {cicloAtual && lote.status === 'ativo' && (
                   <div style={{ fontSize: 12, color: '#9e9e9e' }}>
@@ -1208,6 +1217,7 @@ function DetalheLote({
                   )}
                   <th>Código</th>
                   <th>Peso entrada</th>
+                  <th>Data entrada</th>
                   <th>Peso hoje (est.)</th>
                   <th>Peso em {fmtData(dataProjecao)} (est.)</th>
                   <th>Dias</th>
@@ -1230,6 +1240,7 @@ function DetalheLote({
                       {loteAtivo && <td><input type="checkbox" checked={selecionados.has(a.id)} onChange={() => toggleSelecionado(a.id)} /></td>}
                       <td><strong>{a.codigo}</strong></td>
                       <td>{fmtNum(a.peso_entrada, 1)} kg</td>
+                      <td>{fmtData(a.data_entrada)}</td>
                       <td>{r ? `${fmtNum(r.peso, 1)} kg` : '—'}</td>
                       <td>
                         {calculandoProjecao ? '…' : rProjecao ? `${fmtNum(rProjecao.peso, 1)} kg` : '—'}
