@@ -142,7 +142,7 @@ export function useLotes() {
   const { user } = useAuth()
   const [lotes, setLotes] = useState<Lote[]>([])
   const [ciclosPorLote, setCiclosPorLote] = useState<Record<string, CicloLote[]>>({})
-  const [resumo, setResumo] = useState<Record<string, { qtdAtiva: number; pesoMedioEntrada: number }>>({})
+  const [resumo, setResumo] = useState<Record<string, { qtdAtiva: number; pesoMedioEntrada: number; dataEntradaMin: string | null; dataEntradaMax: string | null }>>({})
   const [loading, setLoading] = useState(true)
 
   const fetchLotes = useCallback(async () => {
@@ -164,16 +164,21 @@ export function useLotes() {
       setCiclosPorLote(grupos)
 
       const { data: animaisData } = await supabase
-        .from('animais').select('lote_atual_id, peso_entrada, status')
+        .from('animais').select('lote_atual_id, peso_entrada, status, data_entrada')
         .eq('user_id', user.id).in('lote_atual_id', ids)
-      const res: Record<string, { qtdAtiva: number; pesoMedioEntrada: number }> = {}
-      for (const id of ids) res[id] = { qtdAtiva: 0, pesoMedioEntrada: 0 }
+      const res: Record<string, { qtdAtiva: number; pesoMedioEntrada: number; dataEntradaMin: string | null; dataEntradaMax: string | null }> = {}
+      for (const id of ids) res[id] = { qtdAtiva: 0, pesoMedioEntrada: 0, dataEntradaMin: null, dataEntradaMax: null }
       const somaPeso: Record<string, number> = {}
-      for (const a of (animaisData ?? []) as Array<{ lote_atual_id: string; peso_entrada: number; status: string }>) {
+      for (const a of (animaisData ?? []) as Array<{ lote_atual_id: string; peso_entrada: number; status: string; data_entrada: string | null }>) {
         if (a.status !== 'ativo') continue
         if (!a.lote_atual_id) continue
         res[a.lote_atual_id].qtdAtiva += 1
         somaPeso[a.lote_atual_id] = (somaPeso[a.lote_atual_id] ?? 0) + a.peso_entrada
+        if (a.data_entrada) {
+          const r = res[a.lote_atual_id]
+          if (!r.dataEntradaMin || a.data_entrada < r.dataEntradaMin) r.dataEntradaMin = a.data_entrada
+          if (!r.dataEntradaMax || a.data_entrada > r.dataEntradaMax) r.dataEntradaMax = a.data_entrada
+        }
       }
       for (const id of ids) {
         if (res[id].qtdAtiva > 0) res[id].pesoMedioEntrada = somaPeso[id] / res[id].qtdAtiva
