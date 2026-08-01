@@ -240,7 +240,12 @@ export function useLotes() {
       observacoes: input.observacoes ?? null,
       user_id: user.id,
     }).select().single()
-    if (e1) return { error: e1.message }
+    if (e1) {
+      if (e1.message.includes('idx_lotes_prefixo_ativo')) {
+        return { error: `Já existe um lote ativo usando o prefixo "${input.prefixo || '(vazio)'}". Escolha outro prefixo.` }
+      }
+      return { error: e1.message }
+    }
 
     const ciclosRows = input.ciclos.map(c => ({
       lote_id: lote.id,
