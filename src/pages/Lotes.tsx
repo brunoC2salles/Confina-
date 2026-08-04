@@ -16,7 +16,9 @@ import type {
 } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { parseCsvAnimais } from '@/lib/csv'
-import type { ResultadoAnimalNaData } from '@/lib/custoAnimal'
+import { calcularGmdRealUltimoIntervalo } from '@/lib/custoAnimal'
+import type { ResultadoAnimalNaData, GmdRealResultado, EtapaResultado } from '@/lib/custoAnimal'
+import type { Pesagem } from '@/types'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 const hojeStr = () => new Date().toISOString().split('T')[0]
@@ -875,7 +877,7 @@ function DetalheLote({
   const lote = todosLotes.find(l => l.id === loteId)
   const lotesAtivos = todosLotes.filter(l => l.status === 'ativo')
   const loteAtivo = lote?.status === 'ativo'
-  const { animais, loading, fetch, registrarPesagem, editarEntrada } = useAnimaisDoLote(loteId)
+  const { animais, loading, fetch, registrarPesagem, editarEntrada, buscarPesagens } = useAnimaisDoLote(loteId)
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
   const { custos: custosOperacionais, loading: loadingCustosOp, total: totalCustoOperacional, adicionarCusto, removerCusto } = useCustosOperacionais(loteId)
@@ -904,6 +906,8 @@ function DetalheLote({
   const [showEditarEntrada, setShowEditarEntrada] = useState<string | null>(null)
   const [showExcluirAnimal, setShowExcluirAnimal] = useState<string | null>(null)
   const [showProjecaoAnimal, setShowProjecaoAnimal] = useState<string | null>(null)
+  const [showDetalheAnimal, setShowDetalheAnimal] = useState<string | null>(null)
+  const [showResumoLote, setShowResumoLote] = useState(false)
   const [showProjecao, setShowProjecao] = useState(false)
   const [showEncerrar, setShowEncerrar] = useState(false)
   const [showCustoOperacional, setShowCustoOperacional] = useState(false)
@@ -1117,6 +1121,11 @@ function DetalheLote({
               <button className="btn btn-ghost btn-sm" onClick={() => setShowCompras(true)}>
                 Compras
               </button>
+              {qtdAtiva > 0 && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowResumoLote(true)}>
+                  Ver resumo do lote
+                </button>
+              )}
               {qtdAtiva === 0 && (
                 <button className="btn btn-ghost btn-sm" style={{ color: '#b91c1c' }} onClick={() => setShowEncerrar(true)}>
                   Encerrar lote
@@ -1246,8 +1255,14 @@ function DetalheLote({
                   const custoPorKg = r && ganho > 0 ? custoTotal / ganho : null
                   const destacado = a.id === highlightAnimalId
                   return (
-                    <tr key={a.id} data-animal-id={a.id} style={destacado ? { background: 'var(--green-bg)' } : undefined}>
-                      {loteAtivo && <td><input type="checkbox" checked={selecionados.has(a.id)} onChange={() => toggleSelecionado(a.id)} /></td>}
+                    <tr key={a.id} data-animal-id={a.id}
+                      style={{ cursor: 'pointer', ...(destacado ? { background: 'var(--green-bg)' } : {}) }}
+                      onClick={() => setShowDetalheAnimal(a.id)}>
+                      {loteAtivo && (
+                        <td onClick={e => e.stopPropagation()}>
+                          <input type="checkbox" checked={selecionados.has(a.id)} onChange={() => toggleSelecionado(a.id)} />
+                        </td>
+                      )}
                       <td><strong>{a.codigo}</strong></td>
                       <td>{fmtNum(a.peso_entrada, 1)} kg</td>
                       <td>{fmtData(a.data_entrada)}</td>
@@ -1258,8 +1273,10 @@ function DetalheLote({
                       <td>{r ? r.diasConfinamento : '—'}</td>
                       <td>{r ? fmt(custoTotal) : '—'}</td>
                       <td>{custoPorKg != null ? `${fmt(custoPorKg)}/kg` : '—'}</td>
-                      <td style={{ position: 'sticky', right: 0, background: destacado ? 'var(--green-bg)' : 'var(--white)', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.15)' }}>
+                      <td style={{ position: 'sticky', right: 0, background: destacado ? 'var(--green-bg)' : 'var(--white)', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.15)' }}
+                        onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 4, whiteSpace: 'nowrap' }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setShowDetalheAnimal(a.id)}>Detalhes</button>
                           {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowPesagem(a.id)}>Pesar</button>}
                           {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowEditarEntrada(a.id)}>Editar</button>}
                           <button className="btn btn-ghost btn-sm" onClick={() => setShowProjecaoAnimal(a.id)}>Projeção</button>
@@ -1415,6 +1432,272 @@ function DetalheLote({
           </Modal>
         )
       })()}
+
+      {showDetalheAnimal && (() => {
+        const animal = animais.find(a => a.id === showDetalheAnimal)
+        if (!animal) return null
+        return (
+          <ModalDetalheAnimal
+            animal={animal}
+            resultado={resultados[animal.id]}
+            custoTotal={custoTotalAnimal(animal.id)}
+            ciclosPorLote={ciclosPorLote}
+            todosLotes={todosLotes}
+            buscarPesagens={buscarPesagens}
+            onClose={() => setShowDetalheAnimal(null)}
+          />
+        )
+      })()}
+
+      {showResumoLote && (
+        <ModalResumoLote
+          lote={lote}
+          animais={animais}
+          resultados={resultados}
+          custosVariaveisPorAnimal={custosVariaveisPorAnimal}
+          ciclosPorLote={ciclosPorLote}
+          todosLotes={todosLotes}
+          onClose={() => setShowResumoLote(false)}
+        />
+      )}
+    </Modal>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL: DETALHE DO ANIMAL (nível individual)
+// Consumo de ração, GMD real do último intervalo entre pesagens (rotulado
+// "real"), custo acumulado e quebra por etapa (ciclo individual, não só
+// pastagem x confinamento). Tudo calculado sob demanda — nada persistido.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function nomeCiclo(
+  ciclosPorLote: Record<string, Array<{ numero: number; nome: string }>>,
+  loteId: string,
+  numero: number,
+): string {
+  if (numero === 0) return 'Sem ciclo configurado'
+  return ciclosPorLote[loteId]?.find(c => c.numero === numero)?.nome ?? `Ciclo ${numero}`
+}
+
+function TabelaPorEtapa({
+  etapas, ciclosPorLote, todosLotes, loteAtualId,
+}: {
+  etapas: EtapaResultado[]
+  ciclosPorLote: Record<string, Array<{ numero: number; nome: string }>>
+  todosLotes: Lote[]
+  loteAtualId?: string
+}) {
+  const ordenadas = [...etapas].sort((a, b) => a.numero - b.numero)
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Etapa</th>
+            <th>Dias</th>
+            <th>Ganho (kg)</th>
+            <th>Consumo ração (kg)</th>
+            <th>Custo alimentação</th>
+            <th>Custo operacional</th>
+            <th>Custo/kg ganho</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordenadas.map(e => {
+            const custoTotalEtapa = e.custoAlimentacao + e.custoOperacional
+            const custoPorKg = e.ganhoPeso > 0 ? custoTotalEtapa / e.ganhoPeso : null
+            const nomeDoLote = todosLotes.find(l => l.id === e.lote_id)?.nome_lote
+            const mostrarLote = e.lote_id !== loteAtualId && !!nomeDoLote
+            return (
+              <tr key={`${e.lote_id}#${e.numero}`}>
+                <td>
+                  {nomeCiclo(ciclosPorLote, e.lote_id, e.numero)}
+                  {mostrarLote ? ` (${nomeDoLote})` : ''}
+                  {e.tipoCiclo === 'pastagem' ? ' · pastagem' : ''}
+                </td>
+                <td>{e.dias}</td>
+                <td>{fmtNum(e.ganhoPeso, 1)}</td>
+                <td>{fmtNum(e.consumoRacaoKg, 1)}</td>
+                <td>{fmt(e.custoAlimentacao)}</td>
+                <td>{fmt(e.custoOperacional)}</td>
+                <td>{custoPorKg != null ? `${fmt(custoPorKg)}/kg` : '—'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ModalDetalheAnimal({
+  animal, resultado, custoTotal, ciclosPorLote, todosLotes, buscarPesagens, onClose,
+}: {
+  animal: Animal
+  resultado?: ResultadoAnimalNaData
+  custoTotal: number
+  ciclosPorLote: Record<string, Array<{ numero: number; nome: string }>>
+  todosLotes: Lote[]
+  buscarPesagens: (animalId: string) => Promise<Pesagem[]>
+  onClose: () => void
+}) {
+  const [gmdReal, setGmdReal] = useState<GmdRealResultado | null | undefined>(undefined)
+
+  useEffect(() => {
+    let cancelado = false
+    setGmdReal(undefined)
+    buscarPesagens(animal.id).then(pesagens => {
+      if (cancelado) return
+      const resultado = calcularGmdRealUltimoIntervalo(
+        { peso_entrada: animal.peso_entrada, data_entrada: animal.data_entrada },
+        pesagens.map(p => ({ data: p.data, peso: p.peso })),
+      )
+      setGmdReal(resultado)
+    })
+    return () => { cancelado = true }
+  }, [animal.id, animal.peso_entrada, animal.data_entrada, buscarPesagens])
+
+  const ganho = resultado ? resultado.peso - animal.peso_entrada : 0
+  const custoPorKgGanho = resultado && ganho > 0 ? custoTotal / ganho : null
+  const etapas = resultado ? Object.values(resultado.porEtapa) : []
+
+  return (
+    <Modal open onClose={onClose} title={`Detalhes — ${animal.codigo}`}
+      subtitle={`Brinco ${animal.brinco} · entrada ${fmtData(animal.data_entrada)}`} size="lg">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <ResumoCard label="Peso atual (est.)" valor={resultado ? `${fmtNum(resultado.peso, 1)} kg` : '—'} />
+          <ResumoCard label="Consumo de ração (total)" valor={resultado ? `${fmtNum(resultado.consumoRacaoKg, 1)} kg` : '—'} />
+          <ResumoCard label="Custo acumulado" valor={fmt(custoTotal)} destaque />
+          <ResumoCard label="Custo/kg ganho" valor={custoPorKgGanho != null ? `${fmt(custoPorKgGanho)}/kg` : '—'} />
+        </div>
+
+        <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 8 }}>GMD do último intervalo entre pesagens</div>
+          {gmdReal === undefined ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>Calculando…</div>
+          ) : gmdReal === null ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>Ainda não há duas pesagens para calcular um GMD real.</div>
+          ) : (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
+              <span style={{ background: '#e8f5e9', color: '#1b5e20', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>REAL</span>
+              <span><strong>{fmtNum(gmdReal.gmdReal, 3)} kg/dia</strong></span>
+              <span>{fmtNum(gmdReal.pesoAnterior, 1)} kg ({fmtData(gmdReal.dataAnterior)}) → {fmtNum(gmdReal.pesoNovo, 1)} kg ({fmtData(gmdReal.dataNova)})</span>
+              <span>{gmdReal.dias} dia(s)</span>
+            </div>
+          )}
+          {resultado && (
+            <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 8 }}>
+              GMD médio desde a entrada (estimado, mistura projeção e pesagens reais): {fmtNum(resultado.gmdMedio, 3)} kg/dia
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Custo e consumo por etapa</div>
+          {etapas.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Nenhuma etapa calculada ainda.</div>
+          ) : (
+            <TabelaPorEtapa etapas={etapas} ciclosPorLote={ciclosPorLote} todosLotes={todosLotes} loteAtualId={animal.lote_atual_id ?? undefined} />
+          )}
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL: RESUMO DO LOTE (nível de grupo)
+// Mesmos campos do detalhe individual, agregados para todos os animais
+// ativos do lote — consumo total, custo total, e quebra por etapa somada.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ModalResumoLote({
+  lote, animais, resultados, custosVariaveisPorAnimal, ciclosPorLote, todosLotes, onClose,
+}: {
+  lote: Lote
+  animais: Animal[]
+  resultados: Record<string, ResultadoAnimalNaData>
+  custosVariaveisPorAnimal: Record<string, number>
+  ciclosPorLote: Record<string, Array<{ numero: number; nome: string }>>
+  todosLotes: Lote[]
+  onClose: () => void
+}) {
+  const totais = useMemo(() => {
+    let consumoRacaoKg = 0, custoAlimentacao = 0, custoOperacional = 0, custosVariaveis = 0, ganhoPeso = 0, pesoAtual = 0
+    const etapasPorChave: Record<string, EtapaResultado> = {}
+
+    for (const a of animais) {
+      const r = resultados[a.id]
+      if (!r) continue
+      consumoRacaoKg += r.consumoRacaoKg
+      custoAlimentacao += r.custoAlimentacao
+      custoOperacional += r.custoOperacional
+      custosVariaveis += custosVariaveisPorAnimal[a.id] ?? 0
+      ganhoPeso += r.peso - a.peso_entrada
+      pesoAtual += r.peso
+
+      for (const e of Object.values(r.porEtapa)) {
+        const chave = `${e.lote_id}#${e.numero}`
+        if (!etapasPorChave[chave]) {
+          etapasPorChave[chave] = { lote_id: e.lote_id, numero: e.numero, tipoCiclo: e.tipoCiclo, dias: 0, ganhoPeso: 0, consumoRacaoKg: 0, custoAlimentacao: 0, custoOperacional: 0 }
+        }
+        const acc = etapasPorChave[chave]
+        acc.dias = Math.max(acc.dias, e.dias)
+        acc.ganhoPeso += e.ganhoPeso
+        acc.consumoRacaoKg += e.consumoRacaoKg
+        acc.custoAlimentacao += e.custoAlimentacao
+        acc.custoOperacional += e.custoOperacional
+      }
+    }
+
+    const custoTotal = custoAlimentacao + custoOperacional + custosVariaveis
+    return {
+      consumoRacaoKg, custoAlimentacao, custoOperacional, custosVariaveis, custoTotal,
+      ganhoPeso, pesoAtual,
+      etapas: Object.values(etapasPorChave),
+    }
+  }, [animais, resultados, custosVariaveisPorAnimal])
+
+  const pesoMedioAtual = animais.length > 0 ? totais.pesoAtual / animais.length : 0
+  const custoPorKgGanho = totais.ganhoPeso > 0 ? totais.custoTotal / totais.ganhoPeso : null
+
+  return (
+    <Modal open onClose={onClose} title={`Resumo — ${lote.nome_lote}`}
+      subtitle={`${animais.length} animal(is) ativo(s)`} size="lg">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <ResumoCard label="Peso médio atual" valor={`${fmtNum(pesoMedioAtual, 1)} kg`} />
+          <ResumoCard label="Consumo de ração (total)" valor={`${fmtNum(totais.consumoRacaoKg, 0)} kg`} />
+          <ResumoCard label="Custo total do grupo" valor={fmt(totais.custoTotal)} destaque />
+          <ResumoCard label="Custo/kg ganho" valor={custoPorKgGanho != null ? `${fmt(custoPorKgGanho)}/kg` : '—'} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <ResumoCard label="Custo alimentação" valor={fmt(totais.custoAlimentacao)} />
+          <ResumoCard label="Custo operacional" valor={fmt(totais.custoOperacional)} />
+          <ResumoCard label="Custos variáveis" valor={fmt(totais.custosVariaveis)} />
+          <ResumoCard label="Ganho de peso total" valor={`${fmtNum(totais.ganhoPeso, 1)} kg`} />
+        </div>
+
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Custo e consumo por etapa (somado do grupo)</div>
+          {totais.etapas.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Nenhuma etapa calculada ainda.</div>
+          ) : (
+            <TabelaPorEtapa etapas={totais.etapas} ciclosPorLote={ciclosPorLote} todosLotes={todosLotes} loteAtualId={lote.id} />
+          )}
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
     </Modal>
   )
 }
