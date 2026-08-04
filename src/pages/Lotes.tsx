@@ -1564,7 +1564,7 @@ function ModalDetalheAnimal({
 
   return (
     <Modal open onClose={onClose} title={`Detalhes — ${animal.codigo}`}
-      subtitle={`Brinco ${animal.brinco} · entrada ${fmtData(animal.data_entrada)}`} size="lg">
+      subtitle={`Brinco ${animal.brinco} · entrada ${fmtData(animal.data_entrada)}`} size="xl">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <ResumoCard label="Peso atual (est.)" valor={resultado ? `${fmtNum(resultado.peso, 1)} kg` : '—'} />
@@ -1669,7 +1669,7 @@ function ModalResumoLote({
 
   return (
     <Modal open onClose={onClose} title={`Resumo — ${lote.nome_lote}`}
-      subtitle={`${animais.length} animal(is) ativo(s)`} size="lg">
+      subtitle={`${animais.length} animal(is) ativo(s)`} size="xl">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <ResumoCard label="Peso médio atual" valor={`${fmtNum(pesoMedioAtual, 1)} kg`} />
