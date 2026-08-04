@@ -1037,8 +1037,8 @@ function DetalheLote({
     return res
   }
 
-  const handleMover = async (loteDestinoId: string) => {
-    const res = await moverAliquota({ animal_ids: Array.from(selecionados), lote_destino_id: loteDestinoId, data: hojeStr() })
+  const handleMover = async (loteDestinoId: string, data: string) => {
+    const res = await moverAliquota({ animal_ids: Array.from(selecionados), lote_destino_id: loteDestinoId, data })
     if (!res.error) { setShowMover(false); setSelecionados(new Set()); await fetch() }
     else setErro(res.error)
   }
@@ -1197,12 +1197,21 @@ function DetalheLote({
         )}
 
         {selecionados.size > 0 && loteAtivo && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--green-bg)', padding: '8px 12px', borderRadius: 8 }}>
-            <span style={{ fontSize: 12, color: '#1b5e20' }}>{selecionados.size} selecionado(s)</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowBifurcar(true)}>Bifurcar</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowMover(true)}>Mover para outro lote</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowVenda(true)}>Vender</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setSelecionados(new Set())} style={{ marginLeft: 'auto' }}>Limpar seleção</button>
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 8,
+            background: '#eaf5ea', padding: '10px 12px', borderRadius: 8,
+            position: 'sticky', bottom: 0, zIndex: 5,
+            boxShadow: '0 -4px 10px -6px rgba(0,0,0,0.25)', border: '1px solid var(--green-border)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, color: '#1b5e20', fontWeight: 600 }}>{selecionados.size} selecionado(s)</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSelecionados(new Set())} style={{ marginLeft: 'auto' }}>Limpar seleção</button>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowBifurcar(true)}>Bifurcar</button>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowMover(true)}>Mover para outro lote</button>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowVenda(true)}>Vender</button>
+            </div>
           </div>
         )}
 
@@ -1362,10 +1371,16 @@ function DetalheLote({
       {showEditarEntrada && (
         <ModalEditarEntrada
           animal={animais.find(a => a.id === showEditarEntrada)!}
+          eventoEntradaNoLote={eventosMovimentacao.find(ev => ev.lote_destino_id === loteId && ev.animais.some(a => a.animal_id === showEditarEntrada)) ?? null}
           onClose={() => setShowEditarEntrada(null)}
           onConfirmar={async (peso, data) => {
             const res = await editarEntrada({ animal_id: showEditarEntrada, peso_entrada: peso, data_entrada: data })
             if (!res.error) { setShowEditarEntrada(null); await recalcular() }
+            return res
+          }}
+          onEditarDataEvento={async (grupoEventoId, novaData) => {
+            const res = await editarDataEvento(grupoEventoId, novaData)
+            if (!res.error) await recalcular()
             return res
           }}
         />
@@ -1910,7 +1925,10 @@ function ModalHistoricoMovimentacoes({
                           <td>{TIPO_EVENTO_LABEL[ev.tipo] ?? ev.tipo}</td>
                           <td>{nomeLote(ev.lote_origem_id)}</td>
                           <td>{nomeLote(ev.lote_destino_id)}</td>
-                          <td>{ev.animais.length} — {ev.animais.map(a => a.codigo).join(', ')}</td>
+                          <td style={{ maxWidth: 220 }}>
+                            {ev.animais.length} — {ev.animais.slice(0, 4).map(a => a.codigo).join(', ')}
+                            {ev.animais.length > 4 ? ` e mais ${ev.animais.length - 4}` : ''}
+                          </td>
                           <td>
                             <button className="btn btn-ghost btn-sm" onClick={() => iniciarEdicao(ev)}>Editar data</button>
                           </td>
@@ -2003,16 +2021,22 @@ function ModalPesagem({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ModalEditarEntrada({
-  animal, onClose, onConfirmar,
+  animal, eventoEntradaNoLote, onClose, onConfirmar, onEditarDataEvento,
 }: {
   animal: Animal
+  eventoEntradaNoLote: MovimentacaoGrupoLote | null
   onClose: () => void
   onConfirmar: (peso: number, data: string) => Promise<{ error: string | null }>
+  onEditarDataEvento: (grupoEventoId: string, novaData: string) => Promise<{ error: string | null }>
 }) {
   const [peso, setPeso] = useState(String(animal.peso_entrada))
   const [data, setData] = useState(animal.data_entrada)
   const [erro, setErro] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  const [dataLote, setDataLote] = useState(eventoEntradaNoLote?.data ?? '')
+  const [erroLote, setErroLote] = useState<string | null>(null)
+  const [savingLote, setSavingLote] = useState(false)
 
   const confirmar = async () => {
     const p = Number(peso)
@@ -2024,28 +2048,60 @@ function ModalEditarEntrada({
     if (res.error) setErro(res.error)
   }
 
+  const confirmarDataLote = async () => {
+    if (!eventoEntradaNoLote) return
+    if (!dataLote) { setErroLote('Informe a data'); return }
+    setSavingLote(true); setErroLote(null)
+    const res = await onEditarDataEvento(eventoEntradaNoLote.grupo_evento_id, dataLote)
+    setSavingLote(false)
+    if (res.error) setErroLote(res.error)
+  }
+
   return (
     <Modal open onClose={onClose} title={`Editar entrada — ${animal.codigo}`} size="sm">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
-          Corrige o peso e a data de entrada cadastrados para este animal.
-        </div>
-        <div className="form-row-2">
-          <div className="form-group">
-            <label className="form-label">Peso de entrada (kg)</label>
-            <input className="form-input" type="number" step="0.1" value={peso} onChange={e => setPeso(e.target.value)} autoFocus />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+            Corrige o peso e a data de entrada cadastrados para este animal.
           </div>
-          <div className="form-group">
-            <label className="form-label">Data de entrada</label>
-            <input className="form-input" type="date" value={data} onChange={e => setData(e.target.value)} />
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label">Peso de entrada (kg)</label>
+              <input className="form-input" type="number" step="0.1" value={peso} onChange={e => setPeso(e.target.value)} autoFocus />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Data de entrada</label>
+              <input className="form-input" type="date" value={data} onChange={e => setData(e.target.value)} />
+            </div>
+          </div>
+          {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
+          <div className="modal-actions" style={{ marginTop: 0 }}>
+            <button className="btn btn-primary btn-sm" onClick={confirmar} disabled={saving} style={{ marginLeft: 'auto' }}>
+              {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar entrada'}
+            </button>
           </div>
         </div>
-        {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
+
+        {eventoEntradaNoLote && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+              Este animal chegou neste lote por {TIPO_EVENTO_LABEL[eventoEntradaNoLote.tipo] ?? eventoEntradaNoLote.tipo.toLowerCase()} — se a data registrada não bate com o dia real, corrija abaixo. A correção vale para todos os {eventoEntradaNoLote.animais.length} animal(is) que se moveram junto nesse evento, e recalcula o custo automaticamente.
+            </div>
+            <div className="form-group">
+              <label className="form-label">Data em que veio para este lote</label>
+              <input className="form-input" type="date" value={dataLote} onChange={e => setDataLote(e.target.value)} style={{ maxWidth: 200 }} />
+            </div>
+            {erroLote && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erroLote}</div>}
+            <div className="modal-actions" style={{ marginTop: 0 }}>
+              <button className="btn btn-primary btn-sm" onClick={confirmarDataLote} disabled={savingLote} style={{ marginLeft: 'auto' }}>
+                {savingLote ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar data no lote'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="modal-actions">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={confirmar} disabled={saving}>
-            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar'}
-          </button>
+          <button className="btn btn-ghost" onClick={onClose}>Fechar</button>
         </div>
       </div>
     </Modal>
@@ -2678,10 +2734,11 @@ function ModalMoverConteudo({
   lotesDisponiveis, onConfirmar, onCancelar,
 }: {
   lotesDisponiveis: Lote[]
-  onConfirmar: (loteDestinoId: string) => Promise<void>
+  onConfirmar: (loteDestinoId: string, data: string) => Promise<void>
   onCancelar: () => void
 }) {
   const [destino, setDestino] = useState('')
+  const [data, setData] = useState(hojeStr())
   const [saving, setSaving] = useState(false)
 
   return (
@@ -2693,10 +2750,17 @@ function ModalMoverConteudo({
           {lotesDisponiveis.map(l => <option key={l.id} value={l.id}>{l.nome_lote} ({l.codigo_lote})</option>)}
         </select>
       </div>
+      <div className="form-group">
+        <label className="form-label">Data em que os animais foram movidos</label>
+        <input className="form-input" type="date" value={data} onChange={e => setData(e.target.value)} style={{ maxWidth: 200 }} />
+        <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+          Use a data real da movimentação, não a data de hoje — isso define qual dieta/ciclo é usado no cálculo de custo a partir de agora.
+        </div>
+      </div>
       <div className="modal-actions">
         <button className="btn btn-ghost" onClick={onCancelar}>Cancelar</button>
-        <button className="btn btn-primary" disabled={!destino || saving} onClick={async () => {
-          setSaving(true); await onConfirmar(destino); setSaving(false)
+        <button className="btn btn-primary" disabled={!destino || !data || saving} onClick={async () => {
+          setSaving(true); await onConfirmar(destino, data); setSaving(false)
         }}>
           {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Confirmar movimentação'}
         </button>
@@ -2704,6 +2768,7 @@ function ModalMoverConteudo({
     </div>
   )
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MODAL: VENDA (peso próprio / peso da carga, permite misturar lotes)
