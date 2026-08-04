@@ -610,6 +610,25 @@ export function useAnimaisDoLote(loteId: string | null) {
     return { error: error?.message ?? null }
   }
 
+  // Corrige uma pesagem já lançada (peso e/ou data digitados errado). Não
+  // permite jogar a data pra antes da entrada do animal — mesma regra do
+  // registro inicial — mas não impede reordenar em relação a outras pesagens,
+  // já que o motor de custo ordena tudo por data de qualquer forma.
+  const editarPesagem = async (input: { id: string; animal_id: string; peso: number; data: string }) => {
+    if (!user) return { error: 'Não autenticado' }
+    const { data: animalData } = await supabase.from('animais').select('data_entrada').eq('id', input.animal_id).maybeSingle()
+    if (animalData && input.data < animalData.data_entrada) {
+      return { error: 'A data da pesagem não pode ser anterior à entrada do animal' }
+    }
+    const { error } = await supabase.from('pesagens').update({ peso: input.peso, data: input.data }).eq('id', input.id)
+    return { error: error?.message ?? null }
+  }
+
+  const excluirPesagem = async (id: string) => {
+    const { error } = await supabase.from('pesagens').delete().eq('id', id)
+    return { error: error?.message ?? null }
+  }
+
   const buscarPesagens = async (animalId: string): Promise<Pesagem[]> => {
     const { data } = await supabase.from('pesagens').select('*').eq('animal_id', animalId).order('data', { ascending: false })
     return (data ?? []) as Pesagem[]
@@ -662,10 +681,124 @@ export function useAnimaisDoLote(loteId: string | null) {
     animais, loading, fetch,
     registrarPesagem, registrarPesagemLote, editarEntrada,
     buscarPesagens, buscarMovimentacoes, buscarCustosVariaveis, adicionarCustoVariavel,
+    editarPesagem, excluirPesagem,
   }
 }
 
-// ─── Motor de custo: monta contexto e calcula por animal ──────────────────────
+// ─── Hook: histórico de movimentações entre lotes (bifurcação / transferência) ─
+// Ricardo (agronomista/colaborador) reportou que o produtor costuma registrar
+// a movimentação de um lote pra outro em dia diferente do dia real em que o
+// animal foi fisicamente movido — e como o motor de custo usa exatamente essa
+// data pra decidir qual dieta/ciclo vale em cada dia, isso distorce o custo
+// acumulado. Este hook lista os eventos de troca de lote (agrupados por
+// grupo_evento_id, já que bifurcação/movimentação em lote afetam vários
+// animais de uma vez) e permite corrigir a data de TODO o grupo junto — mais
+// fiel à realidade, já que os animais daquele evento foram movidos no mesmo
+// dia. Não cobre o evento de "entrada" (esse já tem correção própria em
+// editarEntrada, atrelada ao peso de entrada) nem saídas/vendas (fora do
+// escopo pedido).
+export interface MovimentacaoGrupoLote {
+  grupo_evento_id: string
+  tipo: string // 'bifurcacao' | 'transferencia_lote'
+  data: string
+  lote_origem_id: string | null
+  lote_destino_id: string | null
+  animais: Array<{ animal_id: string; codigo: string }>
+}
+
+export function useMovimentacoesLote(loteId: string | null) {
+  const { user } = useAuth()
+  const [eventos, setEventos] = useState<MovimentacaoGrupoLote[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetch = useCallback(async () => {
+    if (!user || !loteId) { setEventos([]); setLoading(false); return }
+    setLoading(true)
+
+    const { data: movs } = await supabase
+      .from('movimentacoes_animais')
+      .select('animal_id, tipo, data, lote_origem_id, lote_destino_id, grupo_evento_id')
+      .eq('user_id', user.id)
+      .in('tipo', ['bifurcacao', 'transferencia_lote'])
+      .not('grupo_evento_id', 'is', null)
+      .or(`lote_origem_id.eq.${loteId},lote_destino_id.eq.${loteId}`)
+      .order('data', { ascending: false })
+
+    const linhas = (movs ?? []) as Array<{ animal_id: string; tipo: string; data: string; lote_origem_id: string | null; lote_destino_id: string | null; grupo_evento_id: string }>
+    const animalIds = Array.from(new Set(linhas.map(l => l.animal_id)))
+    const codigoPorAnimal: Record<string, string> = {}
+    if (animalIds.length > 0) {
+      const { data: animaisData } = await supabase.from('animais').select('id, codigo').in('id', animalIds)
+      for (const a of (animaisData ?? []) as Array<{ id: string; codigo: string }>) codigoPorAnimal[a.id] = a.codigo
+    }
+
+    const porGrupo: Record<string, MovimentacaoGrupoLote> = {}
+    for (const l of linhas) {
+      if (!porGrupo[l.grupo_evento_id]) {
+        porGrupo[l.grupo_evento_id] = {
+          grupo_evento_id: l.grupo_evento_id, tipo: l.tipo, data: l.data,
+          lote_origem_id: l.lote_origem_id, lote_destino_id: l.lote_destino_id, animais: [],
+        }
+      }
+      porGrupo[l.grupo_evento_id].animais.push({ animal_id: l.animal_id, codigo: codigoPorAnimal[l.animal_id] ?? '—' })
+    }
+
+    setEventos(Object.values(porGrupo).sort((a, b) => b.data.localeCompare(a.data)))
+    setLoading(false)
+  }, [user, loteId])
+
+  useEffect(() => { fetch() }, [fetch])
+
+  // Corrige a data de todo o grupo junto. Valida, PRA CADA animal do grupo,
+  // que a nova data não fica antes do evento anterior dele (entrada ou outra
+  // troca de lote) nem depois do próximo evento (se existir) — senão os
+  // períodos que o motor de custo reconstrói se sobrepõem ou invertem.
+  const editarDataEvento = async (grupoEventoId: string, novaData: string) => {
+    if (!user) return { error: 'Não autenticado' }
+
+    const evento = eventos.find(e => e.grupo_evento_id === grupoEventoId)
+    if (!evento) return { error: 'Evento não encontrado' }
+
+    for (const { animal_id, codigo } of evento.animais) {
+      const { data: historico } = await supabase
+        .from('movimentacoes_animais')
+        .select('id, tipo, data, grupo_evento_id')
+        .eq('animal_id', animal_id)
+        .order('data', { ascending: true })
+
+      const lista = (historico ?? []) as Array<{ id: string; tipo: string; data: string; grupo_evento_id: string | null }>
+      const idx = lista.findIndex(m => m.grupo_evento_id === grupoEventoId)
+      if (idx === -1) continue
+
+      const anterior = lista[idx - 1]
+      const proximo = lista[idx + 1]
+      if (anterior && novaData < anterior.data) {
+        return { error: `${codigo}: a nova data não pode ser anterior a ${fmtDataSimples(anterior.data)} (evento anterior desse animal)` }
+      }
+      if (proximo && novaData >= proximo.data) {
+        return { error: `${codigo}: a nova data precisa ser anterior a ${fmtDataSimples(proximo.data)} (próximo evento desse animal)` }
+      }
+    }
+
+    const { error } = await supabase
+      .from('movimentacoes_animais')
+      .update({ data: novaData })
+      .eq('grupo_evento_id', grupoEventoId)
+    if (error) return { error: error.message }
+
+    await fetch()
+    return { error: null }
+  }
+
+  return { eventos, loading, fetch, editarDataEvento }
+}
+
+function fmtDataSimples(d: string): string {
+  const [ano, mes, dia] = d.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+
 
 interface ContextoCusto {
   animaisPorId: Record<string, { peso_entrada: number; data_entrada: string }>
