@@ -2,7 +2,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   useLotes, useAnimaisDoLote, useCustoEngine, useVendas, useCustosOperacionais, useCustosRacaoReal, useCompras,
+  useMovimentacoesLote,
   type CriarLoteInput, type CicloInput, type LinhaAnimalInput, type CompraInput, type CriarAnimaisInput,
+  type MovimentacaoGrupoLote,
 } from '@/hooks/useLotes'
 import { useDietas } from '@/hooks/useDietas'
 import { useFaixas } from '@/hooks/useFaixas'
@@ -17,7 +19,7 @@ import type {
 import { supabase } from '@/lib/supabase'
 import { parseCsvAnimais } from '@/lib/csv'
 import { calcularGmdRealUltimoIntervalo } from '@/lib/custoAnimal'
-import type { ResultadoAnimalNaData, GmdRealResultado, EtapaResultado } from '@/lib/custoAnimal'
+import type { ResultadoAnimalNaData, EtapaResultado } from '@/lib/custoAnimal'
 import type { Pesagem } from '@/types'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
 
@@ -877,12 +879,13 @@ function DetalheLote({
   const lote = todosLotes.find(l => l.id === loteId)
   const lotesAtivos = todosLotes.filter(l => l.status === 'ativo')
   const loteAtivo = lote?.status === 'ativo'
-  const { animais, loading, fetch, registrarPesagem, editarEntrada, buscarPesagens } = useAnimaisDoLote(loteId)
+  const { animais, loading, fetch, registrarPesagem, editarEntrada, buscarPesagens, editarPesagem, excluirPesagem } = useAnimaisDoLote(loteId)
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
   const { custos: custosOperacionais, loading: loadingCustosOp, total: totalCustoOperacional, adicionarCusto, removerCusto } = useCustosOperacionais(loteId)
   const { custos: custosRacaoReal, loading: loadingCustosRacaoReal, adicionarCustoRacaoReal, editarCustoRacaoReal, removerCustoRacaoReal } = useCustosRacaoReal(loteId)
   const { compras, loading: loadingCompras } = useCompras(loteId)
+  const { eventos: eventosMovimentacao, loading: loadingMovimentacao, editarDataEvento } = useMovimentacoesLote(loteId)
   const { parceiros } = useParceiros()
   const nomeParceiro = (id: string | null) => id ? (parceiros.find(p => p.id === id)?.nome ?? '—') : null
 
@@ -908,6 +911,7 @@ function DetalheLote({
   const [showProjecaoAnimal, setShowProjecaoAnimal] = useState<string | null>(null)
   const [showDetalheAnimal, setShowDetalheAnimal] = useState<string | null>(null)
   const [showResumoLote, setShowResumoLote] = useState(false)
+  const [showHistoricoMovimentacoes, setShowHistoricoMovimentacoes] = useState(false)
   const [showProjecao, setShowProjecao] = useState(false)
   const [showEncerrar, setShowEncerrar] = useState(false)
   const [showCustoOperacional, setShowCustoOperacional] = useState(false)
@@ -1121,6 +1125,9 @@ function DetalheLote({
               <button className="btn btn-ghost btn-sm" onClick={() => setShowCompras(true)}>
                 Compras
               </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowHistoricoMovimentacoes(true)}>
+                Histórico de movimentações
+              </button>
               {qtdAtiva > 0 && (
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowResumoLote(true)}>
                   Ver resumo do lote
@@ -1151,6 +1158,12 @@ function DetalheLote({
         {!loteAtivo && compras.length > 0 && (
           <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setShowCompras(true)}>
             Ver compras ({compras.length})
+          </button>
+        )}
+
+        {!loteAtivo && eventosMovimentacao.length > 0 && (
+          <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setShowHistoricoMovimentacoes(true)}>
+            Ver histórico de movimentações ({eventosMovimentacao.length})
           </button>
         )}
 
@@ -1410,6 +1423,18 @@ function DetalheLote({
         />
       )}
 
+      {showHistoricoMovimentacoes && (
+        <ModalHistoricoMovimentacoes
+          lote={lote} eventos={eventosMovimentacao} loading={loadingMovimentacao} todosLotes={todosLotes}
+          onClose={() => setShowHistoricoMovimentacoes(false)}
+          onEditarData={async (grupoEventoId, novaData) => {
+            const res = await editarDataEvento(grupoEventoId, novaData)
+            if (!res.error) await recalcular()
+            return res
+          }}
+        />
+      )}
+
       {showEditarCiclos && (
         <ModalEditarCiclos
           lote={lote} ciclos={ciclos} dietasTemplates={dietasTemplates}
@@ -1444,6 +1469,9 @@ function DetalheLote({
             ciclosPorLote={ciclosPorLote}
             todosLotes={todosLotes}
             buscarPesagens={buscarPesagens}
+            editarPesagem={editarPesagem}
+            excluirPesagem={excluirPesagem}
+            onAlterado={recalcular}
             onClose={() => setShowDetalheAnimal(null)}
           />
         )
@@ -1532,7 +1560,7 @@ function TabelaPorEtapa({
 }
 
 function ModalDetalheAnimal({
-  animal, resultado, custoTotal, ciclosPorLote, todosLotes, buscarPesagens, onClose,
+  animal, resultado, custoTotal, ciclosPorLote, todosLotes, buscarPesagens, editarPesagem, excluirPesagem, onAlterado, onClose,
 }: {
   animal: Animal
   resultado?: ResultadoAnimalNaData
@@ -1540,23 +1568,57 @@ function ModalDetalheAnimal({
   ciclosPorLote: Record<string, Array<{ numero: number; nome: string }>>
   todosLotes: Lote[]
   buscarPesagens: (animalId: string) => Promise<Pesagem[]>
+  editarPesagem: (input: { id: string; animal_id: string; peso: number; data: string }) => Promise<{ error: string | null }>
+  excluirPesagem: (id: string) => Promise<{ error: string | null }>
+  onAlterado: () => Promise<void>
   onClose: () => void
 }) {
-  const [gmdReal, setGmdReal] = useState<GmdRealResultado | null | undefined>(undefined)
+  const [pesagens, setPesagens] = useState<Pesagem[] | undefined>(undefined)
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [pesoEdit, setPesoEdit] = useState('')
+  const [dataEdit, setDataEdit] = useState('')
+  const [erroPesagem, setErroPesagem] = useState<string | null>(null)
+  const [salvandoPesagem, setSalvandoPesagem] = useState(false)
 
-  useEffect(() => {
-    let cancelado = false
-    setGmdReal(undefined)
-    buscarPesagens(animal.id).then(pesagens => {
-      if (cancelado) return
-      const resultado = calcularGmdRealUltimoIntervalo(
-        { peso_entrada: animal.peso_entrada, data_entrada: animal.data_entrada },
-        pesagens.map(p => ({ data: p.data, peso: p.peso })),
-      )
-      setGmdReal(resultado)
-    })
-    return () => { cancelado = true }
-  }, [animal.id, animal.peso_entrada, animal.data_entrada, buscarPesagens])
+  const carregarPesagens = useCallback(async () => {
+    const lista = await buscarPesagens(animal.id)
+    setPesagens([...lista].sort((a, b) => a.data.localeCompare(b.data)))
+  }, [animal.id, buscarPesagens])
+
+  useEffect(() => { setPesagens(undefined); carregarPesagens() }, [carregarPesagens])
+
+  const gmdReal = useMemo(() => {
+    if (pesagens === undefined) return undefined
+    return calcularGmdRealUltimoIntervalo(
+      { peso_entrada: animal.peso_entrada, data_entrada: animal.data_entrada },
+      pesagens.map(p => ({ data: p.data, peso: p.peso })),
+    )
+  }, [pesagens, animal.peso_entrada, animal.data_entrada])
+
+  const iniciarEdicaoPesagem = (p: Pesagem) => {
+    setEditandoId(p.id); setPesoEdit(String(p.peso)); setDataEdit(p.data); setErroPesagem(null)
+  }
+  const cancelarEdicaoPesagem = () => { setEditandoId(null); setErroPesagem(null) }
+
+  const salvarEdicaoPesagem = async () => {
+    if (!editandoId) return
+    const peso = Number(pesoEdit)
+    if (!peso || peso <= 0) { setErroPesagem('Peso inválido'); return }
+    if (!dataEdit) { setErroPesagem('Informe a data'); return }
+    setSalvandoPesagem(true); setErroPesagem(null)
+    const res = await editarPesagem({ id: editandoId, animal_id: animal.id, peso, data: dataEdit })
+    setSalvandoPesagem(false)
+    if (res.error) { setErroPesagem(res.error); return }
+    setEditandoId(null)
+    await carregarPesagens()
+    await onAlterado()
+  }
+
+  const excluir = async (id: string) => {
+    await excluirPesagem(id)
+    await carregarPesagens()
+    await onAlterado()
+  }
 
   const ganho = resultado ? resultado.peso - animal.peso_entrada : 0
   const custoPorKgGanho = resultado && ganho > 0 ? custoTotal / ganho : null
@@ -1601,6 +1663,64 @@ function ModalDetalheAnimal({
           ) : (
             <TabelaPorEtapa etapas={etapas} ciclosPorLote={ciclosPorLote} todosLotes={todosLotes} loteAtualId={animal.lote_atual_id ?? undefined} />
           )}
+        </div>
+
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Histórico de pesagens</div>
+          {pesagens === undefined ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Carregando…</div>
+          ) : pesagens.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Nenhuma pesagem registrada além da entrada.</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Peso</th>
+                    <th>Ganho desde a pesagem anterior</th>
+                    <th style={{ width: 140 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pesagens.map((p, idx) => {
+                    const anterior = idx === 0 ? animal.peso_entrada : pesagens[idx - 1].peso
+                    const ganhoLinha = p.peso - anterior
+                    const emEdicao = editandoId === p.id
+                    return (
+                      <tr key={p.id}>
+                        {emEdicao ? (
+                          <>
+                            <td><input className="form-input" type="date" value={dataEdit} onChange={e => setDataEdit(e.target.value)} style={{ fontSize: 13 }} /></td>
+                            <td><input className="form-input" type="number" step="0.1" value={pesoEdit} onChange={e => setPesoEdit(e.target.value)} style={{ maxWidth: 100, fontSize: 13 }} /></td>
+                            <td colSpan={2}>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button className="btn btn-primary btn-sm" onClick={salvarEdicaoPesagem} disabled={salvandoPesagem}>Salvar</button>
+                                <button className="btn btn-ghost btn-sm" onClick={cancelarEdicaoPesagem} disabled={salvandoPesagem}>Cancelar</button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{fmtData(p.data)}</td>
+                            <td>{fmtNum(p.peso, 1)} kg</td>
+                            <td style={{ color: ganhoLinha >= 0 ? undefined : '#b91c1c' }}>{ganhoLinha >= 0 ? '+' : ''}{fmtNum(ganhoLinha, 1)} kg</td>
+                            <td>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button className="btn btn-ghost btn-sm" onClick={() => iniciarEdicaoPesagem(p)}>Editar</button>
+                                <button onClick={() => excluir(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 16 }}>×</button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {erroPesagem && <div style={{ marginTop: 8, padding: 8, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 12 }}>{erroPesagem}</div>}
         </div>
 
         <div className="modal-actions">
@@ -1693,6 +1813,118 @@ function ModalResumoLote({
             <TabelaPorEtapa etapas={totais.etapas} ciclosPorLote={ciclosPorLote} todosLotes={todosLotes} loteAtualId={lote.id} />
           )}
         </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL: HISTÓRICO DE MOVIMENTAÇÕES ENTRE LOTES
+// Lista os eventos de bifurcação/movimentação que envolveram este lote
+// (agrupados por grupo_evento_id, já que afetam vários animais de uma vez) e
+// permite corrigir a data de todo o grupo — para quando o produtor registrou
+// a movimentação em dia diferente do dia real em que os animais foram
+// fisicamente movidos, o que distorce qual dieta/ciclo vale em cada dia no
+// motor de custo. Não cobre entrada (tem correção própria) nem saída/venda.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const TIPO_EVENTO_LABEL: Record<string, string> = {
+  bifurcacao: 'Bifurcação',
+  transferencia_lote: 'Movimentação',
+}
+
+function ModalHistoricoMovimentacoes({
+  lote, eventos, loading, todosLotes, onClose, onEditarData,
+}: {
+  lote: Lote
+  eventos: MovimentacaoGrupoLote[]
+  loading: boolean
+  todosLotes: Lote[]
+  onClose: () => void
+  onEditarData: (grupoEventoId: string, novaData: string) => Promise<{ error: string | null }>
+}) {
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [novaData, setNovaData] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const nomeLote = (id: string | null) => id ? (todosLotes.find(l => l.id === id)?.nome_lote ?? '—') : '—'
+
+  const iniciarEdicao = (ev: MovimentacaoGrupoLote) => {
+    setEditandoId(ev.grupo_evento_id); setNovaData(ev.data); setErro(null)
+  }
+
+  const salvar = async (grupoEventoId: string) => {
+    if (!novaData) { setErro('Informe a data'); return }
+    setSaving(true); setErro(null)
+    const res = await onEditarData(grupoEventoId, novaData)
+    setSaving(false)
+    if (res.error) { setErro(res.error); return }
+    setEditandoId(null)
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Histórico de movimentações — ${lote.nome_lote}`}
+      subtitle="Corrija a data se a movimentação foi lançada em dia diferente do dia real — isso afeta qual dieta/ciclo é usado no cálculo de custo" size="xl">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><div className="spinner" style={{ width: 24, height: 24 }} /></div>
+        ) : eventos.length === 0 ? (
+          <div style={{ padding: 20, textAlign: 'center', color: 'var(--gray-500)', fontSize: 13 }}>Nenhuma bifurcação ou movimentação entre lotes envolvendo este lote ainda.</div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>De</th>
+                  <th>Para</th>
+                  <th>Animais</th>
+                  <th style={{ width: 160 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {eventos.map(ev => {
+                  const emEdicao = editandoId === ev.grupo_evento_id
+                  return (
+                    <tr key={ev.grupo_evento_id}>
+                      {emEdicao ? (
+                        <>
+                          <td><input className="form-input" type="date" value={novaData} onChange={e => setNovaData(e.target.value)} style={{ fontSize: 13 }} /></td>
+                          <td colSpan={4} style={{ color: 'var(--gray-500)', fontSize: 12 }}>{TIPO_EVENTO_LABEL[ev.tipo] ?? ev.tipo} · {ev.animais.length} animal(is)</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button className="btn btn-primary btn-sm" onClick={() => salvar(ev.grupo_evento_id)} disabled={saving}>Salvar</button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => { setEditandoId(null); setErro(null) }} disabled={saving}>Cancelar</button>
+                            </div>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td>{fmtData(ev.data)}</td>
+                          <td>{TIPO_EVENTO_LABEL[ev.tipo] ?? ev.tipo}</td>
+                          <td>{nomeLote(ev.lote_origem_id)}</td>
+                          <td>{nomeLote(ev.lote_destino_id)}</td>
+                          <td>{ev.animais.length} — {ev.animais.map(a => a.codigo).join(', ')}</td>
+                          <td>
+                            <button className="btn btn-ghost btn-sm" onClick={() => iniciarEdicao(ev)}>Editar data</button>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
 
         <div className="modal-actions">
           <button className="btn btn-primary" onClick={onClose}>Fechar</button>
