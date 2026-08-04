@@ -105,6 +105,31 @@ export interface ResultadoAnimalNaData {
   custoAlimentacaoConfinamento: number
   custoOperacionalPastagem: number
   custoOperacionalConfinamento: number
+  // ─── Consumo de ração em kg de MS (desde a entrada) ────────────────────────
+  // Sempre estimado por peso x %MS da dieta vigente no dia, independente de
+  // aquele dia ter custo real de ração lançado ou não — o custo real
+  // (custos_racao_real_lote) só substitui o valor em R$, não existe kg
+  // registrado nele. Ou seja: custo pode ser real, consumo em kg é sempre
+  // a estimativa da dieta (decisão confirmada com o produtor).
+  consumoRacaoKg: number
+  // ─── Quebra por etapa (ciclo individual, não só tipo pastagem/confinamento)
+  // Chave = `${lote_id}#${numero_do_ciclo}` — usa lote_id no prefixo porque o
+  // número do ciclo é reiniciado a cada lote (ciclo 1 do lote A não é o mesmo
+  // período que ciclo 1 do lote B), e um animal pode ter passado por mais de
+  // um lote (bifurcação/movimentação). Quando não há ciclo configurado num
+  // dia (situação anômala), cai no bucket numero 0.
+  porEtapa: Record<string, EtapaResultado>
+}
+
+export interface EtapaResultado {
+  lote_id: string
+  numero: number
+  tipoCiclo: 'pastagem' | 'confinamento'
+  dias: number
+  ganhoPeso: number
+  consumoRacaoKg: number
+  custoAlimentacao: number
+  custoOperacional: number
 }
 
 export interface MovimentoRelevante {
@@ -214,6 +239,7 @@ export function calcularAnimalNaData(
       ganhoPesoPastagem: 0, ganhoPesoConfinamento: 0,
       custoAlimentacaoPastagem: 0, custoAlimentacaoConfinamento: 0,
       custoOperacionalPastagem: 0, custoOperacionalConfinamento: 0,
+      consumoRacaoKg: 0, porEtapa: {},
     }
   }
 
@@ -241,6 +267,20 @@ export function calcularAnimalNaData(
   let custoOperacionalPastagem = 0
   let custoOperacionalConfinamento = 0
 
+  // ─── Consumo total em kg de MS e quebra por etapa (ciclo individual) ──────
+  let consumoRacaoKg = 0
+  const porEtapa: Record<string, EtapaResultado> = {}
+  const obterEtapa = (loteId: string, numero: number, tipoCiclo: 'pastagem' | 'confinamento'): EtapaResultado => {
+    const chave = `${loteId}#${numero}`
+    if (!porEtapa[chave]) {
+      porEtapa[chave] = {
+        lote_id: loteId, numero, tipoCiclo,
+        dias: 0, ganhoPeso: 0, consumoRacaoKg: 0, custoAlimentacao: 0, custoOperacional: 0,
+      }
+    }
+    return porEtapa[chave]
+  }
+
   for (let dia = diaEntrada; dia < diaAlvo; dia++) {
     const pesagemHoje = pesagensOrdenadas.find(p => toDay(p.data) === dia)
     const periodo = encontrarLoteAtivo(dia, periodos)
@@ -248,9 +288,11 @@ export function calcularAnimalNaData(
     const gmd = ciclo?.gmd_esperado ?? 0
     const tipoCiclo = ciclo?.tipo_ciclo ?? 'confinamento'
     const ehPastagem = tipoCiclo === 'pastagem'
+    const etapa = periodo ? obterEtapa(periodo.lote_id, ciclo?.numero ?? 0, tipoCiclo) : null
 
     if (ehPastagem) diasEmPastagem++
     else diasEmConfinamento++
+    if (etapa) etapa.dias++
 
     const pesoAntes = peso
     if (pesagemHoje) {
@@ -262,6 +304,18 @@ export function calcularAnimalNaData(
     const ganhoHoje = peso - pesoAntes
     if (ehPastagem) ganhoPesoPastagem += ganhoHoje
     else ganhoPesoConfinamento += ganhoHoje
+    if (etapa) etapa.ganhoPeso += ganhoHoje
+
+    // Consumo em kg de MS do dia: sempre estimado por peso x %MS da dieta
+    // vigente, mesmo em dias cobertos por um lançamento de custo real de
+    // ração (esse lançamento só substitui o valor em R$, não existe kg
+    // registrado nele) — consumo em kg e custo em R$ são medidos separado.
+    const dietaInfoDia = ciclo?.dieta_id ? dietas[ciclo.dieta_id] : undefined
+    if (dietaInfoDia?.pct_consumo_pv_ms != null) {
+      const consumoHoje = peso * (dietaInfoDia.pct_consumo_pv_ms / 100)
+      consumoRacaoKg += consumoHoje
+      if (etapa) etapa.consumoRacaoKg += consumoHoje
+    }
 
     // Custo real de ração lançado pelo produtor para este lote, neste dia,
     // substitui o cálculo estimado por dieta (%MS x custo/kg) — não soma aos
@@ -278,16 +332,15 @@ export function calcularAnimalNaData(
       custoAlimentacao += custoHoje
       if (ehPastagem) custoAlimentacaoPastagem += custoHoje
       else custoAlimentacaoConfinamento += custoHoje
-    } else {
-      const dietaInfo = ciclo?.dieta_id ? dietas[ciclo.dieta_id] : undefined
-      if (dietaInfo?.pct_consumo_pv_ms != null) {
-        const custoKgMs = resolverCustoKgMsNoDia(dia, dietaInfo)
-        if (custoKgMs != null) {
-          const custoHoje = peso * (dietaInfo.pct_consumo_pv_ms / 100) * custoKgMs
-          custoAlimentacao += custoHoje
-          if (ehPastagem) custoAlimentacaoPastagem += custoHoje
-          else custoAlimentacaoConfinamento += custoHoje
-        }
+      if (etapa) etapa.custoAlimentacao += custoHoje
+    } else if (dietaInfoDia?.pct_consumo_pv_ms != null) {
+      const custoKgMs = resolverCustoKgMsNoDia(dia, dietaInfoDia)
+      if (custoKgMs != null) {
+        const custoHoje = peso * (dietaInfoDia.pct_consumo_pv_ms / 100) * custoKgMs
+        custoAlimentacao += custoHoje
+        if (ehPastagem) custoAlimentacaoPastagem += custoHoje
+        else custoAlimentacaoConfinamento += custoHoje
+        if (etapa) etapa.custoAlimentacao += custoHoje
       }
     }
 
@@ -300,6 +353,7 @@ export function calcularAnimalNaData(
             custoOperacional += rateio
             if (ehPastagem) custoOperacionalPastagem += rateio
             else custoOperacionalConfinamento += rateio
+            if (etapa) etapa.custoOperacional += rateio
           }
         }
       }
@@ -323,6 +377,43 @@ export function calcularAnimalNaData(
     ganhoPesoPastagem, ganhoPesoConfinamento,
     custoAlimentacaoPastagem, custoAlimentacaoConfinamento,
     custoOperacionalPastagem, custoOperacionalConfinamento,
+    consumoRacaoKg, porEtapa,
+  }
+}
+
+// ─── GMD real do último intervalo entre pesagens ──────────────────────────────
+// Diferente de gmdMedio (que é a média desde a entrada até dataAlvo, sempre
+// misturando estimativa com o que for real), esta função olha só para o
+// último trecho coberto por duas pesagens REAIS — a entrada do animal conta
+// como a primeira pesagem real, já que peso_entrada/data_entrada também é um
+// registro real, não uma estimativa. Calculado sob demanda a partir do
+// histórico, sem gravar nada novo no banco.
+export interface GmdRealResultado {
+  pesoAnterior: number
+  pesoNovo: number
+  dataAnterior: string
+  dataNova: string
+  dias: number
+  gmdReal: number
+}
+
+export function calcularGmdRealUltimoIntervalo(
+  animal: { peso_entrada: number; data_entrada: string },
+  pesagens: PesagemPonto[],
+): GmdRealResultado | null {
+  const pontos: PesagemPonto[] = [{ data: animal.data_entrada, peso: animal.peso_entrada }, ...pesagens]
+  const ordenados = [...pontos].sort((a, b) => toDay(a.data) - toDay(b.data))
+  if (ordenados.length < 2) return null
+
+  const novo = ordenados[ordenados.length - 1]
+  const anterior = ordenados[ordenados.length - 2]
+  const dias = toDay(novo.data) - toDay(anterior.data)
+  if (dias <= 0) return null
+
+  return {
+    pesoAnterior: anterior.peso, pesoNovo: novo.peso,
+    dataAnterior: anterior.data, dataNova: novo.data,
+    dias, gmdReal: (novo.peso - anterior.peso) / dias,
   }
 }
 
