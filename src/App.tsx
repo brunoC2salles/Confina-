@@ -8,6 +8,7 @@ import RedefinirSenha from '@/pages/RedefinirSenha'
 import Dashboard from '@/pages/Dashboard'
 import FazendaHoje from '@/pages/FazendaHoje'
 import Lotes from '@/pages/Lotes'
+import Pesagens from '@/pages/Pesagens'
 import Vendas from '@/pages/Vendas'
 import Ranking from '@/pages/Ranking'
 import Comparativo from '@/pages/Comparativo'
@@ -36,6 +37,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="fazenda-hoje" element={<FazendaHoje />} />
             <Route path="lotes"        element={<Lotes />} />
+            <Route path="pesagens"     element={<Pesagens />} />
             <Route path="vendas"       element={<Vendas />} />
             <Route path="ranking"      element={<Ranking />} />
             <Route path="comparativo"  element={<Comparativo />} />
