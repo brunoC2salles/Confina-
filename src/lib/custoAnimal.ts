@@ -39,6 +39,18 @@ export interface CicloInfo {
   data_fim: string | null
 }
 
+// ─── Troca de ciclo por animal (avanço individual/parcial) ────────────────────
+// Quando um animal avança de ciclo separado do restante do lote (avanço
+// parcial) ou junto com ele (avanço total, que também grava um evento por
+// animal), fica registrado aqui: a partir de `data`, esse animal passa a
+// usar a dieta/GMD do ciclo `ciclo_numero` daquele lote — independente da
+// data_inicio/data_fim que ciclos_lote tem para o lote como um todo.
+export interface CicloAnimalEvento {
+  lote_id: string
+  ciclo_numero: number
+  data: string // yyyy-mm-dd
+}
+
 export interface HistoricoCustoPonto {
   custo_kg_ms: number | null
   vigente_desde: string
@@ -198,6 +210,36 @@ function encontrarCicloAtivo(loteId: string, dia: number, ciclos: CicloInfo[]): 
   return doLote[0] ?? null
 }
 
+// Versão ciente do animal: se ele tem algum evento de troca de ciclo
+// registrado para este lote (avanço individual ou parcial), o evento mais
+// recente com data <= dia manda — mesmo que a data_inicio/data_fim do
+// ciclos_lote diga outra coisa (isso é o que permite animais do mesmo lote
+// estarem em ciclos diferentes ao mesmo tempo). Sem nenhum evento pra esse
+// animal nesse lote, cai exatamente no comportamento antigo (por data do lote).
+function encontrarCicloAtivoParaAnimal(
+  loteId: string,
+  dia: number,
+  ciclos: CicloInfo[],
+  eventosAnimal: CicloAnimalEvento[],
+): CicloInfo | null {
+  const eventosDoLote = eventosAnimal
+    .filter(e => e.lote_id === loteId)
+    .sort((a, b) => toDay(a.data) - toDay(b.data))
+
+  let eventoVigente: CicloAnimalEvento | null = null
+  for (const e of eventosDoLote) {
+    if (toDay(e.data) <= dia) eventoVigente = e
+    else break
+  }
+
+  if (eventoVigente) {
+    const ciclo = ciclos.find(c => c.lote_id === loteId && c.numero === eventoVigente!.ciclo_numero)
+    if (ciclo) return ciclo
+  }
+
+  return encontrarCicloAtivo(loteId, dia, ciclos)
+}
+
 function custoVigenteNoDia(dia: number, historico: HistoricoCustoPonto[]): number | null {
   for (const h of historico) {
     const desde = toDay(h.vigente_desde)
@@ -227,6 +269,7 @@ export function calcularAnimalNaData(
   dietas: Record<string, DietaInfo>,
   custosOperacionaisPorLote: Record<string, CustoOperacionalInfo[]> = {},
   custosRacaoRealPorLote: Record<string, CustoRacaoRealPorDia> = {},
+  eventosCiclo: CicloAnimalEvento[] = [],
 ): ResultadoAnimalNaData {
   const diaEntrada = toDay(animal.data_entrada)
   const diaAlvo = toDay(dataAlvo)
@@ -284,7 +327,7 @@ export function calcularAnimalNaData(
   for (let dia = diaEntrada; dia < diaAlvo; dia++) {
     const pesagemHoje = pesagensOrdenadas.find(p => toDay(p.data) === dia)
     const periodo = encontrarLoteAtivo(dia, periodos)
-    const ciclo = periodo ? encontrarCicloAtivo(periodo.lote_id, dia, ciclos) : null
+    const ciclo = periodo ? encontrarCicloAtivoParaAnimal(periodo.lote_id, dia, ciclos, eventosCiclo) : null
     const gmd = ciclo?.gmd_esperado ?? 0
     const tipoCiclo = ciclo?.tipo_ciclo ?? 'confinamento'
     const ehPastagem = tipoCiclo === 'pastagem'
@@ -431,6 +474,7 @@ export function projetarPesoPorDia(
   ciclos: CicloInfo[],
   diaInicial: number,
   diaFinalExclusivo: number,
+  eventosCiclo: CicloAnimalEvento[] = [],
 ): Record<number, number> {
   const diaEntrada = toDay(animal.data_entrada)
   const resultado: Record<number, number> = {}
@@ -442,7 +486,7 @@ export function projetarPesoPorDia(
   for (let dia = diaEntrada; dia < diaFinalExclusivo; dia++) {
     const pesagemHoje = pesagensOrdenadas.find(p => toDay(p.data) === dia)
     const periodo = encontrarLoteAtivo(dia, periodos)
-    const ciclo = periodo ? encontrarCicloAtivo(periodo.lote_id, dia, ciclos) : null
+    const ciclo = periodo ? encontrarCicloAtivoParaAnimal(periodo.lote_id, dia, ciclos, eventosCiclo) : null
     const gmd = ciclo?.gmd_esperado ?? 0
 
     if (pesagemHoje) {
