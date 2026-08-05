@@ -7,6 +7,7 @@ const NAV_PRINCIPAL = [
   { to: '/',              label: 'Dashboard',    end: true  },
   { to: '/fazenda-hoje',  label: 'Fazenda Hoje', end: false },
   { to: '/lotes',         label: 'Lotes',        end: false },
+  { to: '/pesagens',      label: 'Pesagens',     end: false },
   { to: '/vendas',        label: 'Vendas',       end: false },
   { to: '/ranking',       label: 'Ranking',      end: false },
   { to: '/comparativo',   label: 'Comparativo',  end: false },
