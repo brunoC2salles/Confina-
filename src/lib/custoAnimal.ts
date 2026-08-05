@@ -84,20 +84,28 @@ export interface CustoOperacionalInfo {
 // Já vem pré-resolvido por dia (rateio histórico feito em useLotes.ts, mesmo
 // espírito do custo operacional, mas proporcional ao peso — animal mais
 // pesado consome mais, então absorve mais do custo real do dia):
-//  - valorTotalDia: quanto o lote inteiro gastou de ração real naquele dia
-//    (valor_total do lançamento dividido pelos dias do intervalo de vigência)
-//  - pesoTotalDia: soma do peso projetado de todos os animais que estavam
-//    ativos NESSE LOTE naquele dia (mesmo os que já saíram do lote depois)
+//  - valorTotalDia: quanto o grupo (lote inteiro, ou só o ciclo, se escopado)
+//    gastou de ração real naquele dia (valor_total do lançamento dividido
+//    pelos dias do intervalo de vigência)
+//  - pesoTotalDia: soma do peso projetado dos animais do grupo naquele dia
 //  - qtdAtivaDia: fallback para rateio igual por cabeça, usado só se
 //    pesoTotalDia vier zerado (situação anômala, não deveria ocorrer em uso normal)
-// Quando um dia está presente neste mapa, ele SUBSTITUI o cálculo por dieta
-// (%MS x custo/kg) daquele dia — não soma.
+//  - cicloNumero: null = lançamento vale pro lote inteiro (comportamento
+//    original); um número = vale só para os animais que estavam NAQUELE
+//    ciclo naquele dia (avanço parcial pode deixar animais do mesmo lote em
+//    ciclos diferentes — o lançamento de ração real de um ciclo não deve
+//    ser diluído entre animais de outro ciclo, que comeram outra dieta)
+// Quando um dia está presente neste mapa, o lançamento MAIS ESPECÍFICO para
+// aquele animal (ciclo dele, senão o do lote inteiro) SUBSTITUI o cálculo por
+// dieta (%MS x custo/kg) daquele dia — não soma.
 export interface CustoRacaoRealDiaInfo {
   valorTotalDia: number
   pesoTotalDia: number
   qtdAtivaDia: number
+  cicloNumero: number | null
 }
-export type CustoRacaoRealPorDia = Record<number, CustoRacaoRealDiaInfo> // dia (toDay) -> info do dia
+export type CustoRacaoRealPorDia = Record<number, CustoRacaoRealDiaInfo[]> // dia (toDay) -> lançamentos vigentes naquele dia
+
 
 export interface ResultadoAnimalNaData {
   peso: number
@@ -240,6 +248,16 @@ function encontrarCicloAtivoParaAnimal(
   return encontrarCicloAtivo(loteId, dia, ciclos)
 }
 
+// Versão exportada que devolve só o número do ciclo (ou null) — usada fora
+// deste arquivo (useLotes.ts) para saber, dia a dia, em qual ciclo cada
+// animal estava, e assim ratear um lançamento de custo real de ração
+// escopado a um ciclo só entre quem de fato esteve nele naquele dia.
+export function cicloNumeroDoAnimalNoDia(
+  loteId: string, dia: number, ciclos: CicloInfo[], eventosAnimal: CicloAnimalEvento[],
+): number | null {
+  return encontrarCicloAtivoParaAnimal(loteId, dia, ciclos, eventosAnimal)?.numero ?? null
+}
+
 function custoVigenteNoDia(dia: number, historico: HistoricoCustoPonto[]): number | null {
   for (const h of historico) {
     const desde = toDay(h.vigente_desde)
@@ -360,14 +378,20 @@ export function calcularAnimalNaData(
       if (etapa) etapa.consumoRacaoKg += consumoHoje
     }
 
-    // Custo real de ração lançado pelo produtor para este lote, neste dia,
-    // substitui o cálculo estimado por dieta (%MS x custo/kg) — não soma aos
-    // dois. O valor do dia é dividido proporcionalmente ao peso deste animal
-    // sobre o peso total do lote naquele dia (animal mais pesado consome
-    // mais, então absorve mais do custo real) — cai no rateio igual por
-    // cabeça só se o peso total do dia vier zerado (caso anômalo). Fora do
-    // período coberto por um lançamento real, cai no cálculo estimado normal.
-    const infoRacaoRealHoje = periodo ? custosRacaoRealPorLote[periodo.lote_id]?.[dia] : undefined
+    // Custo real de ração lançado pelo produtor, neste dia — pode ser um
+    // lançamento pro lote inteiro (cicloNumero null) ou escopado a um ciclo
+    // específico. Quando os dois existem pro mesmo dia, o mais específico
+    // (o do ciclo em que este animal está) vence. Substitui o cálculo
+    // estimado por dieta (%MS x custo/kg) — não soma aos dois. O valor do
+    // dia é dividido proporcionalmente ao peso deste animal sobre o peso
+    // total do grupo naquele dia (animal mais pesado consome mais, então
+    // absorve mais do custo real) — cai no rateio igual por cabeça só se o
+    // peso total do dia vier zerado (caso anômalo). Fora do período coberto
+    // por um lançamento real, cai no cálculo estimado normal.
+    const entradasRacaoRealHoje = periodo ? (custosRacaoRealPorLote[periodo.lote_id]?.[dia] ?? []) : []
+    const infoRacaoRealHoje =
+      entradasRacaoRealHoje.find(e => e.cicloNumero === (ciclo?.numero ?? null))
+      ?? entradasRacaoRealHoje.find(e => e.cicloNumero === null)
     if (infoRacaoRealHoje != null) {
       const custoHoje = infoRacaoRealHoje.pesoTotalDia > 0
         ? infoRacaoRealHoje.valorTotalDia * (peso / infoRacaoRealHoje.pesoTotalDia)
