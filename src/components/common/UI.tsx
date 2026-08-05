@@ -1,8 +1,8 @@
 // ─── Modal ───────────────────────────────────────────────────────────────────
 import { ReactNode, useEffect } from 'react'
 
-export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
-  { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode; size?: 'sm'|'md'|'lg'|'xl' }) {
+export function Modal({ open, onClose, title, subtitle, children, size = 'md', footer }:
+  { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode; size?: 'sm'|'md'|'lg'|'xl'; footer?: ReactNode }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     if (open) document.addEventListener('keydown', h)
@@ -19,6 +19,7 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
         <div className="modal-body">
           {children}
         </div>
+        {footer && <div className="modal-footer">{footer}</div>}
       </div>
     </div>
   )
