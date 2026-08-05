@@ -2,7 +2,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   useLotes, useAnimaisDoLote, useCustoEngine, useVendas, useCustosOperacionais, useCustosRacaoReal, useCompras,
-  useMovimentacoesLote,
+  useMovimentacoesLote, buscarPorIds,
   type CriarLoteInput, type CicloInput, type LinhaAnimalInput, type CompraInput, type CriarAnimaisInput,
   type MovimentacaoGrupoLote,
 } from '@/hooks/useLotes'
@@ -944,12 +944,13 @@ function DetalheLote({
     if (animais.length === 0) { setResultados({}); setCustosVariaveisPorAnimal({}); return }
     setCalculando(true)
     const animalIds = animais.map(a => a.id)
-    const [res, { data: custosVarData }] = await Promise.all([
+    const [res, custosVarData] = await Promise.all([
       calcularEmLote(animalIds, hojeStr()),
-      supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', animalIds),
+      buscarPorIds<{ animal_id: string; valor: number }>(animalIds, (idsChunk, from, to) =>
+        supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).range(from, to)),
     ])
     const custosVar: Record<string, number> = {}
-    for (const c of (custosVarData ?? []) as Array<{ animal_id: string; valor: number }>) {
+    for (const c of custosVarData) {
       custosVar[c.animal_id] = (custosVar[c.animal_id] ?? 0) + c.valor
     }
     setResultados(res)
