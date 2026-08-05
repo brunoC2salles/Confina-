@@ -488,9 +488,11 @@ export function useLotes() {
     const { error: e1 } = await supabase.from('movimentacoes_animais').insert(movRows)
     if (e1) return { error: e1.message }
 
-    const { error: e2 } = await supabase.from('animais')
-      .update({ lote_atual_id: novoLote.id }).in('id', input.animal_ids)
-    if (e2) return { error: e2.message }
+    for (const idsChunk of chunkArray(input.animal_ids, TAMANHO_CHUNK_IDS)) {
+      const { error: e2 } = await supabase.from('animais')
+        .update({ lote_atual_id: novoLote.id }).in('id', idsChunk)
+      if (e2) return { error: e2.message }
+    }
 
     await fetchLotes()
     return { error: null, lote: novoLote }
@@ -500,12 +502,11 @@ export function useLotes() {
     if (!user) return { error: 'Não autenticado' }
     if (input.animal_ids.length === 0) return { error: 'Selecione ao menos um animal' }
 
-    const { data: animaisAtuais, error: e0 } = await supabase
-      .from('animais').select('id, lote_atual_id').in('id', input.animal_ids)
-    if (e0) return { error: e0.message }
+    const animaisAtuais = await buscarPorIds<{ id: string; lote_atual_id: string | null }>(input.animal_ids, (idsChunk, from, to) =>
+      supabase.from('animais').select('id, lote_atual_id').in('id', idsChunk).range(from, to))
 
     const grupoEventoId = crypto.randomUUID()
-    const movRows = (animaisAtuais ?? []).map((a: { id: string; lote_atual_id: string | null }) => ({
+    const movRows = animaisAtuais.map(a => ({
       animal_id: a.id, tipo: 'transferencia_lote',
       lote_origem_id: a.lote_atual_id, lote_destino_id: input.lote_destino_id,
       data: input.data, observacoes: input.observacoes ?? null,
@@ -514,9 +515,11 @@ export function useLotes() {
     const { error: e1 } = await supabase.from('movimentacoes_animais').insert(movRows)
     if (e1) return { error: e1.message }
 
-    const { error: e2 } = await supabase.from('animais')
-      .update({ lote_atual_id: input.lote_destino_id }).in('id', input.animal_ids)
-    if (e2) return { error: e2.message }
+    for (const idsChunk of chunkArray(input.animal_ids, TAMANHO_CHUNK_IDS)) {
+      const { error: e2 } = await supabase.from('animais')
+        .update({ lote_atual_id: input.lote_destino_id }).in('id', idsChunk)
+      if (e2) return { error: e2.message }
+    }
 
     await fetchLotes()
     return { error: null }
@@ -728,8 +731,9 @@ export function useMovimentacoesLote(loteId: string | null) {
     const animalIds = Array.from(new Set(linhas.map(l => l.animal_id)))
     const codigoPorAnimal: Record<string, string> = {}
     if (animalIds.length > 0) {
-      const { data: animaisData } = await supabase.from('animais').select('id, codigo').in('id', animalIds)
-      for (const a of (animaisData ?? []) as Array<{ id: string; codigo: string }>) codigoPorAnimal[a.id] = a.codigo
+      const animaisData = await buscarPorIds<{ id: string; codigo: string }>(animalIds, (idsChunk, from, to) =>
+        supabase.from('animais').select('id, codigo').in('id', idsChunk).range(from, to))
+      for (const a of animaisData) codigoPorAnimal[a.id] = a.codigo
     }
 
     const porGrupo: Record<string, MovimentacaoGrupoLote> = {}
@@ -833,6 +837,38 @@ async function buscarTudoPaginado<T>(
   return resultado
 }
 
+// ─── Chunking de listas grandes de IDs no filtro .in() ─────────────────────
+// Bug real encontrado em produção (05/08): uma URL com centenas de UUIDs no
+// filtro .in() (ex.: id=in.(uuid1,uuid2,...,uuid665)) é rejeitada pela API
+// REST do Supabase com 400 Bad Request — não é truncamento silencioso, é erro
+// franco, e não depende de .range() estar presente ou não (confirmado no log
+// da API: a mesma query sem .range() também falha com lista grande). Lotes
+// com centenas de animais (este caso: 665) batem nesse limite direto. Este
+// helper divide a lista de IDs em pedaços menores antes de montar o filtro
+// .in(), roda uma consulta por pedaço (cada uma já paginada via
+// buscarTudoPaginado, para o caso raro de um único pedaço passar de 1000
+// linhas) e concatena tudo. Exportado para reuso em qualquer tela que filtre
+// por uma lista de IDs de animais (Ranking, Comparativo, etc.).
+const TAMANHO_CHUNK_IDS = 150
+
+function chunkArray<T>(arr: T[], tamanho: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < arr.length; i += tamanho) chunks.push(arr.slice(i, i + tamanho))
+  return chunks
+}
+
+export async function buscarPorIds<T>(
+  ids: string[],
+  montarConsulta: (idsChunk: string[], from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  if (ids.length === 0) return []
+  const chunks = chunkArray(ids, TAMANHO_CHUNK_IDS)
+  const resultadosPorChunk = await Promise.all(
+    chunks.map(chunk => buscarTudoPaginado<T>((from, to) => montarConsulta(chunk, from, to)))
+  )
+  return resultadosPorChunk.flat()
+}
+
 export function useCustoEngine() {
   const { user } = useAuth()
 
@@ -842,12 +878,12 @@ export function useCustoEngine() {
     }
 
     const [animaisData, pesagensData, movsData] = await Promise.all([
-      buscarTudoPaginado<{ id: string; peso_entrada: number; data_entrada: string }>((from, to) =>
-        supabase.from('animais').select('id, peso_entrada, data_entrada, lote_atual_id').in('id', animalIds).range(from, to)),
-      buscarTudoPaginado<{ animal_id: string; data: string; peso: number }>((from, to) =>
-        supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', animalIds).range(from, to)),
-      buscarTudoPaginado<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>((from, to) =>
-        supabase.from('movimentacoes_animais').select('animal_id, tipo, lote_origem_id, lote_destino_id, data').in('animal_id', animalIds).range(from, to)),
+      buscarPorIds<{ id: string; peso_entrada: number; data_entrada: string }>(animalIds, (idsChunk, from, to) =>
+        supabase.from('animais').select('id, peso_entrada, data_entrada, lote_atual_id').in('id', idsChunk).range(from, to)),
+      buscarPorIds<{ animal_id: string; data: string; peso: number }>(animalIds, (idsChunk, from, to) =>
+        supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', idsChunk).range(from, to)),
+      buscarPorIds<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>(animalIds, (idsChunk, from, to) =>
+        supabase.from('movimentacoes_animais').select('animal_id, tipo, lote_origem_id, lote_destino_id, data').in('animal_id', idsChunk).range(from, to)),
     ])
 
     const animaisPorId: ContextoCusto['animaisPorId'] = {}
@@ -961,10 +997,10 @@ export function useCustoEngine() {
           const pesagensPorAnimalTodos: Record<string, Array<{ data: string; peso: number }>> = {}
           if (animalIdsEnvolvidos.length > 0) {
             const [animaisBasicoData, pesagensTodasData] = await Promise.all([
-              buscarTudoPaginado<{ id: string; peso_entrada: number; data_entrada: string }>((from, to) =>
-                supabase.from('animais').select('id, peso_entrada, data_entrada').in('id', animalIdsEnvolvidos).range(from, to)),
-              buscarTudoPaginado<{ animal_id: string; data: string; peso: number }>((from, to) =>
-                supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', animalIdsEnvolvidos).range(from, to)),
+              buscarPorIds<{ id: string; peso_entrada: number; data_entrada: string }>(animalIdsEnvolvidos, (idsChunk, from, to) =>
+                supabase.from('animais').select('id, peso_entrada, data_entrada').in('id', idsChunk).range(from, to)),
+              buscarPorIds<{ animal_id: string; data: string; peso: number }>(animalIdsEnvolvidos, (idsChunk, from, to) =>
+                supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', idsChunk).range(from, to)),
             ])
             for (const a of animaisBasicoData) {
               animaisBasicoPorId[a.id] = { peso_entrada: a.peso_entrada, data_entrada: a.data_entrada }
@@ -1270,22 +1306,23 @@ export function useVendas() {
 
     const animalIds = input.itens.map(i => i.animal_id)
 
-    const [{ data: animaisData }, { data: rendData }, { data: bonusData }, custos] = await Promise.all([
-      supabase.from('animais').select('id, valor_compra, lote_atual_id').in('id', animalIds),
+    const [animaisData, { data: rendData }, { data: bonusData }, custos, custosVarData] = await Promise.all([
+      buscarPorIds<{ id: string; valor_compra: number; lote_atual_id: string | null }>(animalIds, (idsChunk, from, to) =>
+        supabase.from('animais').select('id, valor_compra, lote_atual_id').in('id', idsChunk).range(from, to)),
       supabase.from('rendimento_faixas').select('*').eq('user_id', user.id),
       supabase.from('bonus_faixas').select('*').eq('user_id', user.id),
       calcularEmLote(animalIds, input.data),
+      buscarPorIds<{ animal_id: string; valor: number }>(animalIds, (idsChunk, from, to) =>
+        supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).lte('data_lancamento', input.data).range(from, to)),
     ])
 
     const animaisPorId: Record<string, { valor_compra: number; lote_atual_id: string | null }> = {}
-    for (const a of (animaisData ?? []) as Array<{ id: string; valor_compra: number; lote_atual_id: string | null }>) {
+    for (const a of animaisData) {
       animaisPorId[a.id] = { valor_compra: a.valor_compra, lote_atual_id: a.lote_atual_id }
     }
 
-    const { data: custosVarData } = await supabase
-      .from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', animalIds).lte('data_lancamento', input.data)
     const custosVarPorAnimal: Record<string, number> = {}
-    for (const c of (custosVarData ?? []) as Array<{ animal_id: string; valor: number }>) {
+    for (const c of custosVarData) {
       custosVarPorAnimal[c.animal_id] = (custosVarPorAnimal[c.animal_id] ?? 0) + c.valor
     }
 
@@ -1421,9 +1458,11 @@ export function useVendas() {
     if (eMov) return { error: eMov.message }
 
     const statusNovo = TIPO_SAIDA_STATUS[input.tipo]
-    const { error: eUpd } = await supabase.from('animais')
-      .update({ status: statusNovo, lote_atual_id: null }).in('id', animalIds)
-    if (eUpd) return { error: eUpd.message }
+    for (const idsChunk of chunkArray(animalIds, TAMANHO_CHUNK_IDS)) {
+      const { error: eUpd } = await supabase.from('animais')
+        .update({ status: statusNovo, lote_atual_id: null }).in('id', idsChunk)
+      if (eUpd) return { error: eUpd.message }
+    }
 
     return { error: null, saidaGrupo: saidaGrupo as SaidaGrupo, resultadoPorAnimal: linhasPorAnimal }
   }
