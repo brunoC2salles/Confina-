@@ -1455,7 +1455,7 @@ function DetalheLote({
 
       {showCustoRacaoReal && (
         <ModalCustoRacaoReal
-          lote={lote} loteAtivo={loteAtivo}
+          lote={lote} loteAtivo={loteAtivo} ciclos={ciclos}
           custos={custosRacaoReal} loading={loadingCustosRacaoReal}
           onClose={() => setShowCustoRacaoReal(false)}
           onAdicionar={async input => { const res = await adicionarCustoRacaoReal(input); if (!res.error) await recalcular(); return res }}
@@ -2818,46 +2818,60 @@ function ModalCustosOperacionais({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ModalCustoRacaoReal({
-  lote, loteAtivo, custos, loading, onClose, onAdicionar, onEditar, onRemover,
+  lote, loteAtivo, ciclos, custos, loading, onClose, onAdicionar, onEditar, onRemover,
 }: {
   lote: Lote
   loteAtivo: boolean
+  ciclos: Array<{ numero: number; nome: string }>
   custos: CustoRacaoRealLote[]
   loading: boolean
   onClose: () => void
-  onAdicionar: (input: { data_inicio: string; valor_total: number; observacoes?: string }) => Promise<{ error: string | null }>
-  onEditar: (id: string, input: { data_inicio: string; valor_total: number; observacoes?: string }) => Promise<{ error: string | null }>
+  onAdicionar: (input: { data_inicio: string; valor_total: number; ciclo_numero?: number | null; observacoes?: string }) => Promise<{ error: string | null }>
+  onEditar: (id: string, input: { data_inicio: string; valor_total: number; ciclo_numero?: number | null; observacoes?: string }) => Promise<{ error: string | null }>
   onRemover: (id: string) => Promise<void>
 }) {
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [dataInicio, setDataInicio] = useState(hojeStr())
   const [valorTotal, setValorTotal] = useState('')
+  const [cicloNumero, setCicloNumero] = useState<string>('') // '' = lote inteiro
   const [observacoes, setObservacoes] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const limparFormulario = () => {
-    setEditandoId(null); setDataInicio(hojeStr()); setValorTotal(''); setObservacoes(''); setErro(null)
+    setEditandoId(null); setDataInicio(hojeStr()); setValorTotal(''); setCicloNumero(''); setObservacoes(''); setErro(null)
   }
 
   const iniciarEdicao = (c: CustoRacaoRealLote) => {
-    setEditandoId(c.id); setDataInicio(c.data_inicio); setValorTotal(String(c.valor_total)); setObservacoes(c.observacoes ?? ''); setErro(null)
+    setEditandoId(c.id); setDataInicio(c.data_inicio); setValorTotal(String(c.valor_total))
+    setCicloNumero(c.ciclo_numero != null ? String(c.ciclo_numero) : '')
+    setObservacoes(c.observacoes ?? ''); setErro(null)
   }
 
   const salvar = async () => {
     const v = Number(valorTotal)
     if (!v || v <= 0) { setErro('Informe um valor válido'); return }
     setSaving(true); setErro(null)
-    const input = { data_inicio: dataInicio, valor_total: v, observacoes: observacoes || undefined }
+    const input = {
+      data_inicio: dataInicio, valor_total: v,
+      ciclo_numero: cicloNumero === '' ? null : Number(cicloNumero),
+      observacoes: observacoes || undefined,
+    }
     const res = editandoId ? await onEditar(editandoId, input) : await onAdicionar(input)
     setSaving(false)
     if (res.error) { setErro(res.error); return }
     limparFormulario()
   }
 
+  const rotuloEscopo = (n: number | null) => {
+    if (n == null) return 'Lote inteiro'
+    const c = ciclos.find(c => c.numero === n)
+    return c ? `Ciclo ${n} — ${c.nome}` : `Ciclo ${n}`
+  }
+
   return (
     <Modal open onClose={onClose} title={`Custo real de ração — ${lote.nome_lote}`}
-      subtitle="Substitui o custo de alimentação estimado a partir da data informada, até o próximo lançamento" size="lg">
+      subtitle="Substitui o custo de alimentação estimado a partir da data informada, até o próximo lançamento do mesmo escopo" size="lg">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {loteAtivo && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
@@ -2870,6 +2884,19 @@ function ModalCustoRacaoReal({
               <div className="form-group">
                 <label className="form-label">Valor total gasto (R$)</label>
                 <input className="form-input" type="number" step="0.01" value={valorTotal} onChange={e => setValorTotal(e.target.value)} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Aplicar a</label>
+              <select className="form-input" value={cicloNumero} onChange={e => setCicloNumero(e.target.value)}>
+                <option value="">Todo o lote</option>
+                {ciclos.map(c => (
+                  <option key={c.numero} value={c.numero}>Ciclo {c.numero} — {c.nome}</option>
+                ))}
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 4 }}>
+                Escolher um ciclo divide o valor só entre os animais que estiveram naquele ciclo em cada dia —
+                útil quando parte do lote já avançou de ciclo e comeu uma dieta diferente do resto.
               </div>
             </div>
             <div className="form-group">
@@ -2895,11 +2922,21 @@ function ModalCustoRacaoReal({
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>A partir de</th><th>Valor total</th><th>Observações</th>{loteAtivo && <th></th>}</tr></thead>
+              <thead><tr><th>A partir de</th><th>Aplicado a</th><th>Valor total</th><th>Observações</th>{loteAtivo && <th></th>}</tr></thead>
               <tbody>
                 {custos.map(c => (
                   <tr key={c.id}>
                     <td>{fmtData(c.data_inicio)}</td>
+                    <td>
+                      <span style={{
+                        fontSize: 11, padding: '2px 8px', borderRadius: 20,
+                        background: c.ciclo_numero != null ? '#fdf3dc' : 'var(--gray-50)',
+                        color: c.ciclo_numero != null ? '#946200' : 'var(--gray-500)',
+                        border: `1px solid ${c.ciclo_numero != null ? '#c99324' : '#e0e0e0'}`,
+                      }}>
+                        {rotuloEscopo(c.ciclo_numero)}
+                      </span>
+                    </td>
                     <td>{fmt(c.valor_total)}</td>
                     <td>{c.observacoes || '—'}</td>
                     {loteAtivo && (
