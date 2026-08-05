@@ -212,6 +212,11 @@ export interface CustoRacaoRealLote {
   lote_id: string
   data_inicio: string
   valor_total: number
+  // null = vale pro lote inteiro (comportamento original). Um número = vale
+  // só para os animais que estavam naquele ciclo em cada dia — importante
+  // com avanço de ciclo parcial, onde animais do mesmo lote podem estar em
+  // ciclos diferentes e ter comido dietas diferentes.
+  ciclo_numero: number | null
   observacoes: string | null
   user_id: string
   created_at: string
