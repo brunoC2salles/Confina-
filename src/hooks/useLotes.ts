@@ -810,6 +810,29 @@ interface ContextoCusto {
   custosRacaoRealPorLote: Record<string, CustoRacaoRealPorDia>
 }
 
+// ─── Paginação para consultas que podem passar de 1000 linhas ─────────────────
+// A API REST do Supabase retorna no máximo 1000 linhas por chamada quando não
+// há .range() explícito — acima disso o resultado é truncado silenciosamente
+// (sem erro). Lotes grandes (ex.: 500+ animais, 2 movimentações cada) passam
+// facilmente desse limite em movimentacoes_animais, pesagens, etc. Este
+// helper busca uma consulta em páginas de 1000 e concatena tudo.
+async function buscarTudoPaginado<T>(
+  montarConsulta: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const TAMANHO_PAGINA = 1000
+  let resultado: T[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await montarConsulta(from, from + TAMANHO_PAGINA - 1)
+    if (error) { console.error('Erro ao paginar consulta:', error); break }
+    const linhas = data ?? []
+    resultado = resultado.concat(linhas)
+    if (linhas.length < TAMANHO_PAGINA) break
+    from += TAMANHO_PAGINA
+  }
+  return resultado
+}
+
 export function useCustoEngine() {
   const { user } = useAuth()
 
@@ -818,25 +841,28 @@ export function useCustoEngine() {
       return { animaisPorId: {}, pesagensPorAnimal: {}, periodosPorAnimal: {}, ciclos: [], dietas: {}, custosOperacionaisPorLote: {}, custosRacaoRealPorLote: {} }
     }
 
-    const [{ data: animaisData }, { data: pesagensData }, { data: movsData }] = await Promise.all([
-      supabase.from('animais').select('id, peso_entrada, data_entrada, lote_atual_id').in('id', animalIds),
-      supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', animalIds),
-      supabase.from('movimentacoes_animais').select('animal_id, tipo, lote_origem_id, lote_destino_id, data').in('animal_id', animalIds),
+    const [animaisData, pesagensData, movsData] = await Promise.all([
+      buscarTudoPaginado<{ id: string; peso_entrada: number; data_entrada: string }>((from, to) =>
+        supabase.from('animais').select('id, peso_entrada, data_entrada, lote_atual_id').in('id', animalIds).range(from, to)),
+      buscarTudoPaginado<{ animal_id: string; data: string; peso: number }>((from, to) =>
+        supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', animalIds).range(from, to)),
+      buscarTudoPaginado<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>((from, to) =>
+        supabase.from('movimentacoes_animais').select('animal_id, tipo, lote_origem_id, lote_destino_id, data').in('animal_id', animalIds).range(from, to)),
     ])
 
     const animaisPorId: ContextoCusto['animaisPorId'] = {}
-    for (const a of (animaisData ?? []) as Array<{ id: string; peso_entrada: number; data_entrada: string }>) {
+    for (const a of animaisData) {
       animaisPorId[a.id] = { peso_entrada: a.peso_entrada, data_entrada: a.data_entrada }
     }
 
     const pesagensPorAnimal: ContextoCusto['pesagensPorAnimal'] = {}
-    for (const p of (pesagensData ?? []) as Array<{ animal_id: string; data: string; peso: number }>) {
+    for (const p of pesagensData) {
       (pesagensPorAnimal[p.animal_id] ??= []).push({ data: p.data, peso: p.peso })
     }
 
     const movsPorAnimal: Record<string, Array<{ tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>> = {}
     const loteIdsEnvolvidos = new Set<string>()
-    for (const m of (movsData ?? []) as Array<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>) {
+    for (const m of movsData) {
       (movsPorAnimal[m.animal_id] ??= []).push(m)
       if (m.lote_origem_id) loteIdsEnvolvidos.add(m.lote_origem_id)
       if (m.lote_destino_id) loteIdsEnvolvidos.add(m.lote_destino_id)
@@ -854,18 +880,19 @@ export function useCustoEngine() {
 
     if (loteIdsEnvolvidos.size > 0) {
       const loteIdsArr = Array.from(loteIdsEnvolvidos)
-      const [{ data: ciclosData }, { data: custosOpData }, { data: racaoRealData }, { data: ativosData }] = await Promise.all([
+      const [{ data: ciclosData }, { data: custosOpData }, { data: racaoRealData }, ativosData] = await Promise.all([
         supabase.from('ciclos_lote').select('lote_id, numero, tipo_ciclo, dieta_id, gmd_esperado, data_inicio, data_fim').in('lote_id', loteIdsArr),
         supabase.from('custos_operacionais_lote').select('lote_id, valor, data_lancamento').in('lote_id', loteIdsArr),
         supabase.from('custos_racao_real_lote').select('lote_id, valor_total, data_inicio').in('lote_id', loteIdsArr),
-        supabase.from('animais').select('lote_atual_id').eq('status', 'ativo').in('lote_atual_id', loteIdsArr),
+        buscarTudoPaginado<{ lote_atual_id: string }>((from, to) =>
+          supabase.from('animais').select('lote_atual_id').eq('status', 'ativo').in('lote_atual_id', loteIdsArr).range(from, to)),
       ])
       ciclos = (ciclosData ?? []) as CicloInfo[]
 
       // fallback: quantidade ativa HOJE, usada só quando não há ninguém registrado
       // no lote na data exata do lançamento do custo
       const qtdAtivaAtualPorLote: Record<string, number> = {}
-      for (const a of (ativosData ?? []) as Array<{ lote_atual_id: string }>) {
+      for (const a of ativosData) {
         qtdAtivaAtualPorLote[a.lote_atual_id] = (qtdAtivaAtualPorLote[a.lote_atual_id] ?? 0) + 1
       }
 
@@ -878,13 +905,15 @@ export function useCustoEngine() {
         // os períodos de cada um e conta quantos estavam no lote em qualquer
         // data pedida — usado tanto pelo custo operacional (um dia) quanto
         // pelo custo real de ração (todos os dias do intervalo de vigência)
-        const { data: todasMovsDosLotes } = await supabase
-          .from('movimentacoes_animais')
-          .select('animal_id, tipo, lote_origem_id, lote_destino_id, data')
-          .or(loteIdsArr.map(id => `lote_origem_id.eq.${id}`).concat(loteIdsArr.map(id => `lote_destino_id.eq.${id}`)).join(','))
+        const todasMovsDosLotes = await buscarTudoPaginado<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>((from, to) =>
+          supabase
+            .from('movimentacoes_animais')
+            .select('animal_id, tipo, lote_origem_id, lote_destino_id, data')
+            .or(loteIdsArr.map(id => `lote_origem_id.eq.${id}`).concat(loteIdsArr.map(id => `lote_destino_id.eq.${id}`)).join(','))
+            .range(from, to))
 
         const movsPorAnimalTodos: Record<string, Array<{ tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>> = {}
-        for (const m of (todasMovsDosLotes ?? []) as Array<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>) {
+        for (const m of todasMovsDosLotes) {
           (movsPorAnimalTodos[m.animal_id] ??= []).push(m)
         }
         // Mantém o animal_id (não descarta em um array solto) porque o rateio
@@ -931,14 +960,16 @@ export function useCustoEngine() {
           const animaisBasicoPorId: Record<string, { peso_entrada: number; data_entrada: string }> = {}
           const pesagensPorAnimalTodos: Record<string, Array<{ data: string; peso: number }>> = {}
           if (animalIdsEnvolvidos.length > 0) {
-            const [{ data: animaisBasicoData }, { data: pesagensTodasData }] = await Promise.all([
-              supabase.from('animais').select('id, peso_entrada, data_entrada').in('id', animalIdsEnvolvidos),
-              supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', animalIdsEnvolvidos),
+            const [animaisBasicoData, pesagensTodasData] = await Promise.all([
+              buscarTudoPaginado<{ id: string; peso_entrada: number; data_entrada: string }>((from, to) =>
+                supabase.from('animais').select('id, peso_entrada, data_entrada').in('id', animalIdsEnvolvidos).range(from, to)),
+              buscarTudoPaginado<{ animal_id: string; data: string; peso: number }>((from, to) =>
+                supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', animalIdsEnvolvidos).range(from, to)),
             ])
-            for (const a of (animaisBasicoData ?? []) as Array<{ id: string; peso_entrada: number; data_entrada: string }>) {
+            for (const a of animaisBasicoData) {
               animaisBasicoPorId[a.id] = { peso_entrada: a.peso_entrada, data_entrada: a.data_entrada }
             }
-            for (const p of (pesagensTodasData ?? []) as Array<{ animal_id: string; data: string; peso: number }>) {
+            for (const p of pesagensTodasData) {
               (pesagensPorAnimalTodos[p.animal_id] ??= []).push({ data: p.data, peso: p.peso })
             }
           }
