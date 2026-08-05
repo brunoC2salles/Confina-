@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { useLotes, useCustoEngine } from '@/hooks/useLotes'
+import { useLotes, useCustoEngine, buscarPorIds } from '@/hooks/useLotes'
 import { useFaixas } from '@/hooks/useFaixas'
 import { supabase } from '@/lib/supabase'
 import { PageHeader, EmptyState } from '@/components/common/UI'
@@ -71,12 +71,13 @@ export default function Comparativo() {
     const lista = (animaisData ?? []) as Array<{ id: string; peso_entrada: number; valor_compra: number; lote_atual_id: string }>
     if (lista.length === 0) { setAtivos([]); setLoadingAtivos(false); return }
 
-    const [resultados, { data: custosVarData }] = await Promise.all([
+    const [resultados, custosVarData] = await Promise.all([
       calcularEmLote(lista.map(a => a.id), hojeStr()),
-      supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', lista.map(a => a.id)),
+      buscarPorIds<{ animal_id: string; valor: number }>(lista.map(a => a.id), (idsChunk, from, to) =>
+        supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).range(from, to)),
     ])
     const custosVarPorAnimal: Record<string, number> = {}
-    for (const c of (custosVarData ?? []) as Array<{ animal_id: string; valor: number }>) {
+    for (const c of custosVarData) {
       custosVarPorAnimal[c.animal_id] = (custosVarPorAnimal[c.animal_id] ?? 0) + c.valor
     }
 
