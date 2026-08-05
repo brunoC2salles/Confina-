@@ -54,6 +54,22 @@ export interface CicloLote {
   created_at: string
 }
 
+// Histórico de troca de ciclo por animal — grava cada avanço (total ou
+// parcial) que esse animal sofreu, com a data escolhida pelo produtor
+// (pode ser retroativa). É o que permite animais do mesmo lote estarem em
+// ciclos diferentes ao mesmo tempo; ver encontrarCicloAtivoParaAnimal em
+// src/lib/custoAnimal.ts.
+export interface CicloAnimalEventoRow {
+  id: string
+  animal_id: string
+  lote_id: string
+  ciclo_numero_anterior: number | null
+  ciclo_numero: number
+  data: string
+  user_id: string
+  created_at: string
+}
+
 export interface Animal {
   id: string
   codigo: string
@@ -67,6 +83,10 @@ export interface Animal {
   preco_kg_compra_no_lote: number | null
   compra_id: string | null
   lote_atual_id: string | null
+  // Ciclo vigente deste animal — normalmente igual ao ciclo_atual do lote,
+  // mas pode ficar à frente quando o animal foi adiantado por um avanço de
+  // ciclo parcial (só alguns animais selecionados, ver avancarCicloParcial).
+  ciclo_atual: number
   status: AnimalStatus
   user_id: string
   created_at: string
