@@ -19,6 +19,7 @@ interface AnimalHoje {
   peso_entrada: number
   data_entrada: string | null
   lote_id: string | null
+  ciclo_atual: number
   fornecedor: string
 }
 
@@ -62,7 +63,7 @@ export default function FazendaHoje() {
     setLoading(true)
     const { data } = await supabase
       .from('animais')
-      .select('id, codigo, brinco, peso_entrada, data_entrada, lote_atual_id, compras(origem_texto, parceiros(nome))')
+      .select('id, codigo, brinco, peso_entrada, data_entrada, lote_atual_id, ciclo_atual, compras(origem_texto, parceiros(nome))')
       .eq('user_id', user.id).eq('status', 'ativo')
 
     const lista: AnimalHoje[] = (data ?? []).map((a: any) => ({
@@ -72,6 +73,7 @@ export default function FazendaHoje() {
       peso_entrada: a.peso_entrada,
       data_entrada: a.data_entrada,
       lote_id: a.lote_atual_id,
+      ciclo_atual: a.ciclo_atual,
       fornecedor: a.compras?.parceiros?.nome ?? a.compras?.origem_texto ?? 'Não informado',
     }))
     setAnimais(lista)
@@ -86,40 +88,39 @@ export default function FazendaHoje() {
     return mapa
   }, [dietas])
 
-  // Ciclo "de agora" de um lote é o ciclo_atual do lote — a mesma noção usada
-  // no resto do app (Lotes.tsx, motor de custo). Não é histórico por animal.
-  // A data prevista de fim é calculada (data_inicio + dias_planejados) pois o
-  // ciclo só ganha data_fim real quando é encerrado (avançarCiclo). Por isso
-  // essa data pode ficar no passado sem que nada mude automaticamente: é só
-  // uma projeção, o sistema nunca fecha o ciclo sozinho.
+  // Ciclo "de agora" é o ciclo_atual do PRÓPRIO ANIMAL (não mais o do lote
+  // como um todo) — com avanço de ciclo parcial, animais do mesmo lote podem
+  // estar em ciclos diferentes ao mesmo tempo. A data prevista de fim é
+  // calculada (data_inicio + dias_planejados) pois o ciclo só ganha data_fim
+  // real quando é encerrado (avançarCiclo). Por isso essa data pode ficar no
+  // passado sem que nada mude automaticamente: é só uma projeção, o sistema
+  // nunca fecha o ciclo sozinho.
   //
   // "emEspera": true quando a data prevista já passou E o lote não tem, em
-  // ciclos_lote, nenhum ciclo com número maior que o ciclo_atual (ou seja,
-  // não há próximo ciclo cadastrado pra assumir esses animais).
-  const cicloAtualDoLote = useCallback((loteId: string | null) => {
-    if (!loteId) return null
-    const lote = lotes.find(l => l.id === loteId)
-    if (!lote) return null
+  // ciclos_lote, nenhum ciclo com número maior que o ciclo deste animal (ou
+  // seja, não há próximo ciclo cadastrado pra assumir esse animal).
+  const infoCiclo = useCallback((loteId: string | null, cicloNumero: number | null) => {
+    if (!loteId || cicloNumero == null) return null
     const ciclosDoLote = ciclosPorLote[loteId] ?? []
-    const ciclo = ciclosDoLote.find(c => c.numero === lote.ciclo_atual)
+    const ciclo = ciclosDoLote.find(c => c.numero === cicloNumero)
     const dataPrevistaFim = ciclo?.data_inicio && ciclo?.dias_planejados
       ? addDias(ciclo.data_inicio, ciclo.dias_planejados)
       : null
-    const temProximoCiclo = ciclosDoLote.some(c => c.numero > lote.ciclo_atual)
+    const temProximoCiclo = ciclosDoLote.some(c => c.numero > cicloNumero)
     const emEspera = !!dataPrevistaFim && dataPrevistaFim < hojeISO() && !temProximoCiclo
     return {
-      numero: lote.ciclo_atual,
-      nome: ciclo?.nome ?? `Ciclo ${lote.ciclo_atual}`,
+      numero: cicloNumero,
+      nome: ciclo?.nome ?? `Ciclo ${cicloNumero}`,
       tipoCiclo: ciclo?.tipo_ciclo ?? null,
       dietaId: ciclo?.dieta_id ?? null,
       dataPrevistaFim,
       emEspera,
     }
-  }, [lotes, ciclosPorLote])
+  }, [ciclosPorLote])
 
   const linhas: LinhaHoje[] = useMemo(() => animais.map(a => {
     const lote = lotes.find(l => l.id === a.lote_id)
-    const ciclo = cicloAtualDoLote(a.lote_id)
+    const ciclo = infoCiclo(a.lote_id, a.ciclo_atual)
     return {
       ...a,
       loteNome: lote?.nome_lote ?? '— (sem lote)',
@@ -131,7 +132,7 @@ export default function FazendaHoje() {
       dataPrevistaFim: ciclo?.dataPrevistaFim ?? null,
       emEspera: ciclo?.emEspera ?? false,
     }
-  }), [animais, lotes, cicloAtualDoLote, dietaNomePorId])
+  }), [animais, lotes, infoCiclo, dietaNomePorId])
 
   const fornecedores = useMemo(
     () => Array.from(new Set(linhas.map(l => l.fornecedor))).sort(),

@@ -12,7 +12,7 @@ const cicloLabel = (n: number) =>
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { lotesAtivos, resumo, loading: loadLotes } = useLotes()
+  const { lotesAtivos, resumo, distribuicaoCiclos, loading: loadLotes } = useLotes()
   const nome = user?.user_metadata?.nome?.split(' ')[0] || 'produtor'
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -203,16 +203,37 @@ export default function Dashboard() {
               <tbody>
                 {lotesAtivos.map(l => {
                   const r = resumo[l.id] ?? { qtdAtiva: 0, pesoMedioEntrada: 0 }
+                  // Distribuição de ciclos entre os animais ativos do lote — mais
+                  // de uma chave significa que parte dos animais foi adiantada
+                  // por um avanço de ciclo parcial. Nesse caso não dá pra
+                  // resumir num único número/barra de progresso, então mostra
+                  // a contagem por ciclo em vez disso.
+                  const distEntradas = Object.entries(distribuicaoCiclos[l.id] ?? {})
+                    .map(([n, q]) => [Number(n), q] as [number, number])
+                    .sort((a, b) => a[0] - b[0])
+                  const misto = distEntradas.length > 1
                   return (
                     <tr key={l.id} style={{ cursor: 'pointer' }} onClick={() => navigate('/lotes')}>
                       <td><strong>{l.nome_lote}</strong><div style={{ fontSize: 11, color: '#9e9e9e' }}>{l.codigo_lote}</div></td>
                       <td>
-                        <div style={{ display: 'flex', gap: 3, marginBottom: 2 }}>
-                          {Array.from({ length: l.num_ciclos }, (_, i) => i + 1).map(n => (
-                            <div key={n} style={{ width: 20, height: 4, borderRadius: 2, background: n < l.ciclo_atual ? '#2e7d32' : n === l.ciclo_atual ? '#66bb6a' : '#e0e0e0' }}/>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#9e9e9e' }}>{cicloLabel(l.ciclo_atual)}</div>
+                        {misto ? (
+                          <div style={{ fontSize: 11, color: '#946200', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {distEntradas.map(([n, q]) => (
+                              <span key={n} style={{ background: '#fdf3dc', border: '1px solid #c99324', borderRadius: 20, padding: '1px 8px' }}>
+                                Ciclo {n} ({q})
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{ display: 'flex', gap: 3, marginBottom: 2 }}>
+                              {Array.from({ length: l.num_ciclos }, (_, i) => i + 1).map(n => (
+                                <div key={n} style={{ width: 20, height: 4, borderRadius: 2, background: n < l.ciclo_atual ? '#2e7d32' : n === l.ciclo_atual ? '#66bb6a' : '#e0e0e0' }}/>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#9e9e9e' }}>{cicloLabel(l.ciclo_atual)}</div>
+                          </>
+                        )}
                       </td>
                       <td>{r.qtdAtiva}</td>
                       <td>{r.qtdAtiva > 0 ? `${fmtNum(r.pesoMedioEntrada, 0)} kg` : '—'}</td>

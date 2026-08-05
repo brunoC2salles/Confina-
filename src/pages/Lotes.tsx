@@ -4,7 +4,7 @@ import {
   useLotes, useAnimaisDoLote, useCustoEngine, useVendas, useCustosOperacionais, useCustosRacaoReal, useCompras,
   useMovimentacoesLote, buscarPorIds,
   type CriarLoteInput, type CicloInput, type LinhaAnimalInput, type CompraInput, type CriarAnimaisInput,
-  type MovimentacaoGrupoLote,
+  type MovimentacaoGrupoLote, type PesagemNaTroca,
 } from '@/hooks/useLotes'
 import { useDietas } from '@/hooks/useDietas'
 import { useFaixas } from '@/hooks/useFaixas'
@@ -29,6 +29,20 @@ const fmtDataCurta = (d: string) => {
   return `${dd}/${m}`
 }
 
+// Quando todos os animais ativos do lote estão no mesmo ciclo (caso normal,
+// sem avanço parcial), mostra "Ciclo N/total" como sempre. Com ciclos
+// mistos (algum animal foi adiantado via avanço parcial), mostra a
+// distribuição — sem tentar resumir num único número, que deixaria de
+// contar a história certa.
+function rotuloCiclo(lote: Lote, dist: Record<number, number> | undefined): string {
+  const entradas = Object.entries(dist ?? {}).map(([n, qtd]) => [Number(n), qtd] as [number, number])
+  if (entradas.length <= 1) return `Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}`
+  return entradas
+    .sort((a, b) => a[0] - b[0])
+    .map(([numero, qtd]) => `Ciclo ${numero} (${qtd})`)
+    .join(' · ')
+}
+
 const cicloLabelPadrao = (n: number) =>
   ({ 1: 'Adaptação', 2: 'Crescimento', 3: 'Engorda', 4: 'Acabamento' } as Record<number, string>)[n] ?? `Ciclo ${n}`
 
@@ -40,8 +54,8 @@ export default function Lotes() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const {
-    lotes, lotesAtivos, lotesEncerrados, ciclosPorLote, resumo, loading,
-    criarLote, editarCiclo, salvarCiclosLote, avancarCiclo, encerrarLote,
+    lotes, lotesAtivos, lotesEncerrados, ciclosPorLote, resumo, distribuicaoCiclos, loading,
+    criarLote, editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote,
     criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
   } = useLotes()
   const { templates: dietasTemplates } = useDietas()
@@ -113,7 +127,7 @@ export default function Lotes() {
                   <span style={{ fontSize: 11, background: lote.status === 'encerrado' ? '#f5f5f5' : '#e8f5e9', color: lote.status === 'encerrado' ? '#757575' : '#2e7d32', padding: '2px 8px', borderRadius: 20, border: `1px solid ${lote.status === 'encerrado' ? '#e0e0e0' : '#a5d6a7'}` }}>
                     {lote.status === 'encerrado'
                       ? (lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado')
-                      : `Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}`}
+                      : rotuloCiclo(lote, distribuicaoCiclos[lote.id])}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--gray-500)', flexWrap: 'wrap' }}>
@@ -184,9 +198,11 @@ export default function Lotes() {
           dietasTemplates={dietasTemplates}
           todosLotes={lotes}
           ciclosPorLote={ciclosPorLote}
+          distribuicaoCiclos={distribuicaoCiclos}
           editarCiclo={editarCiclo}
           salvarCiclosLote={salvarCiclosLote}
           avancarCiclo={avancarCiclo}
+          avancarCicloParcial={avancarCicloParcial}
           encerrarLote={encerrarLote}
           criarAnimais={criarAnimais}
           bifurcar={bifurcar}
@@ -856,8 +872,8 @@ function PainelProjecao({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function DetalheLote({
-  loteId, onClose, highlightAnimalId, dietasTemplates, todosLotes, ciclosPorLote,
-  editarCiclo, salvarCiclosLote, avancarCiclo, encerrarLote, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
+  loteId, onClose, highlightAnimalId, dietasTemplates, todosLotes, ciclosPorLote, distribuicaoCiclos,
+  editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
 }: {
   loteId: string
   onClose: () => void
@@ -865,9 +881,11 @@ function DetalheLote({
   dietasTemplates: Array<{ id: string; nome: string; gmd_esperado: number; pct_consumo_pv_ms: number; custo_kg_ms: number | null }>
   todosLotes: Lote[]
   ciclosPorLote: Record<string, Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null; data_fim: string | null }>>
+  distribuicaoCiclos: Record<string, Record<number, number>>
   editarCiclo: (id: string, patch: any) => Promise<{ error: string | null }>
   salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }>) => Promise<{ error: string | null }>
-  avancarCiclo: (loteId: string) => Promise<{ error: string | null }>
+  avancarCiclo: (loteId: string, data?: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
+  avancarCicloParcial: (loteId: string, animalIds: string[], data: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
   encerrarLote: (loteId: string, motivo: MotivoEncerramento, obs?: string) => Promise<{ error: string | null }>
   criarAnimais: (input: CriarAnimaisInput) => Promise<{ error: string | null }>
   bifurcar: (input: any) => Promise<{ error: string | null; lote?: Lote }>
@@ -912,6 +930,7 @@ function DetalheLote({
   const [showCompras, setShowCompras] = useState(false)
   const [showEditarCiclos, setShowEditarCiclos] = useState(false)
   const [showDuplicados, setShowDuplicados] = useState(false)
+  const [showAvancarCiclo, setShowAvancarCiclo] = useState<'total' | 'parcial' | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
   const ciclos = ciclosPorLote[loteId] ?? []
@@ -996,6 +1015,16 @@ function DetalheLote({
     })
   }
 
+  // Ciclo comum dos animais selecionados — só existe (não-null) quando a
+  // seleção tem pelo menos 1 animal, todos no mesmo ciclo_atual entre si, e
+  // esse ciclo ainda não é o último configurado no lote. É o que habilita o
+  // botão "Avançar ciclo dos selecionados".
+  const animaisSelecionadosArr = animais.filter(a => selecionados.has(a.id))
+  const ciclosDaSelecao = new Set(animaisSelecionadosArr.map(a => a.ciclo_atual))
+  const cicloOrigemSelecao = ciclosDaSelecao.size === 1 && animaisSelecionadosArr[0].ciclo_atual < lote.num_ciclos
+    ? animaisSelecionadosArr[0].ciclo_atual
+    : null
+
   const qtdAtiva = animais.length
   const pesoMedioHoje = qtdAtiva > 0
     ? animais.reduce((s, a) => s + (resultados[a.id]?.peso ?? a.peso_entrada), 0) / qtdAtiva
@@ -1033,9 +1062,16 @@ function DetalheLote({
     return res
   }
 
-  const handleAvancarCiclo = async () => {
-    const res = await avancarCiclo(loteId)
-    if (res.error) setErro(res.error)
+  const handleConfirmarAvancarCicloTotal = async (data: string, pesagem?: PesagemNaTroca) => {
+    const res = await avancarCiclo(loteId, data, pesagem)
+    if (!res.error) setShowAvancarCiclo(null)
+    return res
+  }
+
+  const handleConfirmarAvancarCicloParcial = async (data: string, pesagem?: PesagemNaTroca) => {
+    const res = await avancarCicloParcial(loteId, Array.from(selecionados), data, pesagem)
+    if (!res.error) { setShowAvancarCiclo(null); setSelecionados(new Set()) }
+    return res
   }
 
   const handleEncerrar = async (motivo: MotivoEncerramento, obs?: string) => {
@@ -1065,7 +1101,7 @@ function DetalheLote({
 
   return (
     <Modal open onClose={onClose} title={lote.nome_lote}
-      subtitle={`${lote.codigo_lote} · Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="xl"
+      subtitle={`${lote.codigo_lote} · ${rotuloCiclo(lote, distribuicaoCiclos[loteId])}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="xl"
       footer={selecionados.size > 0 && loteAtivo ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1073,6 +1109,12 @@ function DetalheLote({
             <button className="btn btn-ghost btn-sm" onClick={() => setSelecionados(new Set())} style={{ marginLeft: 'auto' }}>Limpar seleção</button>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary btn-sm"
+              disabled={cicloOrigemSelecao === null}
+              title={cicloOrigemSelecao === null ? 'Selecione animais que estejam todos no mesmo ciclo' : undefined}
+              onClick={() => setShowAvancarCiclo('parcial')}>
+              Avançar ciclo dos selecionados
+            </button>
             <button className="btn btn-primary btn-sm" onClick={() => setShowBifurcar(true)}>Bifurcar</button>
             <button className="btn btn-primary btn-sm" onClick={() => setShowMover(true)}>Mover para outro lote</button>
             <button className="btn btn-primary btn-sm" onClick={() => setShowVenda(true)}>Vender</button>
@@ -1103,7 +1145,7 @@ function DetalheLote({
         {loteAtivo && (
           <div className="flex-between" style={{ flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button className="btn btn-ghost btn-sm" onClick={handleAvancarCiclo} disabled={lote.ciclo_atual >= lote.num_ciclos}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowAvancarCiclo('total')} disabled={lote.ciclo_atual >= lote.num_ciclos}>
                 Avançar ciclo
               </button>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowEditarCiclos(true)}>
@@ -1220,6 +1262,7 @@ function DetalheLote({
                     </th>
                   )}
                   <th>Código</th>
+                  <th>Ciclo</th>
                   <th>Peso entrada</th>
                   <th>Data entrada</th>
                   <th>Peso hoje (est.)</th>
@@ -1237,6 +1280,10 @@ function DetalheLote({
                   const custoTotal = custoTotalAnimal(a.id)
                   const custoPorKg = r && ganho > 0 ? custoTotal / ganho : null
                   const destacado = a.id === highlightAnimalId
+                  // Badge dourado só quando o animal está à frente do ciclo-base
+                  // do lote (avanço parcial já aplicado nele) — sinaliza a
+                  // distinção sem poluir a tabela quando todo mundo está igual.
+                  const adiantado = a.ciclo_atual !== lote.ciclo_atual
                   return (
                     <tr key={a.id} data-animal-id={a.id}
                       style={{ cursor: 'pointer', ...(destacado ? { background: 'var(--green-bg)' } : {}) }}
@@ -1247,6 +1294,16 @@ function DetalheLote({
                         </td>
                       )}
                       <td><strong>{a.codigo}</strong></td>
+                      <td>
+                        <span style={{
+                          fontSize: 11, padding: '2px 8px', borderRadius: 20,
+                          background: adiantado ? '#fdf3dc' : 'var(--gray-50)',
+                          color: adiantado ? '#946200' : 'var(--gray-500)',
+                          border: `1px solid ${adiantado ? '#c99324' : '#e0e0e0'}`,
+                        }}>
+                          Ciclo {a.ciclo_atual}
+                        </span>
+                      </td>
                       <td>{fmtNum(a.peso_entrada, 1)} kg</td>
                       <td>{fmtData(a.data_entrada)}</td>
                       <td>{r ? `${fmtNum(r.peso, 1)} kg` : '—'}</td>
@@ -1274,6 +1331,26 @@ function DetalheLote({
 
       {showAdicionarAnimais && (
         <ModalAdicionarAnimais lote={lote} onClose={() => setShowAdicionarAnimais(false)} onConfirmar={handleAdicionarAnimais} />
+      )}
+
+      {showAvancarCiclo === 'total' && (
+        <ModalAvancarCiclo
+          titulo="Avançar ciclo"
+          subtitulo={`Todo o lote ainda no ciclo ${lote.ciclo_atual} avança para o ciclo ${lote.ciclo_atual + 1}`}
+          animaisAlvo={animais.filter(a => a.ciclo_atual === lote.ciclo_atual).map(a => ({ id: a.id, codigo: a.codigo, brinco: a.brinco }))}
+          onClose={() => setShowAvancarCiclo(null)}
+          onConfirmar={handleConfirmarAvancarCicloTotal}
+        />
+      )}
+
+      {showAvancarCiclo === 'parcial' && cicloOrigemSelecao !== null && (
+        <ModalAvancarCiclo
+          titulo="Avançar ciclo dos selecionados"
+          subtitulo={`${selecionados.size} animal(is) do ciclo ${cicloOrigemSelecao} avançam para o ciclo ${cicloOrigemSelecao + 1}`}
+          animaisAlvo={animaisSelecionadosArr.map(a => ({ id: a.id, codigo: a.codigo, brinco: a.brinco }))}
+          onClose={() => setShowAvancarCiclo(null)}
+          onConfirmar={handleConfirmarAvancarCicloParcial}
+        />
       )}
 
       {showBifurcar && (
@@ -2029,6 +2106,115 @@ function ResumoCard({ label, valor, destaque }: { label: string; valor: string; 
       <div style={{ fontSize: 11, color: destaque ? 'var(--green)' : 'var(--gray-500)' }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 600, color: destaque ? 'var(--green-dark)' : undefined }}>{valor}</div>
     </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL: AVANÇAR CICLO (total ou parcial) — data editável + pesagem opcional
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ModalAvancarCiclo({
+  titulo, subtitulo, animaisAlvo, onClose, onConfirmar,
+}: {
+  titulo: string
+  subtitulo: string
+  animaisAlvo: Array<{ id: string; codigo: string; brinco: string }>
+  onClose: () => void
+  onConfirmar: (data: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
+}) {
+  const [data, setData] = useState(hojeStr())
+  const [querPesagem, setQuerPesagem] = useState(false)
+  const [modoPesagem, setModoPesagem] = useState<'massa' | 'individual'>('massa')
+  const [pesoUnico, setPesoUnico] = useState('')
+  const [pesosPorAnimal, setPesosPorAnimal] = useState<Record<string, string>>({})
+  const [erro, setErro] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const confirmar = async () => {
+    if (!data) { setErro('Informe a data de entrada no novo ciclo'); return }
+    let pesagem: PesagemNaTroca | undefined
+    if (querPesagem) {
+      if (modoPesagem === 'massa') {
+        const p = Number(pesoUnico)
+        if (!p || p <= 0) { setErro('Informe o peso a aplicar a todos os animais'); return }
+        pesagem = { modo: 'massa', pesoUnico: p }
+      } else {
+        const porAnimal: Record<string, number> = {}
+        for (const [id, v] of Object.entries(pesosPorAnimal)) {
+          const p = Number(v)
+          if (p > 0) porAnimal[id] = p
+        }
+        pesagem = { modo: 'individual', porAnimal }
+      }
+    }
+    setSaving(true)
+    const res = await onConfirmar(data, pesagem)
+    setSaving(false)
+    if (res.error) setErro(res.error)
+  }
+
+  return (
+    <Modal open onClose={onClose} title={titulo} subtitle={subtitulo} size="md">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="form-group">
+          <label className="form-label">Data de entrada no novo ciclo</label>
+          <input className="form-input" type="date" value={data} onChange={e => setData(e.target.value)} />
+          <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+            Pode ser uma data retroativa — os custos e demais variáveis são recalculados a partir dela.
+          </div>
+        </div>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={querPesagem} onChange={e => setQuerPesagem(e.target.checked)} />
+          Lançar pesagem nesta troca de ciclo
+        </label>
+
+        {querPesagem && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--gray-50)', borderRadius: 8, padding: 12 }}>
+            <div style={{ display: 'flex', gap: 14, fontSize: 13 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="radio" checked={modoPesagem === 'massa'} onChange={() => setModoPesagem('massa')} />
+                Um peso único para todos
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="radio" checked={modoPesagem === 'individual'} onChange={() => setModoPesagem('individual')} />
+                Peso individual por animal
+              </label>
+            </div>
+
+            {modoPesagem === 'massa' ? (
+              <div className="form-group" style={{ maxWidth: 180 }}>
+                <label className="form-label">Peso (kg)</label>
+                <input className="form-input" type="number" step="0.1" value={pesoUnico} onChange={e => setPesoUnico(e.target.value)} />
+              </div>
+            ) : (
+              <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {animaisAlvo.map(a => (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 13, minWidth: 90 }}>{a.codigo}</span>
+                    <input className="form-input" type="number" step="0.1" placeholder="kg"
+                      style={{ maxWidth: 110 }}
+                      value={pesosPorAnimal[a.id] ?? ''}
+                      onChange={e => setPesosPorAnimal(prev => ({ ...prev, [a.id]: e.target.value }))} />
+                  </div>
+                ))}
+                <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                  Deixe em branco os animais que não serão pesados agora.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={confirmar} disabled={saving}>
+            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Confirmar avanço de ciclo'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
