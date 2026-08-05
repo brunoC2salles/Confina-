@@ -11,7 +11,7 @@ import {
   calcularAnimalNaData, construirPeriodosDeMovimentacoes, gerarCodigoAnimal,
   encontrarLoteAtivo, toDay, projetarPesoPorDia,
   type PeriodoLote, type CicloInfo, type DietaInfo, type ResultadoAnimalNaData, type CustoOperacionalInfo,
-  type CustoRacaoRealPorDia, type CustoRacaoRealDiaInfo,
+  type CustoRacaoRealPorDia, type CustoRacaoRealDiaInfo, type CicloAnimalEvento,
 } from '@/lib/custoAnimal'
 import { ordenarPorBrinco } from '@/lib/calculations'
 import { obterRendimento, obterBonus } from '@/lib/calculations'
@@ -136,6 +136,37 @@ export async function gerarCodigosUnicos(userId: string, prefixo: string, brinco
   })
 }
 
+// ─── Pesagem opcional lançada no momento da troca de ciclo ─────────────────────
+// modo 'massa': um único peso aplicado a todos os animais da troca.
+// modo 'individual': um peso por animal — animais sem peso informado no mapa
+// simplesmente não recebem pesagem (a troca de ciclo em si não é bloqueada).
+export interface PesagemNaTroca {
+  modo: 'individual' | 'massa'
+  pesoUnico?: number
+  porAnimal?: Record<string, number>
+}
+
+async function inserirPesagensNaTroca(
+  userId: string, animalIds: string[], data: string, pesagem?: PesagemNaTroca,
+): Promise<{ error: string | null }> {
+  if (!pesagem) return { error: null }
+  let rows: Array<{ animal_id: string; peso: number; data: string; user_id: string }> = []
+  if (pesagem.modo === 'massa') {
+    if (pesagem.pesoUnico == null || pesagem.pesoUnico <= 0) {
+      return { error: 'Informe o peso a aplicar a todos os animais selecionados' }
+    }
+    rows = animalIds.map(id => ({ animal_id: id, peso: pesagem.pesoUnico as number, data, user_id: userId }))
+  } else {
+    const porAnimal = pesagem.porAnimal ?? {}
+    rows = animalIds
+      .filter(id => porAnimal[id] != null && porAnimal[id] > 0)
+      .map(id => ({ animal_id: id, peso: porAnimal[id], data, user_id: userId }))
+  }
+  if (rows.length === 0) return { error: null }
+  const { error } = await supabase.from('pesagens').insert(rows)
+  return { error: error?.message ?? null }
+}
+
 // ─── Hook: lotes (lista + CRUD) ────────────────────────────────────────────────
 
 export function useLotes() {
@@ -143,6 +174,11 @@ export function useLotes() {
   const [lotes, setLotes] = useState<Lote[]>([])
   const [ciclosPorLote, setCiclosPorLote] = useState<Record<string, CicloLote[]>>({})
   const [resumo, setResumo] = useState<Record<string, { qtdAtiva: number; pesoMedioEntrada: number; dataEntradaMin: string | null; dataEntradaMax: string | null }>>({})
+  // Quantos animais ativos de cada lote estão em cada número de ciclo — igual
+  // a { [numero]: qtd }. Num lote sem avanço parcial, tem uma única chave
+  // (o ciclo_atual do lote); com avanço parcial, pode ter mais de uma —
+  // é o que alimenta o badge de distribuição na UI.
+  const [distribuicaoCiclos, setDistribuicaoCiclos] = useState<Record<string, Record<number, number>>>({})
   const [loading, setLoading] = useState(true)
 
   const fetchLotes = useCallback(async () => {
@@ -164,12 +200,13 @@ export function useLotes() {
       setCiclosPorLote(grupos)
 
       const { data: animaisData } = await supabase
-        .from('animais').select('lote_atual_id, peso_entrada, status, data_entrada')
+        .from('animais').select('lote_atual_id, peso_entrada, status, data_entrada, ciclo_atual')
         .eq('user_id', user.id).in('lote_atual_id', ids)
       const res: Record<string, { qtdAtiva: number; pesoMedioEntrada: number; dataEntradaMin: string | null; dataEntradaMax: string | null }> = {}
       for (const id of ids) res[id] = { qtdAtiva: 0, pesoMedioEntrada: 0, dataEntradaMin: null, dataEntradaMax: null }
       const somaPeso: Record<string, number> = {}
-      for (const a of (animaisData ?? []) as Array<{ lote_atual_id: string; peso_entrada: number; status: string; data_entrada: string | null }>) {
+      const distribuicao: Record<string, Record<number, number>> = {}
+      for (const a of (animaisData ?? []) as Array<{ lote_atual_id: string; peso_entrada: number; status: string; data_entrada: string | null; ciclo_atual: number }>) {
         if (a.status !== 'ativo') continue
         if (!a.lote_atual_id) continue
         res[a.lote_atual_id].qtdAtiva += 1
@@ -179,14 +216,18 @@ export function useLotes() {
           if (!r.dataEntradaMin || a.data_entrada < r.dataEntradaMin) r.dataEntradaMin = a.data_entrada
           if (!r.dataEntradaMax || a.data_entrada > r.dataEntradaMax) r.dataEntradaMax = a.data_entrada
         }
+        const porCiclo = (distribuicao[a.lote_atual_id] ??= {})
+        porCiclo[a.ciclo_atual] = (porCiclo[a.ciclo_atual] ?? 0) + 1
       }
       for (const id of ids) {
         if (res[id].qtdAtiva > 0) res[id].pesoMedioEntrada = somaPeso[id] / res[id].qtdAtiva
       }
       setResumo(res)
+      setDistribuicaoCiclos(distribuicao)
     } else {
       setCiclosPorLote({})
       setResumo({})
+      setDistribuicaoCiclos({})
     }
     setLoading(false)
   }, [user])
@@ -354,22 +395,102 @@ export function useLotes() {
     return { error: error?.message ?? null }
   }
 
-  const avancarCiclo = async (loteId: string) => {
+  // Avanço "total": move todos os animais ativos que ainda estão no ciclo-base
+  // do lote (lote.ciclo_atual) para o próximo ciclo. Animais que já foram
+  // adiantados por um avanço parcial anterior (ciclo_atual já maior) não são
+  // tocados aqui — evita pular um ciclo neles. A data agora é escolhida pelo
+  // produtor (pode ser retroativa, já que às vezes só lança dias depois) em
+  // vez de travada em "hoje".
+  const avancarCiclo = async (loteId: string, data?: string, pesagem?: PesagemNaTroca) => {
+    if (!user) return { error: 'Não autenticado' }
     const lote = lotes.find(l => l.id === loteId)
     if (!lote) return { error: 'Lote não encontrado' }
     if (lote.ciclo_atual >= lote.num_ciclos) return { error: 'Lote já está no último ciclo configurado' }
 
-    const hoje = new Date().toISOString().split('T')[0]
+    const dataEfetiva = data || new Date().toISOString().split('T')[0]
     const ciclos = ciclosPorLote[loteId] ?? []
     const atual = ciclos.find(c => c.numero === lote.ciclo_atual)
     const proximo = ciclos.find(c => c.numero === lote.ciclo_atual + 1)
     if (!proximo) return { error: 'Próximo ciclo não está configurado' }
 
-    if (atual) await supabase.from('ciclos_lote').update({ data_fim: hoje }).eq('id', atual.id)
-    await supabase.from('ciclos_lote').update({ data_inicio: hoje }).eq('id', proximo.id)
+    const { data: animaisData, error: eBusca } = await supabase
+      .from('animais').select('id')
+      .eq('lote_atual_id', loteId).eq('status', 'ativo').eq('ciclo_atual', lote.ciclo_atual)
+    if (eBusca) return { error: eBusca.message }
+    const animalIds = (animaisData ?? []).map((a: { id: string }) => a.id)
+
+    if (atual) await supabase.from('ciclos_lote').update({ data_fim: dataEfetiva }).eq('id', atual.id)
+    await supabase.from('ciclos_lote').update({ data_inicio: dataEfetiva }).eq('id', proximo.id)
+
+    if (animalIds.length > 0) {
+      for (const idsChunk of chunkArray(animalIds, TAMANHO_CHUNK_IDS)) {
+        const { error: eUpd } = await supabase.from('animais').update({ ciclo_atual: lote.ciclo_atual + 1 }).in('id', idsChunk)
+        if (eUpd) return { error: eUpd.message }
+      }
+      const eventosRows = animalIds.map(id => ({
+        animal_id: id, lote_id: loteId,
+        ciclo_numero_anterior: lote.ciclo_atual, ciclo_numero: lote.ciclo_atual + 1,
+        data: dataEfetiva, user_id: user.id,
+      }))
+      for (const chunk of chunkArray(eventosRows, TAMANHO_CHUNK_IDS)) {
+        const { error: eEv } = await supabase.from('animais_ciclo_eventos').insert(chunk)
+        if (eEv) return { error: eEv.message }
+      }
+      const { error: ePeso } = await inserirPesagensNaTroca(user.id, animalIds, dataEfetiva, pesagem)
+      if (ePeso) return { error: ePeso }
+    }
+
     const { error } = await supabase.from('lotes').update({ ciclo_atual: lote.ciclo_atual + 1 }).eq('id', loteId)
     if (!error) await fetchLotes()
     return { error: error?.message ?? null }
+  }
+
+  // Avanço "parcial": adianta só os animais selecionados para o próximo
+  // ciclo, sem mexer no ciclo_atual do lote nem nas datas de ciclos_lote —
+  // o lote passa a ter animais em ciclos diferentes ao mesmo tempo (badge de
+  // distribuição na UI). Exige que todos os selecionados estejam hoje no
+  // mesmo ciclo entre si (senão não dá pra definir um único "próximo ciclo"
+  // pra eles de uma vez).
+  const avancarCicloParcial = async (loteId: string, animalIds: string[], data: string, pesagem?: PesagemNaTroca) => {
+    if (!user) return { error: 'Não autenticado' }
+    if (animalIds.length === 0) return { error: 'Selecione ao menos um animal' }
+    const lote = lotes.find(l => l.id === loteId)
+    if (!lote) return { error: 'Lote não encontrado' }
+
+    const linhas = await buscarPorIds<{ id: string; ciclo_atual: number }>(animalIds, (idsChunk, from, to) =>
+      supabase.from('animais').select('id, ciclo_atual').in('id', idsChunk).range(from, to))
+    if (linhas.length !== animalIds.length) return { error: 'Algum animal selecionado não foi encontrado' }
+
+    const ciclosDistintos = new Set(linhas.map(a => a.ciclo_atual))
+    if (ciclosDistintos.size > 1) {
+      return { error: 'Os animais selecionados estão em ciclos diferentes entre si — selecione animais que estejam todos no mesmo ciclo' }
+    }
+    const cicloOrigem = linhas[0].ciclo_atual
+    if (cicloOrigem >= lote.num_ciclos) return { error: 'Esses animais já estão no último ciclo configurado do lote' }
+
+    const ciclos = ciclosPorLote[loteId] ?? []
+    if (!ciclos.some(c => c.numero === cicloOrigem + 1)) {
+      return { error: 'Próximo ciclo não está configurado para este lote' }
+    }
+
+    for (const idsChunk of chunkArray(animalIds, TAMANHO_CHUNK_IDS)) {
+      const { error: eUpd } = await supabase.from('animais').update({ ciclo_atual: cicloOrigem + 1 }).in('id', idsChunk)
+      if (eUpd) return { error: eUpd.message }
+    }
+    const eventosRows = animalIds.map(id => ({
+      animal_id: id, lote_id: loteId,
+      ciclo_numero_anterior: cicloOrigem, ciclo_numero: cicloOrigem + 1,
+      data, user_id: user.id,
+    }))
+    for (const chunk of chunkArray(eventosRows, TAMANHO_CHUNK_IDS)) {
+      const { error: eEv } = await supabase.from('animais_ciclo_eventos').insert(chunk)
+      if (eEv) return { error: eEv.message }
+    }
+    const { error: ePeso } = await inserirPesagensNaTroca(user.id, animalIds, data, pesagem)
+    if (ePeso) return { error: ePeso }
+
+    await fetchLotes()
+    return { error: null }
   }
 
   const encerrarLote = async (loteId: string, motivo: MotivoEncerramento, motivoObs?: string) => {
@@ -573,15 +694,88 @@ export function useLotes() {
   const lotesEncerrados = useMemo(() => lotes.filter(l => l.status === 'encerrado'), [lotes])
 
   return {
-    lotes, ciclosPorLote, resumo, loading,
+    lotes, ciclosPorLote, resumo, distribuicaoCiclos, loading,
     lotesAtivos, lotesEncerrados,
     fetchLotes, proximoNumeroLote,
-    criarLote, atualizarLote, editarCiclo, salvarCiclosLote, removerCiclo, avancarCiclo, encerrarLote,
+    criarLote, atualizarLote, editarCiclo, salvarCiclosLote, removerCiclo, avancarCiclo, avancarCicloParcial, encerrarLote,
     criarAnimais, bifurcar, moverAliquota, excluirAnimal,
   }
 }
 
 // ─── Hook: animais de um lote específico ───────────────────────────────────────
+
+// ─── CRUD de pesagem/histórico de um animal (fonte única) ──────────────────────
+// Extraído como funções de módulo (não presas a nenhum hook específico) para
+// que tanto useAnimaisDoLote (usado em Lotes.tsx) quanto a página Pesagens
+// (busca por brinco, sem passar pelo lote) usem exatamente a mesma lógica —
+// nunca duas implementações divergentes do mesmo CRUD.
+
+export async function registrarPesagemAnimal(
+  userId: string, input: { animal_id: string; peso: number; data: string; observacoes?: string },
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('pesagens').insert({ ...input, user_id: userId })
+  return { error: error?.message ?? null }
+}
+
+export async function registrarPesagemLoteAnimais(
+  userId: string, pesagens: Array<{ animal_id: string; peso: number; data: string }>,
+): Promise<{ error: string | null }> {
+  const rows = pesagens.map(p => ({ ...p, user_id: userId }))
+  const { error } = await supabase.from('pesagens').insert(rows)
+  return { error: error?.message ?? null }
+}
+
+// Corrige uma pesagem já lançada (peso e/ou data digitados errado). Não
+// permite jogar a data pra antes da entrada do animal — mesma regra do
+// registro inicial — mas não impede reordenar em relação a outras pesagens,
+// já que o motor de custo ordena tudo por data de qualquer forma.
+export async function editarPesagemAnimal(
+  input: { id: string; animal_id: string; peso: number; data: string },
+): Promise<{ error: string | null }> {
+  const { data: animalData } = await supabase.from('animais').select('data_entrada').eq('id', input.animal_id).maybeSingle()
+  if (animalData && input.data < animalData.data_entrada) {
+    return { error: 'A data da pesagem não pode ser anterior à entrada do animal' }
+  }
+  const { error } = await supabase.from('pesagens').update({ peso: input.peso, data: input.data }).eq('id', input.id)
+  return { error: error?.message ?? null }
+}
+
+export async function excluirPesagemAnimal(id: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('pesagens').delete().eq('id', id)
+  return { error: error?.message ?? null }
+}
+
+export async function buscarPesagensAnimal(animalId: string): Promise<Pesagem[]> {
+  const { data } = await supabase.from('pesagens').select('*').eq('animal_id', animalId).order('data', { ascending: false })
+  return (data ?? []) as Pesagem[]
+}
+
+export async function buscarMovimentacoesAnimal(animalId: string): Promise<Movimentacao[]> {
+  const { data } = await supabase.from('movimentacoes_animais').select('*').eq('animal_id', animalId).order('data', { ascending: true })
+  return (data ?? []) as Movimentacao[]
+}
+
+// Busca animais do usuário por brinco (contém, case-insensitive) — usada pela
+// página Pesagens pra achar o animal sem precisar navegar até o lote. Só
+// animais ativos por padrão (evita listar vendidos/mortos misturados na busca
+// do dia a dia; a tela decide se quer incluir inativos).
+export async function buscarAnimaisPorBrinco(
+  userId: string, termo: string, incluirInativos = false,
+): Promise<Array<Animal & { lote_nome: string | null; lote_codigo: string | null }>> {
+  let query = supabase
+    .from('animais')
+    .select('*, lotes:lote_atual_id(nome_lote, codigo_lote)')
+    .eq('user_id', userId)
+    .ilike('brinco', `%${termo}%`)
+    .order('brinco')
+    .limit(50)
+  if (!incluirInativos) query = query.eq('status', 'ativo')
+  const { data } = await query
+  return ((data ?? []) as Array<Animal & { lotes: { nome_lote: string; codigo_lote: string } | null }>).map(a => {
+    const { lotes, ...resto } = a
+    return { ...resto, lote_nome: lotes?.nome_lote ?? null, lote_codigo: lotes?.codigo_lote ?? null }
+  })
+}
 
 export function useAnimaisDoLote(loteId: string | null) {
   const { user } = useAuth()
@@ -602,45 +796,18 @@ export function useAnimaisDoLote(loteId: string | null) {
 
   const registrarPesagem = async (input: { animal_id: string; peso: number; data: string; observacoes?: string }) => {
     if (!user) return { error: 'Não autenticado' }
-    const { error } = await supabase.from('pesagens').insert({ ...input, user_id: user.id })
-    return { error: error?.message ?? null }
+    return registrarPesagemAnimal(user.id, input)
   }
 
   const registrarPesagemLote = async (pesagens: Array<{ animal_id: string; peso: number; data: string }>) => {
     if (!user) return { error: 'Não autenticado' }
-    const rows = pesagens.map(p => ({ ...p, user_id: user.id }))
-    const { error } = await supabase.from('pesagens').insert(rows)
-    return { error: error?.message ?? null }
+    return registrarPesagemLoteAnimais(user.id, pesagens)
   }
 
-  // Corrige uma pesagem já lançada (peso e/ou data digitados errado). Não
-  // permite jogar a data pra antes da entrada do animal — mesma regra do
-  // registro inicial — mas não impede reordenar em relação a outras pesagens,
-  // já que o motor de custo ordena tudo por data de qualquer forma.
-  const editarPesagem = async (input: { id: string; animal_id: string; peso: number; data: string }) => {
-    if (!user) return { error: 'Não autenticado' }
-    const { data: animalData } = await supabase.from('animais').select('data_entrada').eq('id', input.animal_id).maybeSingle()
-    if (animalData && input.data < animalData.data_entrada) {
-      return { error: 'A data da pesagem não pode ser anterior à entrada do animal' }
-    }
-    const { error } = await supabase.from('pesagens').update({ peso: input.peso, data: input.data }).eq('id', input.id)
-    return { error: error?.message ?? null }
-  }
-
-  const excluirPesagem = async (id: string) => {
-    const { error } = await supabase.from('pesagens').delete().eq('id', id)
-    return { error: error?.message ?? null }
-  }
-
-  const buscarPesagens = async (animalId: string): Promise<Pesagem[]> => {
-    const { data } = await supabase.from('pesagens').select('*').eq('animal_id', animalId).order('data', { ascending: false })
-    return (data ?? []) as Pesagem[]
-  }
-
-  const buscarMovimentacoes = async (animalId: string): Promise<Movimentacao[]> => {
-    const { data } = await supabase.from('movimentacoes_animais').select('*').eq('animal_id', animalId).order('data', { ascending: true })
-    return (data ?? []) as Movimentacao[]
-  }
+  const editarPesagem = editarPesagemAnimal
+  const excluirPesagem = excluirPesagemAnimal
+  const buscarPesagens = buscarPesagensAnimal
+  const buscarMovimentacoes = buscarMovimentacoesAnimal
 
   const buscarCustosVariaveis = async (animalId: string): Promise<CustoVariavelAnimal[]> => {
     const { data } = await supabase.from('custos_variaveis_animal').select('*').eq('animal_id', animalId)
@@ -685,6 +852,34 @@ export function useAnimaisDoLote(loteId: string | null) {
     registrarPesagem, registrarPesagemLote, editarEntrada,
     buscarPesagens, buscarMovimentacoes, buscarCustosVariaveis, adicionarCustoVariavel,
     editarPesagem, excluirPesagem,
+  }
+}
+
+// ─── Hook: busca de animal por brinco (página Pesagens) ────────────────────────
+// Permite achar um animal pelo brinco sem passar pelo lote. Todo o CRUD de
+// pesagem usado aqui é o mesmo das funções de módulo acima (registrarPesagemAnimal
+// etc.) — mesma fonte usada em Lotes.tsx, sem lógica duplicada.
+export function useBuscaAnimalPorBrinco() {
+  const { user } = useAuth()
+  const [resultados, setResultados] = useState<Array<Animal & { lote_nome: string | null; lote_codigo: string | null }>>([])
+  const [buscando, setBuscando] = useState(false)
+
+  const buscar = useCallback(async (termo: string, incluirInativos = false) => {
+    if (!user || !termo.trim()) { setResultados([]); return }
+    setBuscando(true)
+    const lista = await buscarAnimaisPorBrinco(user.id, termo.trim(), incluirInativos)
+    setResultados(ordenarPorBrinco(lista))
+    setBuscando(false)
+  }, [user])
+
+  return {
+    resultados, buscando, buscar,
+    registrarPesagem: (input: { animal_id: string; peso: number; data: string; observacoes?: string }) =>
+      user ? registrarPesagemAnimal(user.id, input) : Promise.resolve({ error: 'Não autenticado' }),
+    editarPesagem: editarPesagemAnimal,
+    excluirPesagem: excluirPesagemAnimal,
+    buscarPesagens: buscarPesagensAnimal,
+    buscarMovimentacoes: buscarMovimentacoesAnimal,
   }
 }
 
@@ -812,6 +1007,10 @@ interface ContextoCusto {
   dietas: Record<string, DietaInfo>
   custosOperacionaisPorLote: Record<string, CustoOperacionalInfo[]>
   custosRacaoRealPorLote: Record<string, CustoRacaoRealPorDia>
+  // Histórico de troca de ciclo por animal (avanço individual/parcial dentro
+  // do mesmo lote) — permite que animais do mesmo lote estejam em ciclos
+  // diferentes ao mesmo tempo. Ver encontrarCicloAtivoParaAnimal.
+  eventosPorAnimal: Record<string, CicloAnimalEvento[]>
 }
 
 // ─── Paginação para consultas que podem passar de 1000 linhas ─────────────────
@@ -874,7 +1073,7 @@ export function useCustoEngine() {
 
   const construirContexto = useCallback(async (animalIds: string[]): Promise<ContextoCusto> => {
     if (!user || animalIds.length === 0) {
-      return { animaisPorId: {}, pesagensPorAnimal: {}, periodosPorAnimal: {}, ciclos: [], dietas: {}, custosOperacionaisPorLote: {}, custosRacaoRealPorLote: {} }
+      return { animaisPorId: {}, pesagensPorAnimal: {}, periodosPorAnimal: {}, ciclos: [], dietas: {}, custosOperacionaisPorLote: {}, custosRacaoRealPorLote: {}, eventosPorAnimal: {} }
     }
 
     const [animaisData, pesagensData, movsData] = await Promise.all([
@@ -913,17 +1112,23 @@ export function useCustoEngine() {
     const dietas: Record<string, DietaInfo> = {}
     const custosOperacionaisPorLote: Record<string, CustoOperacionalInfo[]> = {}
     const custosRacaoRealPorLote: Record<string, CustoRacaoRealPorDia> = {}
+    const eventosPorAnimal: Record<string, CicloAnimalEvento[]> = {}
 
     if (loteIdsEnvolvidos.size > 0) {
       const loteIdsArr = Array.from(loteIdsEnvolvidos)
-      const [{ data: ciclosData }, { data: custosOpData }, { data: racaoRealData }, ativosData] = await Promise.all([
+      const [{ data: ciclosData }, { data: custosOpData }, { data: racaoRealData }, ativosData, { data: eventosCicloData }] = await Promise.all([
         supabase.from('ciclos_lote').select('lote_id, numero, tipo_ciclo, dieta_id, gmd_esperado, data_inicio, data_fim').in('lote_id', loteIdsArr),
         supabase.from('custos_operacionais_lote').select('lote_id, valor, data_lancamento').in('lote_id', loteIdsArr),
         supabase.from('custos_racao_real_lote').select('lote_id, valor_total, data_inicio').in('lote_id', loteIdsArr),
         buscarTudoPaginado<{ lote_atual_id: string }>((from, to) =>
           supabase.from('animais').select('lote_atual_id').eq('status', 'ativo').in('lote_atual_id', loteIdsArr).range(from, to)),
+        supabase.from('animais_ciclo_eventos').select('animal_id, lote_id, ciclo_numero, data').in('lote_id', loteIdsArr),
       ])
       ciclos = (ciclosData ?? []) as CicloInfo[]
+
+      for (const e of (eventosCicloData ?? []) as Array<{ animal_id: string; lote_id: string; ciclo_numero: number; data: string }>) {
+        (eventosPorAnimal[e.animal_id] ??= []).push({ lote_id: e.lote_id, ciclo_numero: e.ciclo_numero, data: e.data })
+      }
 
       // fallback: quantidade ativa HOJE, usada só quando não há ninguém registrado
       // no lote na data exata do lançamento do custo
@@ -1029,7 +1234,7 @@ export function useCustoEngine() {
               if (!animalBasico) continue
               const pesoPorDiaDoAnimal = projetarPesoPorDia(
                 animalBasico, pesagensPorAnimalTodos[animalId] ?? [], periodosDoAnimal, ciclos,
-                diaInicioLote, diaFimLote,
+                diaInicioLote, diaFimLote, eventosPorAnimal[animalId] ?? [],
               )
               for (const [diaStr, peso] of Object.entries(pesoPorDiaDoAnimal)) {
                 const dia = Number(diaStr)
@@ -1100,7 +1305,7 @@ export function useCustoEngine() {
       }
     }
 
-    return { animaisPorId, pesagensPorAnimal, periodosPorAnimal, ciclos, dietas, custosOperacionaisPorLote, custosRacaoRealPorLote }
+    return { animaisPorId, pesagensPorAnimal, periodosPorAnimal, ciclos, dietas, custosOperacionaisPorLote, custosRacaoRealPorLote, eventosPorAnimal }
   }, [user])
 
   const calcularEmLote = useCallback(async (
@@ -1118,6 +1323,7 @@ export function useCustoEngine() {
         ctx.ciclos, ctx.dietas,
         ctx.custosOperacionaisPorLote,
         ctx.custosRacaoRealPorLote,
+        ctx.eventosPorAnimal[animalId] ?? [],
       )
     }
     return resultado
