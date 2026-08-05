@@ -1528,6 +1528,28 @@ function TabelaPorEtapa({
             )
           })}
         </tbody>
+        {ordenadas.length > 1 && (() => {
+          const totalDias = ordenadas.reduce((s, e) => s + e.dias, 0)
+          const totalGanho = ordenadas.reduce((s, e) => s + e.ganhoPeso, 0)
+          const totalConsumo = ordenadas.reduce((s, e) => s + e.consumoRacaoKg, 0)
+          const totalAlimentacao = ordenadas.reduce((s, e) => s + e.custoAlimentacao, 0)
+          const totalOperacional = ordenadas.reduce((s, e) => s + e.custoOperacional, 0)
+          const totalCusto = totalAlimentacao + totalOperacional
+          const totalCustoPorKg = totalGanho > 0 ? totalCusto / totalGanho : null
+          return (
+            <tfoot>
+              <tr style={{ fontWeight: 600 }}>
+                <td>Total</td>
+                <td>{totalDias}</td>
+                <td>{fmtNum(totalGanho, 1)}</td>
+                <td>{fmtNum(totalConsumo, 1)}</td>
+                <td>{fmt(totalAlimentacao)}</td>
+                <td>{fmt(totalOperacional)}</td>
+                <td>{totalCustoPorKg != null ? `${fmt(totalCustoPorKg)}/kg` : '—'}</td>
+              </tr>
+            </tfoot>
+          )
+        })()}
       </table>
     </div>
   )
