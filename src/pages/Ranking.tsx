@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useLotes, useCustoEngine } from '@/hooks/useLotes'
+import { useLotes, useCustoEngine, buscarPorIds } from '@/hooks/useLotes'
 import { useFaixas } from '@/hooks/useFaixas'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -77,12 +77,13 @@ export default function Ranking() {
     const lista = (animaisData ?? []) as Array<{ id: string; codigo: string; peso_entrada: number; valor_compra: number; lote_atual_id: string; data_entrada: string }>
     if (lista.length === 0) { setAtivos([]); setLoadingAtivos(false); return }
 
-    const [custos, { data: custosVarData }] = await Promise.all([
+    const [custos, custosVarData] = await Promise.all([
       calcularEmLote(lista.map(a => a.id), hojeStr()),
-      supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', lista.map(a => a.id)),
+      buscarPorIds<{ animal_id: string; valor: number }>(lista.map(a => a.id), (idsChunk, from, to) =>
+        supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).range(from, to)),
     ])
     const custosVarPorAnimal: Record<string, number> = {}
-    for (const c of (custosVarData ?? []) as Array<{ animal_id: string; valor: number }>) {
+    for (const c of custosVarData) {
       custosVarPorAnimal[c.animal_id] = (custosVarPorAnimal[c.animal_id] ?? 0) + c.valor
     }
 
