@@ -98,6 +98,7 @@ tbody tr:hover td { background: var(--gray-50); }
 .modal-sm { max-width: 420px; }
 .modal-header { padding: 24px 24px 16px 24px; flex-shrink: 0; }
 .modal-body { padding: 0 24px 24px 24px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.modal-footer { padding: 12px 24px; flex-shrink: 0; border-top: 1px solid var(--border); background: var(--white); }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 @keyframes mIn { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
