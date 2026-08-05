@@ -1082,7 +1082,20 @@ function DetalheLote({
 
   return (
     <Modal open onClose={onClose} title={lote.nome_lote}
-      subtitle={`${lote.codigo_lote} · Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="xl">
+      subtitle={`${lote.codigo_lote} · Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="xl"
+      footer={selecionados.size > 0 && loteAtivo ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: '#1b5e20', fontWeight: 600 }}>{selecionados.size} selecionado(s)</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setSelecionados(new Set())} style={{ marginLeft: 'auto' }}>Limpar seleção</button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowBifurcar(true)}>Bifurcar</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowMover(true)}>Mover para outro lote</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowVenda(true)}>Vender</button>
+          </div>
+        </div>
+      ) : undefined}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {!loteAtivo && (
@@ -1194,16 +1207,6 @@ function DetalheLote({
             custoCompraTotal={valorCompraTotal} custoAlimentacaoAcumulado={custoTotalHoje}
             ciclosConfig={ciclosFuturos} rendimentos={rendimentos} bonus={bonus}
           />
-        )}
-
-        {selecionados.size > 0 && loteAtivo && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--green-bg)', padding: '8px 12px', borderRadius: 8 }}>
-            <span style={{ fontSize: 12, color: '#1b5e20' }}>{selecionados.size} selecionado(s)</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowBifurcar(true)}>Bifurcar</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowMover(true)}>Mover para outro lote</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowVenda(true)}>Vender</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setSelecionados(new Set())} style={{ marginLeft: 'auto' }}>Limpar seleção</button>
-          </div>
         )}
 
         {gruposDuplicados.length > 0 && (
@@ -1916,7 +1919,10 @@ function ModalHistoricoMovimentacoes({
                           <td>{TIPO_EVENTO_LABEL[ev.tipo] ?? ev.tipo}</td>
                           <td>{nomeLote(ev.lote_origem_id)}</td>
                           <td>{nomeLote(ev.lote_destino_id)}</td>
-                          <td>{ev.animais.length} — {ev.animais.map(a => a.codigo).join(', ')}</td>
+                          <td style={{ maxWidth: 220 }}>
+                            {ev.animais.length} — {ev.animais.slice(0, 4).map(a => a.codigo).join(', ')}
+                            {ev.animais.length > 4 ? ` e mais ${ev.animais.length - 4}` : ''}
+                          </td>
                           <td>
                             <button className="btn btn-ghost btn-sm" onClick={() => iniciarEdicao(ev)}>Editar data</button>
                           </td>
