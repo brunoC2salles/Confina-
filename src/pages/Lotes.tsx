@@ -18,7 +18,7 @@ import type {
 } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { parseCsvAnimais } from '@/lib/csv'
-import { calcularGmdRealUltimoIntervalo } from '@/lib/custoAnimal'
+import { calcularGmdRealUltimoIntervalo, toDay } from '@/lib/custoAnimal'
 import type { ResultadoAnimalNaData, EtapaResultado } from '@/lib/custoAnimal'
 import type { Pesagem } from '@/types'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
@@ -892,14 +892,7 @@ function DetalheLote({
   const [resultados, setResultados] = useState<Record<string, ResultadoAnimalNaData>>({})
   const [custosVariaveisPorAnimal, setCustosVariaveisPorAnimal] = useState<Record<string, number>>({})
   const [calculando, setCalculando] = useState(false)
-  // ─── Peso projetado numa data escolhida (independente do "hoje") ──────────
-  // Separado de `resultados` de propósito: `resultados` é sempre calculado
-  // para hoje e alimenta custo, venda e os cards de resumo — não pode mudar
-  // com a data escolhida aqui, ou o valor pré-preenchido numa venda ficaria
-  // errado. Esta segunda projeção é só para consulta visual.
-  const [dataProjecao, setDataProjecao] = useState(hojeStr())
-  const [resultadosNaData, setResultadosNaData] = useState<Record<string, ResultadoAnimalNaData>>({})
-  const [calculandoProjecao, setCalculandoProjecao] = useState(false)
+  // ─── Seleção em massa e modais ─────────────────────────────────────────────
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [showAdicionarAnimais, setShowAdicionarAnimais] = useState(false)
   const [showBifurcar, setShowBifurcar] = useState(false)
@@ -965,17 +958,6 @@ function DetalheLote({
   }, [animais, calcularEmLote])
 
   useEffect(() => { recalcular() }, [recalcular])
-
-  const recalcularProjecao = useCallback(async () => {
-    if (animais.length === 0) { setResultadosNaData({}); return }
-    setCalculandoProjecao(true)
-    const animalIds = animais.map(a => a.id)
-    const res = await calcularEmLote(animalIds, dataProjecao)
-    setResultadosNaData(res)
-    setCalculandoProjecao(false)
-  }, [animais, calcularEmLote, dataProjecao])
-
-  useEffect(() => { recalcularProjecao() }, [recalcularProjecao])
 
   useEffect(() => {
     if (!highlightAnimalId || loading) return
@@ -1082,7 +1064,20 @@ function DetalheLote({
 
   return (
     <Modal open onClose={onClose} title={lote.nome_lote}
-      subtitle={`${lote.codigo_lote} · Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="xl">
+      subtitle={`${lote.codigo_lote} · Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="xl"
+      footer={selecionados.size > 0 && loteAtivo ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: '#1b5e20', fontWeight: 600 }}>{selecionados.size} selecionado(s)</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setSelecionados(new Set())} style={{ marginLeft: 'auto' }}>Limpar seleção</button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowBifurcar(true)}>Bifurcar</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowMover(true)}>Mover para outro lote</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowVenda(true)}>Vender</button>
+          </div>
+        </div>
+      ) : undefined}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {!loteAtivo && (
@@ -1196,43 +1191,10 @@ function DetalheLote({
           />
         )}
 
-        {selecionados.size > 0 && loteAtivo && (
-          <div style={{
-            display: 'flex', flexDirection: 'column', gap: 8,
-            background: '#eaf5ea', padding: '10px 12px', borderRadius: 8,
-            position: 'sticky', bottom: 0, zIndex: 5,
-            boxShadow: '0 -4px 10px -6px rgba(0,0,0,0.25)', border: '1px solid var(--green-border)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 12, color: '#1b5e20', fontWeight: 600 }}>{selecionados.size} selecionado(s)</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => setSelecionados(new Set())} style={{ marginLeft: 'auto' }}>Limpar seleção</button>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowBifurcar(true)}>Bifurcar</button>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowMover(true)}>Mover para outro lote</button>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowVenda(true)}>Vender</button>
-            </div>
-          </div>
-        )}
-
         {gruposDuplicados.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff8e1', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
             <span>{gruposDuplicados.length} brinco(s) com lançamento duplicado neste lote (mesmo peso e data de entrada).</span>
             <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setShowDuplicados(true)}>Ver duplicados</button>
-          </div>
-        )}
-
-        {animais.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--gray-50)', borderRadius: 8, padding: '10px 14px' }}>
-            <label className="form-label" style={{ margin: 0 }}>Ver peso projetado em</label>
-            <input className="form-input" type="date" value={dataProjecao}
-              onChange={e => setDataProjecao(e.target.value)} style={{ maxWidth: 170 }} />
-            {dataProjecao !== hojeStr() && (
-              <button className="btn btn-ghost btn-sm" onClick={() => setDataProjecao(hojeStr())}>Voltar para hoje</button>
-            )}
-            <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>
-              Estimativa pela projeção estatística (GMD esperado de cada ciclo) — não é uma pesagem real.
-            </span>
           </div>
         )}
 
@@ -1260,7 +1222,6 @@ function DetalheLote({
                   <th>Peso entrada</th>
                   <th>Data entrada</th>
                   <th>Peso hoje (est.)</th>
-                  <th>Peso em {fmtData(dataProjecao)} (est.)</th>
                   <th>Dias</th>
                   <th>Custo acumulado</th>
                   <th>Custo/kg ganho</th>
@@ -1270,7 +1231,6 @@ function DetalheLote({
               <tbody>
                 {animais.map(a => {
                   const r = resultados[a.id]
-                  const rProjecao = resultadosNaData[a.id]
                   const pesoAtual = r?.peso ?? a.peso_entrada
                   const ganho = pesoAtual - a.peso_entrada
                   const custoTotal = custoTotalAnimal(a.id)
@@ -1289,21 +1249,16 @@ function DetalheLote({
                       <td>{fmtNum(a.peso_entrada, 1)} kg</td>
                       <td>{fmtData(a.data_entrada)}</td>
                       <td>{r ? `${fmtNum(r.peso, 1)} kg` : '—'}</td>
-                      <td>
-                        {calculandoProjecao ? '…' : rProjecao ? `${fmtNum(rProjecao.peso, 1)} kg` : '—'}
-                      </td>
                       <td>{r ? r.diasConfinamento : '—'}</td>
                       <td>{r ? fmt(custoTotal) : '—'}</td>
                       <td>{custoPorKg != null ? `${fmt(custoPorKg)}/kg` : '—'}</td>
                       <td style={{ position: 'sticky', right: 0, background: destacado ? 'var(--green-bg)' : 'var(--white)', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.15)' }}
                         onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: 4, whiteSpace: 'nowrap' }}>
-                          <button className="btn btn-ghost btn-sm" onClick={() => setShowDetalheAnimal(a.id)}>Detalhes</button>
-                          {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowPesagem(a.id)}>Pesar</button>}
-                          {loteAtivo && <button className="btn btn-ghost btn-sm" onClick={() => setShowEditarEntrada(a.id)}>Editar</button>}
-                          <button className="btn btn-ghost btn-sm" onClick={() => setShowProjecaoAnimal(a.id)}>Projeção</button>
-                          {loteAtivo && <button className="btn btn-ghost btn-sm" style={{ color: '#b91c1c' }} onClick={() => setShowExcluirAnimal(a.id)}>Excluir</button>}
-                        </div>
+                        {loteAtivo && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => setShowPesagem(a.id)} title="Pesar" aria-label="Pesar">
+                            <IconBalanca />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )
@@ -1486,8 +1441,12 @@ function DetalheLote({
             buscarPesagens={buscarPesagens}
             editarPesagem={editarPesagem}
             excluirPesagem={excluirPesagem}
+            calcularEmLote={calcularEmLote}
             onAlterado={recalcular}
             onClose={() => setShowDetalheAnimal(null)}
+            onEditar={loteAtivo ? () => { setShowDetalheAnimal(null); setShowEditarEntrada(animal.id) } : undefined}
+            onExcluir={loteAtivo ? () => { setShowDetalheAnimal(null); setShowExcluirAnimal(animal.id) } : undefined}
+            onVerProjecao={() => { setShowDetalheAnimal(null); setShowProjecaoAnimal(animal.id) }}
           />
         )
       })()}
@@ -1575,7 +1534,8 @@ function TabelaPorEtapa({
 }
 
 function ModalDetalheAnimal({
-  animal, resultado, custoTotal, ciclosPorLote, todosLotes, buscarPesagens, editarPesagem, excluirPesagem, onAlterado, onClose,
+  animal, resultado, custoTotal, ciclosPorLote, todosLotes, buscarPesagens, editarPesagem, excluirPesagem, calcularEmLote, onAlterado, onClose,
+  onEditar, onExcluir, onVerProjecao,
 }: {
   animal: Animal
   resultado?: ResultadoAnimalNaData
@@ -1585,8 +1545,12 @@ function ModalDetalheAnimal({
   buscarPesagens: (animalId: string) => Promise<Pesagem[]>
   editarPesagem: (input: { id: string; animal_id: string; peso: number; data: string }) => Promise<{ error: string | null }>
   excluirPesagem: (id: string) => Promise<{ error: string | null }>
+  calcularEmLote: (animalIds: string[], dataAlvo: string) => Promise<Record<string, ResultadoAnimalNaData>>
   onAlterado: () => Promise<void>
   onClose: () => void
+  onEditar?: () => void
+  onExcluir?: () => void
+  onVerProjecao: () => void
 }) {
   const [pesagens, setPesagens] = useState<Pesagem[] | undefined>(undefined)
   const [editandoId, setEditandoId] = useState<string | null>(null)
@@ -1609,6 +1573,50 @@ function ModalDetalheAnimal({
       pesagens.map(p => ({ data: p.data, peso: p.peso })),
     )
   }, [pesagens, animal.peso_entrada, animal.data_entrada])
+
+  // ─── Peso em outra data (movido pra cá — antes poluía a listagem do lote) ──
+  // Datas passadas: recalcula de verdade (calcularEmLote), que já respeita
+  // qualquer pesagem real registrada nesse meio-tempo — sempre exato.
+  // Datas futuras: NÃO existe pesagem real possível, então a projeção usa o
+  // GMD REAL do animal (último intervalo entre pesagens) como taxa de
+  // crescimento, em vez do GMD genérico esperado do ciclo — é a melhor
+  // estimativa disponível para ESTE animal específico. Só cai para o GMD
+  // médio do ciclo se ainda não houver duas pesagens reais para calcular um
+  // GMD real. Isso não afeta o motor de custo em si (Ranking, Vendas,
+  // Comparativo) — é só esta consulta visual.
+  const hoje = hojeStr()
+  const [dataProjecao, setDataProjecao] = useState(hoje)
+  const [resultadoProjecaoPassado, setResultadoProjecaoPassado] = useState<ResultadoAnimalNaData | undefined>(undefined)
+  const [calculandoProjecao, setCalculandoProjecao] = useState(false)
+  const dataEhHoje = dataProjecao === hoje
+  const dataEhFutura = dataProjecao > hoje
+
+  useEffect(() => {
+    if (dataEhHoje || dataEhFutura) { setResultadoProjecaoPassado(undefined); return }
+    let cancelado = false
+    setCalculandoProjecao(true)
+    calcularEmLote([animal.id], dataProjecao).then(res => {
+      if (!cancelado) { setResultadoProjecaoPassado(res[animal.id]); setCalculandoProjecao(false) }
+    })
+    return () => { cancelado = true }
+  }, [dataProjecao, dataEhHoje, dataEhFutura, animal.id, calcularEmLote])
+
+  let pesoNaData: number | null = null
+  let metodologiaNaData = ''
+  if (dataEhHoje) {
+    pesoNaData = resultado?.peso ?? null
+    metodologiaNaData = 'peso atual estimado'
+  } else if (!dataEhFutura) {
+    pesoNaData = resultadoProjecaoPassado?.peso ?? null
+    metodologiaNaData = 'histórico — considera qualquer pesagem real registrada até essa data'
+  } else if (resultado) {
+    const dias = toDay(dataProjecao) - toDay(hoje)
+    const gmdUsado = gmdReal ? gmdReal.gmdReal : resultado.gmdMedio
+    pesoNaData = resultado.peso + gmdUsado * dias
+    metodologiaNaData = gmdReal
+      ? `projeção com o GMD real do animal (${fmtNum(gmdReal.gmdReal, 3)} kg/dia, medido entre ${fmtData(gmdReal.dataAnterior)} e ${fmtData(gmdReal.dataNova)}) — não é uma pesagem real`
+      : `projeção com o GMD médio desde a entrada (${fmtNum(resultado.gmdMedio, 3)} kg/dia) — ainda não há duas pesagens reais para calcular o GMD real deste animal; não é uma pesagem real`
+  }
 
   const iniciarEdicaoPesagem = (p: Pesagem) => {
     setEditandoId(p.id); setPesoEdit(String(p.peso)); setDataEdit(p.data); setErroPesagem(null)
@@ -1668,6 +1676,27 @@ function ModalDetalheAnimal({
             <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 8 }}>
               GMD médio desde a entrada (estimado, mistura projeção e pesagens reais): {fmtNum(resultado.gmdMedio, 3)} kg/dia
             </div>
+          )}
+        </div>
+
+        <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+            <label className="form-label" style={{ margin: 0 }}>Ver peso em outra data</label>
+            <input className="form-input" type="date" value={dataProjecao}
+              onChange={e => setDataProjecao(e.target.value)} style={{ maxWidth: 170 }} />
+            {!dataEhHoje && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setDataProjecao(hoje)}>Voltar para hoje</button>
+            )}
+          </div>
+          {calculandoProjecao ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>Calculando…</div>
+          ) : pesoNaData != null ? (
+            <>
+              <div style={{ fontSize: 18, fontWeight: 600 }}>{fmtNum(pesoNaData, 1)} kg</div>
+              <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 4 }}>{metodologiaNaData}</div>
+            </>
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>—</div>
           )}
         </div>
 
@@ -1739,6 +1768,11 @@ function ModalDetalheAnimal({
         </div>
 
         <div className="modal-actions">
+          {onExcluir && (
+            <button className="btn btn-ghost" style={{ color: '#b91c1c', marginRight: 'auto' }} onClick={onExcluir}>Excluir animal</button>
+          )}
+          <button className="btn btn-ghost" onClick={onVerProjecao}>Ver projeção</button>
+          {onEditar && <button className="btn btn-ghost" onClick={onEditar}>Editar entrada</button>}
           <button className="btn btn-primary" onClick={onClose}>Fechar</button>
         </div>
       </div>
@@ -1949,6 +1983,20 @@ function ModalHistoricoMovimentacoes({
         </div>
       </div>
     </Modal>
+  )
+}
+
+// Ícone simples de balança — sem dependência de biblioteca externa, sem
+// emoji, sem seta (segue o padrão visual do produto).
+function IconBalanca({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v18" />
+      <path d="M5 8h14" />
+      <path d="M5 8l-3 6a3 3 0 0 0 6 0z" />
+      <path d="M19 8l-3 6a3 3 0 0 0 6 0z" />
+      <path d="M8 21h8" />
+    </svg>
   )
 }
 
