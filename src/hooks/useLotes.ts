@@ -5,13 +5,13 @@ import type {
   Lote, CicloLote, Animal, Movimentacao, Pesagem, SaidaGrupo,
   CustoVariavelAnimal, AnimalStatus, SaidaTipo, SaidaModo,
   CustoOperacionalLote, CategoriaCustoOperacional, MotivoEncerramento,
-  Compra, TipoCiclo, CustoRacaoRealLote,
+  Compra, TipoCiclo, CustoRacaoRealLote, TrocaDietaLoteRow,
 } from '@/types'
 import {
   calcularAnimalNaData, construirPeriodosDeMovimentacoes, gerarCodigoAnimal,
   encontrarLoteAtivo, toDay, projetarPesoPorDia, cicloNumeroDoAnimalNoDia,
   type PeriodoLote, type CicloInfo, type DietaInfo, type ResultadoAnimalNaData, type CustoOperacionalInfo,
-  type CustoRacaoRealPorDia, type CustoRacaoRealDiaInfo, type CicloAnimalEvento,
+  type CustoRacaoRealPorDia, type CustoRacaoRealDiaInfo, type CicloAnimalEvento, type TrocaDietaCiclo,
 } from '@/lib/custoAnimal'
 import { ordenarPorBrinco } from '@/lib/calculations'
 import { obterRendimento, obterBonus } from '@/lib/calculations'
@@ -179,6 +179,9 @@ export function useLotes() {
   // (o ciclo_atual do lote); com avanço parcial, pode ter mais de uma —
   // é o que alimenta o badge de distribuição na UI.
   const [distribuicaoCiclos, setDistribuicaoCiclos] = useState<Record<string, Record<number, number>>>({})
+  // Trocas de dieta dentro do mesmo ciclo (lote inteiro), por lote — ver
+  // TrocaDietaLoteRow em types/index.ts e resolverDietaIdNoDia em custoAnimal.ts.
+  const [trocasDietaPorLote, setTrocasDietaPorLote] = useState<Record<string, TrocaDietaLoteRow[]>>({})
   const [loading, setLoading] = useState(true)
 
   const fetchLotes = useCallback(async () => {
@@ -198,6 +201,14 @@ export function useLotes() {
         (grupos[c.lote_id] ??= []).push(c)
       }
       setCiclosPorLote(grupos)
+
+      const { data: trocasDietaData } = await supabase
+        .from('trocas_dieta_lote').select('*').in('lote_id', ids).order('data')
+      const gruposTrocas: Record<string, TrocaDietaLoteRow[]> = {}
+      for (const t of (trocasDietaData ?? []) as TrocaDietaLoteRow[]) {
+        (gruposTrocas[t.lote_id] ??= []).push(t)
+      }
+      setTrocasDietaPorLote(gruposTrocas)
 
       const { data: animaisData } = await supabase
         .from('animais').select('lote_atual_id, peso_entrada, status, data_entrada, ciclo_atual')
@@ -228,6 +239,7 @@ export function useLotes() {
       setCiclosPorLote({})
       setResumo({})
       setDistribuicaoCiclos({})
+      setTrocasDietaPorLote({})
     }
     setLoading(false)
   }, [user])
@@ -543,6 +555,38 @@ export function useLotes() {
     return { error: null }
   }
 
+  // Troca a dieta vigente de um ciclo já em andamento, sem mexer no ciclo em
+  // si (mesmo numero, mesmo gmd_esperado) — vale para o lote inteiro, a
+  // partir da data escolhida, até a próxima troca (se houver) ou até o fim
+  // do ciclo. O motor de custo (resolverDietaIdNoDia) recalcula a
+  // alimentação a partir dessa data pra frente, sem tocar no histórico
+  // anterior. Pode ser chamada quantas vezes forem necessárias no mesmo ciclo.
+  const trocarDietaCiclo = async (loteId: string, cicloNumero: number, dietaId: string, data: string) => {
+    if (!user) return { error: 'Não autenticado' }
+    const ciclo = (ciclosPorLote[loteId] ?? []).find(c => c.numero === cicloNumero)
+    if (!ciclo) return { error: 'Ciclo não encontrado neste lote' }
+    if (ciclo.data_inicio && data < ciclo.data_inicio) {
+      return { error: `A data não pode ser anterior ao início do ciclo (${ciclo.data_inicio.split('-').reverse().join('/')})` }
+    }
+    if (ciclo.data_fim && data > ciclo.data_fim) {
+      return { error: `A data não pode ser posterior ao fim do ciclo (${ciclo.data_fim.split('-').reverse().join('/')})` }
+    }
+    const jaExiste = (trocasDietaPorLote[loteId] ?? []).some(t => t.ciclo_numero === cicloNumero && t.data === data)
+    if (jaExiste) return { error: 'Já existe uma troca de dieta registrada nesta data para este ciclo' }
+
+    const { error } = await supabase.from('trocas_dieta_lote').insert({
+      lote_id: loteId, ciclo_numero: cicloNumero, dieta_id: dietaId, data, user_id: user.id,
+    })
+    if (!error) await fetchLotes()
+    return { error: error?.message ?? null }
+  }
+
+  const removerTrocaDieta = async (trocaId: string) => {
+    const { error } = await supabase.from('trocas_dieta_lote').delete().eq('id', trocaId)
+    if (!error) await fetchLotes()
+    return { error: error?.message ?? null }
+  }
+
   const encerrarLote = async (loteId: string, motivo: MotivoEncerramento, motivoObs?: string) => {
     const { error } = await supabase.from('lotes')
       .update({ status: 'encerrado', motivo_encerramento: motivo, motivo_encerramento_obs: motivoObs ?? null })
@@ -744,10 +788,11 @@ export function useLotes() {
   const lotesEncerrados = useMemo(() => lotes.filter(l => l.status === 'encerrado'), [lotes])
 
   return {
-    lotes, ciclosPorLote, resumo, distribuicaoCiclos, loading,
+    lotes, ciclosPorLote, resumo, distribuicaoCiclos, trocasDietaPorLote, loading,
     lotesAtivos, lotesEncerrados,
     fetchLotes, proximoNumeroLote,
     criarLote, atualizarLote, editarCiclo, salvarCiclosLote, removerCiclo, avancarCiclo, avancarCicloParcial, encerrarLote,
+    trocarDietaCiclo, removerTrocaDieta,
     criarAnimais, bifurcar, moverAliquota, excluirAnimal,
   }
 }
@@ -1061,6 +1106,10 @@ interface ContextoCusto {
   // do mesmo lote) — permite que animais do mesmo lote estejam em ciclos
   // diferentes ao mesmo tempo. Ver encontrarCicloAtivoParaAnimal.
   eventosPorAnimal: Record<string, CicloAnimalEvento[]>
+  // Trocas de dieta dentro do mesmo ciclo (lote inteiro) — resolvidas por
+  // lote_id + ciclo_numero + data dentro de calcularAnimalNaData, não por
+  // animal (ver TrocaDietaCiclo em custoAnimal.ts).
+  trocasDieta: TrocaDietaCiclo[]
 }
 
 // ─── Paginação para consultas que podem passar de 1000 linhas ─────────────────
@@ -1123,7 +1172,7 @@ export function useCustoEngine() {
 
   const construirContexto = useCallback(async (animalIds: string[]): Promise<ContextoCusto> => {
     if (!user || animalIds.length === 0) {
-      return { animaisPorId: {}, pesagensPorAnimal: {}, periodosPorAnimal: {}, ciclos: [], dietas: {}, custosOperacionaisPorLote: {}, custosRacaoRealPorLote: {}, eventosPorAnimal: {} }
+      return { animaisPorId: {}, pesagensPorAnimal: {}, periodosPorAnimal: {}, ciclos: [], dietas: {}, custosOperacionaisPorLote: {}, custosRacaoRealPorLote: {}, eventosPorAnimal: {}, trocasDieta: [] }
     }
 
     const [animaisData, pesagensData, movsData] = await Promise.all([
@@ -1159,6 +1208,7 @@ export function useCustoEngine() {
     }
 
     let ciclos: CicloInfo[] = []
+    let trocasDieta: TrocaDietaCiclo[] = []
     const dietas: Record<string, DietaInfo> = {}
     const custosOperacionaisPorLote: Record<string, CustoOperacionalInfo[]> = {}
     const custosRacaoRealPorLote: Record<string, CustoRacaoRealPorDia> = {}
@@ -1166,15 +1216,17 @@ export function useCustoEngine() {
 
     if (loteIdsEnvolvidos.size > 0) {
       const loteIdsArr = Array.from(loteIdsEnvolvidos)
-      const [{ data: ciclosData }, { data: custosOpData }, { data: racaoRealData }, ativosData, { data: eventosCicloData }] = await Promise.all([
+      const [{ data: ciclosData }, { data: custosOpData }, { data: racaoRealData }, ativosData, { data: eventosCicloData }, { data: trocasDietaData }] = await Promise.all([
         supabase.from('ciclos_lote').select('lote_id, numero, tipo_ciclo, dieta_id, gmd_esperado, data_inicio, data_fim').in('lote_id', loteIdsArr),
         supabase.from('custos_operacionais_lote').select('lote_id, valor, data_lancamento').in('lote_id', loteIdsArr),
         supabase.from('custos_racao_real_lote').select('lote_id, valor_total, data_inicio, ciclo_numero').in('lote_id', loteIdsArr),
         buscarTudoPaginado<{ lote_atual_id: string }>((from, to) =>
           supabase.from('animais').select('lote_atual_id').eq('status', 'ativo').in('lote_atual_id', loteIdsArr).range(from, to)),
         supabase.from('animais_ciclo_eventos').select('animal_id, lote_id, ciclo_numero, ciclo_numero_anterior, data').in('lote_id', loteIdsArr),
+        supabase.from('trocas_dieta_lote').select('lote_id, ciclo_numero, dieta_id, data').in('lote_id', loteIdsArr),
       ])
       ciclos = (ciclosData ?? []) as CicloInfo[]
+      trocasDieta = (trocasDietaData ?? []) as TrocaDietaCiclo[]
 
       for (const e of (eventosCicloData ?? []) as Array<{ animal_id: string; lote_id: string; ciclo_numero: number; ciclo_numero_anterior: number | null; data: string }>) {
         (eventosPorAnimal[e.animal_id] ??= []).push({ lote_id: e.lote_id, ciclo_numero: e.ciclo_numero, ciclo_numero_anterior: e.ciclo_numero_anterior, data: e.data })
@@ -1374,7 +1426,7 @@ export function useCustoEngine() {
       }
     }
 
-    return { animaisPorId, pesagensPorAnimal, periodosPorAnimal, ciclos, dietas, custosOperacionaisPorLote, custosRacaoRealPorLote, eventosPorAnimal }
+    return { animaisPorId, pesagensPorAnimal, periodosPorAnimal, ciclos, dietas, custosOperacionaisPorLote, custosRacaoRealPorLote, eventosPorAnimal, trocasDieta }
   }, [user])
 
   const calcularEmLote = useCallback(async (
@@ -1393,6 +1445,7 @@ export function useCustoEngine() {
         ctx.custosOperacionaisPorLote,
         ctx.custosRacaoRealPorLote,
         ctx.eventosPorAnimal[animalId] ?? [],
+        ctx.trocasDieta,
       )
     }
     return resultado
