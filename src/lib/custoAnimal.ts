@@ -48,6 +48,12 @@ export interface CicloInfo {
 export interface CicloAnimalEvento {
   lote_id: string
   ciclo_numero: number
+  // Em qual ciclo o animal estava ANTES desta troca — usado por
+  // encontrarCicloAtivoParaAnimal pra saber que ciclo vale nos dias ANTES
+  // desta data (ver comentário lá). Pode ser null em eventos antigos/
+  // importados sem essa informação; nesse caso o motor cai no comportamento
+  // anterior (data do lote) pros dias antes do evento.
+  ciclo_numero_anterior: number | null
   data: string // yyyy-mm-dd
 }
 
@@ -224,6 +230,14 @@ function encontrarCicloAtivo(loteId: string, dia: number, ciclos: CicloInfo[]): 
 // ciclos_lote diga outra coisa (isso é o que permite animais do mesmo lote
 // estarem em ciclos diferentes ao mesmo tempo). Sem nenhum evento pra esse
 // animal nesse lote, cai exatamente no comportamento antigo (por data do lote).
+//
+// Nos dias ANTES do primeiro evento desse animal, ele ainda não tinha
+// trocado de ciclo — então usamos o ciclo_numero_anterior desse primeiro
+// evento, em vez de cair na data do ciclos_lote. Isso importa sempre que a
+// data_inicio do ciclo seguinte no LOTE for anterior à data real do evento
+// desse animal específico (ex.: lote avançou de ciclo numa data, mas esse
+// animal em particular só foi pesado/confirmado bem depois) — sem isso, o
+// animal "herdaria" o ciclo novo do lote antes da própria data real dele.
 function encontrarCicloAtivoParaAnimal(
   loteId: string,
   dia: number,
@@ -242,6 +256,11 @@ function encontrarCicloAtivoParaAnimal(
 
   if (eventoVigente) {
     const ciclo = ciclos.find(c => c.lote_id === loteId && c.numero === eventoVigente!.ciclo_numero)
+    if (ciclo) return ciclo
+  } else if (eventosDoLote.length > 0 && eventosDoLote[0].ciclo_numero_anterior != null) {
+    // dia é anterior a qualquer evento conhecido, mas sabemos em que ciclo
+    // o animal estava antes do primeiro deles.
+    const ciclo = ciclos.find(c => c.lote_id === loteId && c.numero === eventosDoLote[0].ciclo_numero_anterior)
     if (ciclo) return ciclo
   }
 
