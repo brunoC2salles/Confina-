@@ -2634,8 +2634,10 @@ function ModalEditarCiclos({
       if (!l.dias_planejados || l.dias_planejados <= 0) { setErro(`Ciclo ${l.numero}: dias planejados inválido`); return }
     }
     // Prefixo contíguo de datas (não pode ter ciclo com data depois de um
-    // ciclo sem data) e datas estritamente crescentes — mesma validação que
-    // o hook faz, checada aqui antes pra dar feedback imediato.
+    // ciclo sem data) e datas não-decrescentes — mesma validação que o hook
+    // faz, checada aqui antes pra dar feedback imediato. Datas EMPATADAS são
+    // permitidas (ciclo de duração zero — lote que pulou direto pro
+    // próximo ciclo, ex.: entrou já em misto/pastagem).
     const datas = linhas.map((l, i) => i === 0 ? dataCriacao : l.data_inicio)
     const primeiroSemData = datas.findIndex(d => !d)
     if (primeiroSemData !== -1 && datas.slice(primeiroSemData + 1).some(d => !!d)) {
@@ -2643,8 +2645,8 @@ function ModalEditarCiclos({
       return
     }
     for (let i = 1; i < datas.length; i++) {
-      if (datas[i] && datas[i - 1] && datas[i]! <= datas[i - 1]!) {
-        setErro(`Ciclo ${linhas[i].numero}: a data precisa ser posterior à do ciclo ${linhas[i - 1].numero}`)
+      if (datas[i] && datas[i - 1] && datas[i]! < datas[i - 1]!) {
+        setErro(`Ciclo ${linhas[i].numero}: a data não pode ser anterior à do ciclo ${linhas[i - 1].numero}`)
         return
       }
     }
