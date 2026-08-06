@@ -246,6 +246,43 @@ export default function Comparativo() {
   const ativosOrdenados = useMemo(() => ordenarLinhas(ativos, sortAtivos), [ativos, sortAtivos])
   const vendidosOrdenados = useMemo(() => ordenarLinhas(vendidos, sortVendidos), [vendidos, sortVendidos])
 
+  // ─── Linha de totais: soma para contagens e valores em R$ (animais, valor
+  // investido, lucro); média simples entre os lotes exibidos para taxas
+  // (peso médio, GMD, custo/kg, margem). Colunas sem dado em nenhum lote
+  // ficam em branco. ───
+  const totalAtivos = useMemo(() => {
+    if (ativos.length === 0) return null
+    const n = ativos.length
+    const custos = ativos.map(l => l.custoPorKg).filter((v): v is number => v != null)
+    const lucros = ativos.map(l => l.lucroProjetado).filter((v): v is number => v != null)
+    const margens = ativos.map(l => l.margemProjetada).filter((v): v is number => v != null)
+    return {
+      qtd: ativos.reduce((s, l) => s + l.qtd, 0),
+      pesoMedio: ativos.reduce((s, l) => s + l.pesoMedio, 0) / n,
+      gmdMedio: ativos.reduce((s, l) => s + l.gmdMedio, 0) / n,
+      custoPorKg: custos.length > 0 ? custos.reduce((s, v) => s + v, 0) / custos.length : null,
+      valorCompraTotal: ativos.reduce((s, l) => s + l.valorCompraTotal, 0),
+      lucroProjetado: lucros.length > 0 ? lucros.reduce((s, v) => s + v, 0) : null,
+      margemProjetada: margens.length > 0 ? margens.reduce((s, v) => s + v, 0) / margens.length : null,
+    }
+  }, [ativos])
+
+  const totalVendidos = useMemo(() => {
+    if (vendidos.length === 0) return null
+    const n = vendidos.length
+    const custos = vendidos.map(l => l.custoPorKg).filter((v): v is number => v != null)
+    const margens = vendidos.map(l => l.margemPct).filter((v): v is number => v != null)
+    return {
+      qtd: vendidos.reduce((s, l) => s + l.qtd, 0),
+      pesoMedioVenda: vendidos.reduce((s, l) => s + l.pesoMedioVenda, 0) / n,
+      gmdMedio: vendidos.reduce((s, l) => s + l.gmdMedio, 0) / n,
+      custoPorKg: custos.length > 0 ? custos.reduce((s, v) => s + v, 0) / custos.length : null,
+      lucroTotal: vendidos.reduce((s, l) => s + l.lucroTotal, 0),
+      margemPct: margens.length > 0 ? margens.reduce((s, v) => s + v, 0) / margens.length : null,
+      lucroPorAnimal: vendidos.reduce((s, l) => s + l.lucroPorAnimal, 0) / n,
+    }
+  }, [vendidos])
+
   return (
     <div className="page">
       <PageHeader title="Comparativo de lotes" subtitle="Lotes lado a lado — peso médio, GMD, custo/kg ganho, lucro e margem" />
@@ -317,6 +354,22 @@ export default function Comparativo() {
                   </tr>
                 ))}
               </tbody>
+              {totalAtivos && (
+                <tfoot>
+                  <tr style={{ fontWeight: 600 }}>
+                    <td>Média / total geral</td>
+                    <td>{totalAtivos.qtd}</td>
+                    <td>{fmtNum(totalAtivos.pesoMedio, 1)} kg</td>
+                    <td>{fmtNum(totalAtivos.gmdMedio, 2)} kg/dia</td>
+                    <td>{totalAtivos.custoPorKg != null ? `${fmt(totalAtivos.custoPorKg)}/kg` : '—'}</td>
+                    <td>{fmt(totalAtivos.valorCompraTotal)}</td>
+                    <td style={{ color: totalAtivos.lucroProjetado == null ? undefined : totalAtivos.lucroProjetado >= 0 ? '#2e7d32' : '#b91c1c' }}>
+                      {totalAtivos.lucroProjetado != null ? fmt(totalAtivos.lucroProjetado) : '—'}
+                    </td>
+                    <td>{totalAtivos.margemProjetada != null ? `${fmtNum(totalAtivos.margemProjetada, 1)}%` : '—'}</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
@@ -350,6 +403,20 @@ export default function Comparativo() {
                   </tr>
                 ))}
               </tbody>
+              {totalVendidos && (
+                <tfoot>
+                  <tr style={{ fontWeight: 600 }}>
+                    <td>Média / total geral</td>
+                    <td>{totalVendidos.qtd}</td>
+                    <td>{fmtNum(totalVendidos.pesoMedioVenda, 1)} kg</td>
+                    <td>{fmtNum(totalVendidos.gmdMedio, 2)} kg/dia</td>
+                    <td>{totalVendidos.custoPorKg != null ? `${fmt(totalVendidos.custoPorKg)}/kg` : '—'}</td>
+                    <td style={{ color: totalVendidos.lucroTotal >= 0 ? '#2e7d32' : '#b91c1c' }}>{fmt(totalVendidos.lucroTotal)}</td>
+                    <td>{totalVendidos.margemPct != null ? `${fmtNum(totalVendidos.margemPct, 1)}%` : '—'}</td>
+                    <td>{fmt(totalVendidos.lucroPorAnimal)}</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
