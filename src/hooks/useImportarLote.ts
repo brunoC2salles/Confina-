@@ -97,8 +97,8 @@ export function useImportarLote() {
         const nome = loteRow[`ciclo${i}_nome`]
         if (!nome) continue
         const tipoRaw = String(loteRow[`ciclo${i}_tipo`] ?? '').trim().toLowerCase()
-        if (tipoRaw !== 'pastagem' && tipoRaw !== 'confinamento') {
-          errors.push({ aba: 'Lote', linha: 2, mensagem: `ciclo${i}_tipo deve ser "pastagem" ou "confinamento" (veio "${loteRow[`ciclo${i}_tipo`]}")` })
+        if (tipoRaw !== 'pastagem' && tipoRaw !== 'confinamento' && tipoRaw !== 'misto') {
+          errors.push({ aba: 'Lote', linha: 2, mensagem: `ciclo${i}_tipo deve ser "pastagem", "confinamento" ou "misto" (veio "${loteRow[`ciclo${i}_tipo`]}")` })
           continue
         }
         const dias = paraNumero(loteRow[`ciclo${i}_dias`])

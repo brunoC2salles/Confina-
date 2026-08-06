@@ -1641,9 +1641,9 @@ export function useVendas() {
     let receitaLiquidaTotal = 0, lucroTotal = 0
     // Quebra pastagem x confinamento — soma o que o motor de custo já calcula
     // por animal (ver custoAnimal.ts), só para persistir no momento da venda.
-    let custoAlimPastagemTotal = 0, custoAlimConfinamentoTotal = 0
-    let custoOpPastagemTotal = 0, custoOpConfinamentoTotal = 0
-    let ganhoPastagemTotal = 0, ganhoConfinamentoTotal = 0
+    let custoAlimPastagemTotal = 0, custoAlimConfinamentoTotal = 0, custoAlimMistoTotal = 0
+    let custoOpPastagemTotal = 0, custoOpConfinamentoTotal = 0, custoOpMistoTotal = 0
+    let ganhoPastagemTotal = 0, ganhoConfinamentoTotal = 0, ganhoMistoTotal = 0
 
     const linhasPorAnimal = input.itens.map(item => {
       const receitaBruta = receitaBrutaPorAnimal[item.animal_id] ?? 0
@@ -1670,10 +1670,13 @@ export function useVendas() {
       if (r) {
         custoAlimPastagemTotal += r.custoAlimentacaoPastagem
         custoAlimConfinamentoTotal += r.custoAlimentacaoConfinamento
+        custoAlimMistoTotal += r.custoAlimentacaoMisto
         custoOpPastagemTotal += r.custoOperacionalPastagem
         custoOpConfinamentoTotal += r.custoOperacionalConfinamento
+        custoOpMistoTotal += r.custoOperacionalMisto
         ganhoPastagemTotal += r.ganhoPesoPastagem
         ganhoConfinamentoTotal += r.ganhoPesoConfinamento
+        ganhoMistoTotal += r.ganhoPesoMisto
       }
 
       return { animal_id: item.animal_id, peso: item.peso, receitaBruta, custoTotal, lucro }
@@ -1691,10 +1694,13 @@ export function useVendas() {
       custos_variaveis_total: custosVariaveisTotal, custos_fixos_rateados: custosFixosTotal,
       custo_alimentacao_pastagem_total: custoAlimPastagemTotal,
       custo_alimentacao_confinamento_total: custoAlimConfinamentoTotal,
+      custo_alimentacao_misto_total: custoAlimMistoTotal,
       custo_operacional_pastagem_total: custoOpPastagemTotal,
       custo_operacional_confinamento_total: custoOpConfinamentoTotal,
+      custo_operacional_misto_total: custoOpMistoTotal,
       ganho_peso_pastagem_total: ganhoPastagemTotal,
       ganho_peso_confinamento_total: ganhoConfinamentoTotal,
+      ganho_peso_misto_total: ganhoMistoTotal,
       total_comissoes: totalComissoes, total_encargos: totalEncargos,
       receita_bruta: receitaBrutaTotal, receita_liquida: receitaLiquidaTotal,
       lucro_total: lucroTotal, margem_pct: margemPct,
