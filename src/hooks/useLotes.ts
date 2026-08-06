@@ -1168,12 +1168,12 @@ export function useCustoEngine() {
         supabase.from('custos_racao_real_lote').select('lote_id, valor_total, data_inicio, ciclo_numero').in('lote_id', loteIdsArr),
         buscarTudoPaginado<{ lote_atual_id: string }>((from, to) =>
           supabase.from('animais').select('lote_atual_id').eq('status', 'ativo').in('lote_atual_id', loteIdsArr).range(from, to)),
-        supabase.from('animais_ciclo_eventos').select('animal_id, lote_id, ciclo_numero, data').in('lote_id', loteIdsArr),
+        supabase.from('animais_ciclo_eventos').select('animal_id, lote_id, ciclo_numero, ciclo_numero_anterior, data').in('lote_id', loteIdsArr),
       ])
       ciclos = (ciclosData ?? []) as CicloInfo[]
 
-      for (const e of (eventosCicloData ?? []) as Array<{ animal_id: string; lote_id: string; ciclo_numero: number; data: string }>) {
-        (eventosPorAnimal[e.animal_id] ??= []).push({ lote_id: e.lote_id, ciclo_numero: e.ciclo_numero, data: e.data })
+      for (const e of (eventosCicloData ?? []) as Array<{ animal_id: string; lote_id: string; ciclo_numero: number; ciclo_numero_anterior: number | null; data: string }>) {
+        (eventosPorAnimal[e.animal_id] ??= []).push({ lote_id: e.lote_id, ciclo_numero: e.ciclo_numero, ciclo_numero_anterior: e.ciclo_numero_anterior, data: e.data })
       }
 
       // fallback: quantidade ativa HOJE, usada só quando não há ninguém registrado
