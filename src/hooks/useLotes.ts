@@ -369,10 +369,14 @@ export function useLotes() {
       }
     }
 
-    // Datas estritamente crescentes entre os ciclos que já têm data.
+    // Datas não podem voltar no tempo — mas podem EMPATAR entre ciclos
+    // consecutivos: isso representa um ciclo de duração zero (o lote "pulou"
+    // direto pro próximo, ex.: entrou já em pastagem/misto, sem passar pelo
+    // ciclo 1). O motor de custo já trata isso corretamente (intervalo
+    // meio-aberto: data_inicio == data_fim = zero dias nesse ciclo).
     for (let i = 1; i < datasFinais.length; i++) {
-      if (datasFinais[i] && datasFinais[i - 1] && datasFinais[i]! <= datasFinais[i - 1]!) {
-        return { error: `Ciclo ${ordenados[i].numero}: a data de início precisa ser posterior à do ciclo ${ordenados[i - 1].numero}` }
+      if (datasFinais[i] && datasFinais[i - 1] && datasFinais[i]! < datasFinais[i - 1]!) {
+        return { error: `Ciclo ${ordenados[i].numero}: a data de início não pode ser anterior à do ciclo ${ordenados[i - 1].numero}` }
       }
     }
 
