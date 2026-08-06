@@ -32,7 +32,7 @@ export interface PeriodoLote {
 export interface CicloInfo {
   lote_id: string
   numero: number
-  tipo_ciclo: 'pastagem' | 'confinamento'
+  tipo_ciclo: 'pastagem' | 'confinamento' | 'misto'
   dieta_id: string | null
   gmd_esperado: number | null
   data_inicio: string | null
@@ -120,17 +120,24 @@ export interface ResultadoAnimalNaData {
   custoOperacional: number
   diasConfinamento: number
   gmdMedio: number
-  // ─── Quebra por tipo de ciclo (pastagem x confinamento) ───────────────────
+  // ─── Quebra por tipo de ciclo (pastagem x confinamento x misto) ───────────
   // Somam para os totais acima; adicionados sem alterar os campos existentes
-  // para não quebrar quem já lê custoAcumulado/custoAlimentacao/etc.
+  // para não quebrar quem já lê custoAcumulado/custoAlimentacao/etc. "Misto"
+  // é um balde PRÓPRIO, não rateado entre os outros dois — um ciclo marcado
+  // como misto (ração de confinamento + pasto ao mesmo tempo) não é nem
+  // pastagem puro nem confinamento puro.
   diasEmPastagem: number
   diasEmConfinamento: number
+  diasEmMisto: number
   ganhoPesoPastagem: number
   ganhoPesoConfinamento: number
+  ganhoPesoMisto: number
   custoAlimentacaoPastagem: number
   custoAlimentacaoConfinamento: number
+  custoAlimentacaoMisto: number
   custoOperacionalPastagem: number
   custoOperacionalConfinamento: number
+  custoOperacionalMisto: number
   // ─── Consumo de ração em kg de MS (desde a entrada) ────────────────────────
   // Sempre estimado por peso x %MS da dieta vigente no dia, independente de
   // aquele dia ter custo real de ração lançado ou não — o custo real
@@ -150,7 +157,7 @@ export interface ResultadoAnimalNaData {
 export interface EtapaResultado {
   lote_id: string
   numero: number
-  tipoCiclo: 'pastagem' | 'confinamento'
+  tipoCiclo: 'pastagem' | 'confinamento' | 'misto'
   dias: number
   ganhoPeso: number
   consumoRacaoKg: number
@@ -315,10 +322,10 @@ export function calcularAnimalNaData(
     return {
       peso: animal.peso_entrada, custoAcumulado: 0, custoAlimentacao: 0, custoOperacional: 0,
       diasConfinamento: 0, gmdMedio: 0,
-      diasEmPastagem: 0, diasEmConfinamento: 0,
-      ganhoPesoPastagem: 0, ganhoPesoConfinamento: 0,
-      custoAlimentacaoPastagem: 0, custoAlimentacaoConfinamento: 0,
-      custoOperacionalPastagem: 0, custoOperacionalConfinamento: 0,
+      diasEmPastagem: 0, diasEmConfinamento: 0, diasEmMisto: 0,
+      ganhoPesoPastagem: 0, ganhoPesoConfinamento: 0, ganhoPesoMisto: 0,
+      custoAlimentacaoPastagem: 0, custoAlimentacaoConfinamento: 0, custoAlimentacaoMisto: 0,
+      custoOperacionalPastagem: 0, custoOperacionalConfinamento: 0, custoOperacionalMisto: 0,
       consumoRacaoKg: 0, porEtapa: {},
     }
   }
@@ -338,19 +345,24 @@ export function calcularAnimalNaData(
   // ganho/custo daquele dia) é atribuído ao tipo do ciclo vigente NAQUELE dia;
   // um salto de pesagem real que cobre vários dias/tipos é atribuído ao tipo
   // vigente no dia em que a pesagem foi registrada (aproximação assumida).
+  // "misto" é um balde à parte — não é dividido nem somado com os outros dois.
   let diasEmPastagem = 0
   let diasEmConfinamento = 0
+  let diasEmMisto = 0
   let ganhoPesoPastagem = 0
   let ganhoPesoConfinamento = 0
+  let ganhoPesoMisto = 0
   let custoAlimentacaoPastagem = 0
   let custoAlimentacaoConfinamento = 0
+  let custoAlimentacaoMisto = 0
   let custoOperacionalPastagem = 0
   let custoOperacionalConfinamento = 0
+  let custoOperacionalMisto = 0
 
   // ─── Consumo total em kg de MS e quebra por etapa (ciclo individual) ──────
   let consumoRacaoKg = 0
   const porEtapa: Record<string, EtapaResultado> = {}
-  const obterEtapa = (loteId: string, numero: number, tipoCiclo: 'pastagem' | 'confinamento'): EtapaResultado => {
+  const obterEtapa = (loteId: string, numero: number, tipoCiclo: 'pastagem' | 'confinamento' | 'misto'): EtapaResultado => {
     const chave = `${loteId}#${numero}`
     if (!porEtapa[chave]) {
       porEtapa[chave] = {
@@ -367,10 +379,10 @@ export function calcularAnimalNaData(
     const ciclo = periodo ? encontrarCicloAtivoParaAnimal(periodo.lote_id, dia, ciclos, eventosCiclo) : null
     const gmd = ciclo?.gmd_esperado ?? 0
     const tipoCiclo = ciclo?.tipo_ciclo ?? 'confinamento'
-    const ehPastagem = tipoCiclo === 'pastagem'
     const etapa = periodo ? obterEtapa(periodo.lote_id, ciclo?.numero ?? 0, tipoCiclo) : null
 
-    if (ehPastagem) diasEmPastagem++
+    if (tipoCiclo === 'pastagem') diasEmPastagem++
+    else if (tipoCiclo === 'misto') diasEmMisto++
     else diasEmConfinamento++
     if (etapa) etapa.dias++
 
@@ -382,7 +394,8 @@ export function calcularAnimalNaData(
     }
     // dia === diaEntrada e sem pesagem real: peso permanece o peso_entrada (sem crescimento ainda)
     const ganhoHoje = peso - pesoAntes
-    if (ehPastagem) ganhoPesoPastagem += ganhoHoje
+    if (tipoCiclo === 'pastagem') ganhoPesoPastagem += ganhoHoje
+    else if (tipoCiclo === 'misto') ganhoPesoMisto += ganhoHoje
     else ganhoPesoConfinamento += ganhoHoje
     if (etapa) etapa.ganhoPeso += ganhoHoje
 
@@ -416,7 +429,8 @@ export function calcularAnimalNaData(
         ? infoRacaoRealHoje.valorTotalDia * (peso / infoRacaoRealHoje.pesoTotalDia)
         : infoRacaoRealHoje.valorTotalDia / Math.max(infoRacaoRealHoje.qtdAtivaDia, 1)
       custoAlimentacao += custoHoje
-      if (ehPastagem) custoAlimentacaoPastagem += custoHoje
+      if (tipoCiclo === 'pastagem') custoAlimentacaoPastagem += custoHoje
+      else if (tipoCiclo === 'misto') custoAlimentacaoMisto += custoHoje
       else custoAlimentacaoConfinamento += custoHoje
       if (etapa) etapa.custoAlimentacao += custoHoje
     } else if (dietaInfoDia?.pct_consumo_pv_ms != null) {
@@ -424,7 +438,8 @@ export function calcularAnimalNaData(
       if (custoKgMs != null) {
         const custoHoje = peso * (dietaInfoDia.pct_consumo_pv_ms / 100) * custoKgMs
         custoAlimentacao += custoHoje
-        if (ehPastagem) custoAlimentacaoPastagem += custoHoje
+        if (tipoCiclo === 'pastagem') custoAlimentacaoPastagem += custoHoje
+        else if (tipoCiclo === 'misto') custoAlimentacaoMisto += custoHoje
         else custoAlimentacaoConfinamento += custoHoje
         if (etapa) etapa.custoAlimentacao += custoHoje
       }
@@ -437,7 +452,8 @@ export function calcularAnimalNaData(
           if (toDay(c.data_lancamento) === dia) {
             const rateio = c.valor / Math.max(c.qtdAtivaNaData, 1)
             custoOperacional += rateio
-            if (ehPastagem) custoOperacionalPastagem += rateio
+            if (tipoCiclo === 'pastagem') custoOperacionalPastagem += rateio
+            else if (tipoCiclo === 'misto') custoOperacionalMisto += rateio
             else custoOperacionalConfinamento += rateio
             if (etapa) etapa.custoOperacional += rateio
           }
@@ -459,10 +475,10 @@ export function calcularAnimalNaData(
     custoAcumulado: custoAlimentacao + custoOperacional,
     custoAlimentacao, custoOperacional,
     diasConfinamento, gmdMedio,
-    diasEmPastagem, diasEmConfinamento,
-    ganhoPesoPastagem, ganhoPesoConfinamento,
-    custoAlimentacaoPastagem, custoAlimentacaoConfinamento,
-    custoOperacionalPastagem, custoOperacionalConfinamento,
+    diasEmPastagem, diasEmConfinamento, diasEmMisto,
+    ganhoPesoPastagem, ganhoPesoConfinamento, ganhoPesoMisto,
+    custoAlimentacaoPastagem, custoAlimentacaoConfinamento, custoAlimentacaoMisto,
+    custoOperacionalPastagem, custoOperacionalConfinamento, custoOperacionalMisto,
     consumoRacaoKg, porEtapa,
   }
 }
