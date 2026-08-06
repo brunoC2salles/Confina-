@@ -70,6 +70,22 @@ export interface CicloAnimalEventoRow {
   created_at: string
 }
 
+// Troca de dieta dentro do mesmo ciclo, para o lote inteiro (todos os
+// animais que estiverem naquele lote/ciclo na data). Diferente de
+// CicloAnimalEventoRow (que troca o CICLO por animal): aqui o ciclo
+// continua o mesmo, só a dieta vigente a partir da data muda. Pode haver
+// mais de uma troca no mesmo ciclo — a mais recente com data <= o dia
+// calculado manda; ver resolverDietaIdNoDia em src/lib/custoAnimal.ts.
+export interface TrocaDietaLoteRow {
+  id: string
+  lote_id: string
+  ciclo_numero: number
+  dieta_id: string
+  data: string
+  user_id: string
+  created_at: string
+}
+
 export interface Animal {
   id: string
   codigo: string
