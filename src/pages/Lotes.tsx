@@ -14,7 +14,7 @@ import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt, fmtNum, fmtData, obterRendimento, obterBonus, ordenarPorBrinco } from '@/lib/calculations'
 import type {
   Lote, Animal, SaidaTipo, SaidaModo, RendimentoFaixa, BonusFaixa, TipoCiclo, Compra,
-  CustoOperacionalLote, CategoriaCustoOperacional, MotivoEncerramento, CustoRacaoRealLote,
+  CustoOperacionalLote, CategoriaCustoOperacional, MotivoEncerramento, CustoRacaoRealLote, TrocaDietaLoteRow,
 } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { parseCsvAnimais } from '@/lib/csv'
@@ -54,8 +54,8 @@ export default function Lotes() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const {
-    lotes, lotesAtivos, lotesEncerrados, ciclosPorLote, resumo, distribuicaoCiclos, loading,
-    criarLote, editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote,
+    lotes, lotesAtivos, lotesEncerrados, ciclosPorLote, resumo, distribuicaoCiclos, trocasDietaPorLote, loading,
+    criarLote, editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta,
     criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
   } = useLotes()
   const { templates: dietasTemplates } = useDietas()
@@ -199,11 +199,14 @@ export default function Lotes() {
           todosLotes={lotes}
           ciclosPorLote={ciclosPorLote}
           distribuicaoCiclos={distribuicaoCiclos}
+          trocasDietaPorLote={trocasDietaPorLote}
           editarCiclo={editarCiclo}
           salvarCiclosLote={salvarCiclosLote}
           avancarCiclo={avancarCiclo}
           avancarCicloParcial={avancarCicloParcial}
           encerrarLote={encerrarLote}
+          trocarDietaCiclo={trocarDietaCiclo}
+          removerTrocaDieta={removerTrocaDieta}
           criarAnimais={criarAnimais}
           bifurcar={bifurcar}
           moverAliquota={moverAliquota}
@@ -881,8 +884,8 @@ function PainelProjecao({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function DetalheLote({
-  loteId, onClose, highlightAnimalId, dietasTemplates, todosLotes, ciclosPorLote, distribuicaoCiclos,
-  editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
+  loteId, onClose, highlightAnimalId, dietasTemplates, todosLotes, ciclosPorLote, distribuicaoCiclos, trocasDietaPorLote,
+  editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
 }: {
   loteId: string
   onClose: () => void
@@ -891,11 +894,14 @@ function DetalheLote({
   todosLotes: Lote[]
   ciclosPorLote: Record<string, Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null; data_fim: string | null }>>
   distribuicaoCiclos: Record<string, Record<number, number>>
+  trocasDietaPorLote: Record<string, TrocaDietaLoteRow[]>
   editarCiclo: (id: string, patch: any) => Promise<{ error: string | null }>
   avancarCiclo: (loteId: string, data?: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
   salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null }>) => Promise<{ error: string | null }>
   avancarCicloParcial: (loteId: string, animalIds: string[], data: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
   encerrarLote: (loteId: string, motivo: MotivoEncerramento, obs?: string) => Promise<{ error: string | null }>
+  trocarDietaCiclo: (loteId: string, cicloNumero: number, dietaId: string, data: string) => Promise<{ error: string | null }>
+  removerTrocaDieta: (trocaId: string) => Promise<{ error: string | null }>
   criarAnimais: (input: CriarAnimaisInput) => Promise<{ error: string | null }>
   bifurcar: (input: any) => Promise<{ error: string | null; lote?: Lote }>
   moverAliquota: (input: any) => Promise<{ error: string | null }>
@@ -940,9 +946,11 @@ function DetalheLote({
   const [showEditarCiclos, setShowEditarCiclos] = useState(false)
   const [showDuplicados, setShowDuplicados] = useState(false)
   const [showAvancarCiclo, setShowAvancarCiclo] = useState<'total' | 'parcial' | null>(null)
+  const [showTrocarDieta, setShowTrocarDieta] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   const ciclos = ciclosPorLote[loteId] ?? []
+  const trocasDoLote = trocasDietaPorLote[loteId] ?? []
 
   // Grupos de brincos duplicados dentro deste lote: mesmo brinco + mesmo
   // peso de entrada + mesma data de entrada — sinal de lançamento repetido
@@ -1083,6 +1091,12 @@ function DetalheLote({
     return res
   }
 
+  const handleConfirmarTrocarDieta = async (cicloNumero: number, dietaId: string, data: string) => {
+    const res = await trocarDietaCiclo(loteId, cicloNumero, dietaId, data)
+    if (!res.error) setShowTrocarDieta(false)
+    return res
+  }
+
   const handleEncerrar = async (motivo: MotivoEncerramento, obs?: string) => {
     const res = await encerrarLote(loteId, motivo, obs)
     if (!res.error) setShowEncerrar(false)
@@ -1159,6 +1173,9 @@ function DetalheLote({
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowAvancarCiclo('total')} disabled={lote.ciclo_atual >= lote.num_ciclos}>
                 Avançar ciclo
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowTrocarDieta(true)}>
+                Trocar dieta
               </button>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowEditarCiclos(true)}>
                 Editar ciclos
@@ -1372,6 +1389,18 @@ function DetalheLote({
           animaisAlvo={animaisSelecionadosArr.map(a => ({ id: a.id, codigo: a.codigo, brinco: a.brinco }))}
           onClose={() => setShowAvancarCiclo(null)}
           onConfirmar={handleConfirmarAvancarCicloParcial}
+        />
+      )}
+
+      {showTrocarDieta && (
+        <ModalTrocarDieta
+          lote={lote}
+          ciclos={ciclos}
+          dietasTemplates={dietasTemplates}
+          trocasDoLote={trocasDoLote}
+          onClose={() => setShowTrocarDieta(false)}
+          onConfirmar={handleConfirmarTrocarDieta}
+          onRemover={removerTrocaDieta}
         />
       )}
 
@@ -2239,6 +2268,118 @@ function ModalAvancarCiclo({
     </Modal>
   )
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TROCAR DIETA (dentro do mesmo ciclo, lote inteiro)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ModalTrocarDieta({
+  lote, ciclos, dietasTemplates, trocasDoLote, onClose, onConfirmar, onRemover,
+}: {
+  lote: Lote
+  ciclos: Array<{ numero: number; nome: string; dieta_id: string | null; data_inicio: string | null; data_fim: string | null }>
+  dietasTemplates: Array<{ id: string; nome: string; gmd_esperado: number; pct_consumo_pv_ms: number; custo_kg_ms: number | null }>
+  trocasDoLote: TrocaDietaLoteRow[]
+  onClose: () => void
+  onConfirmar: (cicloNumero: number, dietaId: string, data: string) => Promise<{ error: string | null }>
+  onRemover: (trocaId: string) => Promise<{ error: string | null }>
+}) {
+  // Só ciclos que já começaram fazem sentido pra trocar dieta.
+  const ciclosDisponiveis = ciclos.filter(c => c.data_inicio)
+  const [cicloNumero, setCicloNumero] = useState(lote.ciclo_atual)
+  const [dietaId, setDietaId] = useState('')
+  const [data, setData] = useState(hojeStr())
+  const [erro, setErro] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [removendoId, setRemovendoId] = useState<string | null>(null)
+
+  const cicloSelecionado = ciclosDisponiveis.find(c => c.numero === cicloNumero)
+  const trocasDoCiclo = trocasDoLote
+    .filter(t => t.ciclo_numero === cicloNumero)
+    .sort((a, b) => a.data.localeCompare(b.data))
+  const nomeDieta = (id: string | null) => id ? (dietasTemplates.find(d => d.id === id)?.nome ?? '—') : '—'
+
+  const confirmar = async () => {
+    if (!dietaId) { setErro('Selecione a nova dieta'); return }
+    if (!data) { setErro('Informe a data a partir de quando ela vale'); return }
+    setSaving(true)
+    setErro(null)
+    const res = await onConfirmar(cicloNumero, dietaId, data)
+    setSaving(false)
+    if (res.error) setErro(res.error)
+  }
+
+  const remover = async (trocaId: string) => {
+    setRemovendoId(trocaId)
+    const res = await onRemover(trocaId)
+    setRemovendoId(null)
+    if (res.error) setErro(res.error)
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Trocar dieta"
+      subtitle="Muda a dieta vigente dentro do mesmo ciclo, a partir de uma data — o ciclo em si (número, GMD esperado) não muda" size="md">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="form-group">
+          <label className="form-label">Ciclo</label>
+          <select className="form-input" value={cicloNumero} onChange={e => setCicloNumero(Number(e.target.value))}>
+            {ciclosDisponiveis.map(c => (
+              <option key={c.numero} value={c.numero}>
+                Ciclo {c.numero} — {c.nome} (dieta atual: {nomeDieta(c.dieta_id)})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Nova dieta</label>
+          <select className="form-input" value={dietaId} onChange={e => setDietaId(e.target.value)}>
+            <option value="">Selecione</option>
+            {dietasTemplates.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Vale a partir de</label>
+          <input className="form-input" type="date" value={data}
+            min={cicloSelecionado?.data_inicio ?? undefined}
+            max={cicloSelecionado?.data_fim ?? undefined}
+            onChange={e => setData(e.target.value)} />
+          <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+            O custo de alimentação é recalculado com a nova dieta a partir dessa data — dias anteriores não mudam.
+          </div>
+        </div>
+
+        {trocasDoCiclo.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div className="form-label">Trocas já registradas neste ciclo</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {trocasDoCiclo.map(t => (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '6px 10px', background: 'var(--gray-50)', borderRadius: 6 }}>
+                  <span style={{ color: 'var(--gray-500)' }}>{t.data.split('-').reverse().join('/')}</span>
+                  <span>{nomeDieta(t.dieta_id)}</span>
+                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }}
+                    disabled={removendoId === t.id} onClick={() => remover(t.id)}>
+                    {removendoId === t.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : 'Remover'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={confirmar} disabled={saving}>
+            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Confirmar troca de dieta'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MODAL: PESAGEM INDIVIDUAL
