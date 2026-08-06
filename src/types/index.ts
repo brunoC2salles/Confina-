@@ -10,7 +10,7 @@ export type CategoriaCustoOperacional = 'sanitario' | 'maquinario' | 'mao_de_obr
 export type MotivoEncerramento = 'venda' | 'extincao' | 'outro'
 export type SaidaTipo = 'venda' | 'abate' | 'transferencia' | 'morte'
 export type SaidaModo = 'peso_proprio' | 'peso_carga'
-export type TipoCiclo = 'pastagem' | 'confinamento'
+export type TipoCiclo = 'pastagem' | 'confinamento' | 'misto'
 
 export interface Lote {
   id: string
@@ -139,14 +139,17 @@ export interface SaidaGrupo {
   custo_alimentacao_total: number | null
   custos_variaveis_total: number | null
   custos_fixos_rateados: number | null
-  // Quebra pastagem x confinamento — nullable porque vendas antigas (antes
-  // desta coluna existir) não têm esse detalhe, só o total acima.
+  // Quebra pastagem x confinamento x misto — nullable porque vendas antigas
+  // (antes destas colunas existirem) não têm esse detalhe, só o total acima.
   custo_alimentacao_pastagem_total: number | null
   custo_alimentacao_confinamento_total: number | null
+  custo_alimentacao_misto_total: number | null
   custo_operacional_pastagem_total: number | null
   custo_operacional_confinamento_total: number | null
+  custo_operacional_misto_total: number | null
   ganho_peso_pastagem_total: number | null
   ganho_peso_confinamento_total: number | null
+  ganho_peso_misto_total: number | null
   total_comissoes: number | null
   total_encargos: number | null
   receita_bruta: number | null
