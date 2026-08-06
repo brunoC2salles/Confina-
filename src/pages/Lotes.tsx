@@ -883,8 +883,8 @@ function DetalheLote({
   ciclosPorLote: Record<string, Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null; data_fim: string | null }>>
   distribuicaoCiclos: Record<string, Record<number, number>>
   editarCiclo: (id: string, patch: any) => Promise<{ error: string | null }>
-  salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }>) => Promise<{ error: string | null }>
   avancarCiclo: (loteId: string, data?: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
+  salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null }>) => Promise<{ error: string | null }>
   avancarCicloParcial: (loteId: string, animalIds: string[], data: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
   encerrarLote: (loteId: string, motivo: MotivoEncerramento, obs?: string) => Promise<{ error: string | null }>
   criarAnimais: (input: CriarAnimaisInput) => Promise<{ error: string | null }>
@@ -2545,33 +2545,32 @@ function ModalEditarCiclos({
   lote: Lote
   ciclos: Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null; data_fim: string | null }>
   dietasTemplates: Array<{ id: string; nome: string; gmd_esperado: number; pct_consumo_pv_ms: number; custo_kg_ms: number | null }>
-  salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }>) => Promise<{ error: string | null }>
+  salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null }>) => Promise<{ error: string | null }>
   onClose: () => void
 }) {
-  type LinhaCiclo = { id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }
+  type LinhaCiclo = { id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null }
 
   const [dataCriacao, setDataCriacao] = useState(lote.data_criacao)
   const [linhas, setLinhas] = useState<LinhaCiclo[]>(() =>
     [...ciclos].sort((a, b) => a.numero - b.numero).map(c => ({
       id: c.id, numero: c.numero, nome: c.nome, tipo_ciclo: c.tipo_ciclo,
       dias_planejados: c.dias_planejados, dieta_id: c.dieta_id, gmd_esperado: c.gmd_esperado,
+      data_inicio: c.data_inicio,
     }))
   )
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  // Pré-visualização das datas resultantes — recalculada a cada mudança,
-  // igual ao que vai ser gravado de verdade ao salvar.
-  const datasPreview = useMemo(() => {
-    const mapa: Record<number, { inicio: string; fim: string | null }> = {}
-    let cursor = new Date(dataCriacao + 'T00:00:00')
+  // data_fim de cada ciclo = data_inicio do próximo (ou em aberto no
+  // último) — sempre derivado, nunca editável direto, pra nunca deixar
+  // gap/sobreposição entre ciclos consecutivos.
+  const datasResolvidas = useMemo(() => {
+    const mapa: Record<number, { inicio: string | null; fim: string | null }> = {}
     linhas.forEach((l, i) => {
-      const inicio = cursor.toISOString().slice(0, 10)
-      const proximo = new Date(cursor)
-      proximo.setDate(proximo.getDate() + (l.dias_planejados || 0))
-      const fim = i === linhas.length - 1 ? null : proximo.toISOString().slice(0, 10)
+      const inicio = i === 0 ? dataCriacao : l.data_inicio
+      const proximaData = i < linhas.length - 1 ? (linhas[i + 1].data_inicio ?? null) : null
+      const fim = i === linhas.length - 1 ? null : proximaData
       mapa[l.numero] = { inicio, fim }
-      cursor = proximo
     })
     return mapa
   }, [dataCriacao, linhas])
@@ -2583,10 +2582,22 @@ function ModalEditarCiclos({
   const adicionarCiclo = () => {
     if (linhas.length >= 8) { setErro('Máximo de 8 ciclos por lote'); return }
     setErro(null)
-    setLinhas(prev => [...prev, {
-      numero: prev.length + 1, nome: cicloLabelPadrao(prev.length + 1), tipo_ciclo: 'confinamento',
-      dias_planejados: 30, dieta_id: null, gmd_esperado: null,
-    }])
+    setLinhas(prev => {
+      const anterior = prev[prev.length - 1]
+      // Sugestão de data pra facilitar (data do ciclo anterior + dias
+      // planejados dele) — só um ponto de partida, fica livre pra editar.
+      let sugestao: string | null = null
+      const inicioAnterior = anterior ? (prev.length === 1 ? dataCriacao : anterior.data_inicio) : null
+      if (inicioAnterior) {
+        const d = new Date(inicioAnterior + 'T00:00:00')
+        d.setDate(d.getDate() + (anterior.dias_planejados || 0))
+        sugestao = d.toISOString().slice(0, 10)
+      }
+      return [...prev, {
+        numero: prev.length + 1, nome: cicloLabelPadrao(prev.length + 1), tipo_ciclo: 'confinamento',
+        dias_planejados: 30, dieta_id: null, gmd_esperado: null, data_inicio: sugestao,
+      }]
+    })
   }
 
   const removerUltimoCiclo = () => {
@@ -2600,6 +2611,21 @@ function ModalEditarCiclos({
       if (!l.nome.trim()) { setErro(`Ciclo ${l.numero}: informe um nome`); return }
       if (!l.dias_planejados || l.dias_planejados <= 0) { setErro(`Ciclo ${l.numero}: dias planejados inválido`); return }
     }
+    // Prefixo contíguo de datas (não pode ter ciclo com data depois de um
+    // ciclo sem data) e datas estritamente crescentes — mesma validação que
+    // o hook faz, checada aqui antes pra dar feedback imediato.
+    const datas = linhas.map((l, i) => i === 0 ? dataCriacao : l.data_inicio)
+    const primeiroSemData = datas.findIndex(d => !d)
+    if (primeiroSemData !== -1 && datas.slice(primeiroSemData + 1).some(d => !!d)) {
+      setErro(`Ciclo ${linhas[primeiroSemData].numero}: informe a data de início antes de datar os ciclos seguintes`)
+      return
+    }
+    for (let i = 1; i < datas.length; i++) {
+      if (datas[i] && datas[i - 1] && datas[i]! <= datas[i - 1]!) {
+        setErro(`Ciclo ${linhas[i].numero}: a data precisa ser posterior à do ciclo ${linhas[i - 1].numero}`)
+        return
+      }
+    }
     setSaving(true); setErro(null)
     const res = await salvarCiclosLote(lote.id, dataCriacao, linhas)
     setSaving(false)
@@ -2609,7 +2635,7 @@ function ModalEditarCiclos({
 
   return (
     <Modal open onClose={onClose} title={`Editar ciclos — ${lote.nome_lote}`}
-      subtitle="As datas de início/fim de cada ciclo são recalculadas automaticamente" size="lg">
+      subtitle="A data de início de cada ciclo agora é editável e comanda o cálculo — dias planejados vira só uma estimativa" size="lg">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div className="form-group">
           <label className="form-label">Data de entrada do lote</label>
@@ -2620,7 +2646,11 @@ function ModalEditarCiclos({
         </div>
 
         {linhas.map((l, idx) => {
-          const preview = datasPreview[l.numero]
+          const resolvido = datasResolvidas[l.numero]
+          const inicioAnteriorStr = idx === 0 ? null : (idx === 1 ? dataCriacao : linhas[idx - 1].data_inicio)
+          const diasReais = (resolvido?.inicio && inicioAnteriorStr)
+            ? Math.round((new Date(resolvido.inicio + 'T00:00:00').getTime() - new Date(inicioAnteriorStr + 'T00:00:00').getTime()) / 86400000)
+            : null
           return (
             <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2639,7 +2669,7 @@ function ModalEditarCiclos({
                   <input className="form-input" value={l.nome} onChange={e => update(idx, { nome: e.target.value })} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Dias planejados</label>
+                  <label className="form-label">Dias planejados (estimativa)</label>
                   <input className="form-input" type="number" value={l.dias_planejados}
                     onChange={e => update(idx, { dias_planejados: Number(e.target.value) })} />
                 </div>
@@ -2659,14 +2689,38 @@ function ModalEditarCiclos({
                     onChange={e => update(idx, { gmd_esperado: e.target.value ? Number(e.target.value) : null })} />
                 </div>
               </div>
-              {preview && (
+              {idx === 0 ? (
                 <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
-                  {fmtData(preview.inicio)} até {preview.fim ? fmtData(preview.fim) : 'em aberto'}
+                  Início: {fmtData(dataCriacao)} (segue a data de entrada do lote, acima)
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label className="form-label">Data de início real</label>
+                  <input className="form-input" type="date" value={l.data_inicio ?? ''}
+                    onChange={e => update(idx, { data_inicio: e.target.value || null })} style={{ maxWidth: 200 }} />
+                  <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                    {l.data_inicio
+                      ? `Esta data comanda a dieta/custo usados a partir dela${diasReais !== null ? ` — ${diasReais} dia(s) após o ciclo anterior` : ''}`
+                      : 'Sem data ainda: ciclo não iniciado, cai no comportamento padrão até ser avançado'}
+                  </div>
+                </div>
+              )}
+              {resolvido && (
+                <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                  Vigência: {resolvido.inicio ? fmtData(resolvido.inicio) : '—'} até {resolvido.fim ? fmtData(resolvido.fim) : 'em aberto'}
                 </div>
               )}
             </div>
           )
         })}
+
+        {ciclos.some(c => c.numero >= 2 && c.data_inicio) && (
+          <div style={{ background: '#f0f7f0', border: '1px solid #cfe3cf', borderRadius: 8, padding: 10, fontSize: 12, color: 'var(--gray-600)' }}>
+            Se você mudar a data de um ciclo que já começou, a data do registro de troca de ciclo de cada animal
+            que entrou nele junto com o lote é atualizada automaticamente. Animais que foram adiantados
+            separadamente (avanço parcial, com data própria) não são afetados.
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost btn-sm" onClick={adicionarCiclo} disabled={linhas.length >= 8}>+ Adicionar ciclo</button>
