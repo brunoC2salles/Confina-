@@ -57,6 +57,36 @@ export interface CicloAnimalEvento {
   data: string // yyyy-mm-dd
 }
 
+// ─── Troca de dieta dentro do mesmo ciclo (lote inteiro) ───────────────────────
+// Diferente de CicloAnimalEvento (que troca o CICLO, por animal): aqui o
+// ciclo continua o mesmo (mesmo numero, mesmo gmd_esperado, mesma etapa),
+// só a dieta vigente a partir de `data` muda — pra todos os animais que
+// estiverem nesse lote/ciclo naquele dia. Pode haver várias trocas no
+// mesmo ciclo; ver resolverDietaIdNoDia logo abaixo.
+export interface TrocaDietaCiclo {
+  lote_id: string
+  ciclo_numero: number
+  dieta_id: string
+  data: string // yyyy-mm-dd, a partir de quando essa dieta passa a valer
+}
+
+// Resolve qual dieta vale, num lote/ciclo específico, num dia específico: a
+// troca mais recente com data <= dia manda; sem nenhuma troca até essa
+// data, cai na dieta original configurada no ciclo (ciclos_lote.dieta_id).
+function resolverDietaIdNoDia(
+  loteId: string, cicloNumero: number, dia: number,
+  dietaOriginal: string | null, trocas: TrocaDietaCiclo[],
+): string | null {
+  let vigente = dietaOriginal
+  let melhorDia = -Infinity
+  for (const t of trocas) {
+    if (t.lote_id !== loteId || t.ciclo_numero !== cicloNumero) continue
+    const d = toDay(t.data)
+    if (d <= dia && d > melhorDia) { melhorDia = d; vigente = t.dieta_id }
+  }
+  return vigente
+}
+
 export interface HistoricoCustoPonto {
   custo_kg_ms: number | null
   vigente_desde: string
@@ -314,6 +344,7 @@ export function calcularAnimalNaData(
   custosOperacionaisPorLote: Record<string, CustoOperacionalInfo[]> = {},
   custosRacaoRealPorLote: Record<string, CustoRacaoRealPorDia> = {},
   eventosCiclo: CicloAnimalEvento[] = [],
+  trocasDieta: TrocaDietaCiclo[] = [],
 ): ResultadoAnimalNaData {
   const diaEntrada = toDay(animal.data_entrada)
   const diaAlvo = toDay(dataAlvo)
@@ -403,7 +434,10 @@ export function calcularAnimalNaData(
     // vigente, mesmo em dias cobertos por um lançamento de custo real de
     // ração (esse lançamento só substitui o valor em R$, não existe kg
     // registrado nele) — consumo em kg e custo em R$ são medidos separado.
-    const dietaInfoDia = ciclo?.dieta_id ? dietas[ciclo.dieta_id] : undefined
+    const dietaIdDia = periodo && ciclo
+      ? resolverDietaIdNoDia(periodo.lote_id, ciclo.numero, dia, ciclo.dieta_id, trocasDieta)
+      : (ciclo?.dieta_id ?? null)
+    const dietaInfoDia = dietaIdDia ? dietas[dietaIdDia] : undefined
     if (dietaInfoDia?.pct_consumo_pv_ms != null) {
       const consumoHoje = peso * (dietaInfoDia.pct_consumo_pv_ms / 100)
       consumoRacaoKg += consumoHoje
