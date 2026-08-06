@@ -285,14 +285,19 @@ function FormLoteBase({
     })
   }
 
-  // Marca/desmarca um ciclo como pastagem — ajusta o nome sugerido junto,
-  // mas o usuário pode sobrescrever livremente depois.
-  const alternarTipoCiclo = (idx: number) => {
+  // Nomes sugeridos são iguais nas duas telas de ciclo (criação e edição) —
+  // pastagem/misto ganham nome fixo, confinamento usa o rótulo padrão por
+  // posição (Adaptação, Crescimento...).
+  const nomeSugeridoPorTipo = (tipo: TipoCiclo, numero: number) =>
+    tipo === 'pastagem' ? 'Pastagem' : tipo === 'misto' ? 'Misto' : cicloLabelPadrao(numero)
+
+  // Troca o tipo de um ciclo — ajusta o nome sugerido junto, mas o usuário
+  // pode sobrescrever livremente depois.
+  const definirTipoCiclo = (idx: number, tipo: TipoCiclo) => {
     setCiclos(prev => prev.map((c, i) => {
       if (i !== idx) return c
-      const novoTipo: TipoCiclo = c.tipo_ciclo === 'pastagem' ? 'confinamento' : 'pastagem'
-      const nomeEraPadrao = c.nome === cicloLabelPadrao(c.numero) || c.nome === 'Pastagem'
-      return { ...c, tipo_ciclo: novoTipo, nome: nomeEraPadrao ? (novoTipo === 'pastagem' ? 'Pastagem' : cicloLabelPadrao(c.numero)) : c.nome }
+      const nomeEraPadrao = c.nome === cicloLabelPadrao(c.numero) || c.nome === 'Pastagem' || c.nome === 'Misto'
+      return { ...c, tipo_ciclo: tipo, nome: nomeEraPadrao ? nomeSugeridoPorTipo(tipo, c.numero) : c.nome }
     }))
   }
 
@@ -441,10 +446,14 @@ function FormLoteBase({
             <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#2e7d32' }}>Ciclo {c.numero}</div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--gray-500)', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={c.tipo_ciclo === 'pastagem'} onChange={() => alternarTipoCiclo(idx)} />
-                  É pastagem (fase anterior ao confinamento)
-                </label>
+                <div className="form-group" style={{ flex: '0 0 auto', minWidth: 160 }}>
+                  <select className="form-input" value={c.tipo_ciclo} style={{ fontSize: 12, padding: '4px 8px' }}
+                    onChange={e => definirTipoCiclo(idx, e.target.value as TipoCiclo)}>
+                    <option value="confinamento">Confinamento</option>
+                    <option value="pastagem">Pastagem</option>
+                    <option value="misto">Misto (ração + pasto)</option>
+                  </select>
+                </div>
               </div>
               <div className="form-row-2">
                 <div className="form-group">
@@ -1084,20 +1093,23 @@ function DetalheLote({
     ? animais.reduce((s, a) => s + (resultados[a.id]?.gmdMedio ?? 0), 0) / qtdAtiva
     : null
 
-  // Quebra pastagem x confinamento — só faz sentido mostrar se o lote de fato
-  // tem algum ciclo marcado como pastagem configurado.
-  const temCicloPastagem = ciclos.some(c => c.tipo_ciclo === 'pastagem')
+  // Quebra pastagem x confinamento x misto — só faz sentido mostrar se o
+  // lote de fato tem algum ciclo configurado fora do confinamento puro.
+  const temCicloNaoConfinamento = ciclos.some(c => c.tipo_ciclo === 'pastagem' || c.tipo_ciclo === 'misto')
   const somaPorTipo = animais.reduce((acc, a) => {
     const r = resultados[a.id]
     if (!r) return acc
     acc.ganhoPastagem += r.ganhoPesoPastagem
     acc.ganhoConfinamento += r.ganhoPesoConfinamento
+    acc.ganhoMisto += r.ganhoPesoMisto
     acc.custoPastagem += r.custoAlimentacaoPastagem + r.custoOperacionalPastagem
     acc.custoConfinamento += r.custoAlimentacaoConfinamento + r.custoOperacionalConfinamento
+    acc.custoMisto += r.custoAlimentacaoMisto + r.custoOperacionalMisto
     acc.diasPastagem += r.diasEmPastagem
     acc.diasConfinamento += r.diasEmConfinamento
+    acc.diasMisto += r.diasEmMisto
     return acc
-  }, { ganhoPastagem: 0, ganhoConfinamento: 0, custoPastagem: 0, custoConfinamento: 0, diasPastagem: 0, diasConfinamento: 0 })
+  }, { ganhoPastagem: 0, ganhoConfinamento: 0, ganhoMisto: 0, custoPastagem: 0, custoConfinamento: 0, custoMisto: 0, diasPastagem: 0, diasConfinamento: 0, diasMisto: 0 })
 
   return (
     <Modal open onClose={onClose} title={lote.nome_lote}
@@ -1205,7 +1217,7 @@ function DetalheLote({
           </button>
         )}
 
-        {temCicloPastagem && (somaPorTipo.diasPastagem > 0 || somaPorTipo.diasConfinamento > 0) && (
+        {temCicloNaoConfinamento && (somaPorTipo.diasPastagem > 0 || somaPorTipo.diasConfinamento > 0 || somaPorTipo.diasMisto > 0) && (
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 220 }}>
               <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 6 }}>Pastagem (até agora)</div>
@@ -1223,6 +1235,16 @@ function DetalheLote({
                 <span>{fmt(somaPorTipo.custoConfinamento)} custo</span>
               </div>
             </div>
+            {somaPorTipo.diasMisto > 0 && (
+              <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 220 }}>
+                <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 6 }}>Misto (até agora)</div>
+                <div style={{ fontSize: 12, display: 'flex', gap: 14 }}>
+                  <span>{somaPorTipo.diasMisto} dia(s)</span>
+                  <span>{fmtNum(somaPorTipo.ganhoMisto, 1)} kg ganhos</span>
+                  <span>{fmt(somaPorTipo.custoMisto)} custo</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1594,7 +1616,7 @@ function TabelaPorEtapa({
                 <td>
                   {nomeCiclo(ciclosPorLote, e.lote_id, e.numero)}
                   {mostrarLote ? ` (${nomeDoLote})` : ''}
-                  {e.tipoCiclo === 'pastagem' ? ' · pastagem' : ''}
+                  {e.tipoCiclo === 'pastagem' ? ' · pastagem' : e.tipoCiclo === 'misto' ? ' · misto' : ''}
                 </td>
                 <td>{e.dias}</td>
                 <td>{fmtNum(e.ganhoPeso, 1)}</td>
@@ -2657,11 +2679,14 @@ function ModalEditarCiclos({
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#2e7d32' }}>
                   Ciclo {l.numero}{l.numero === lote.ciclo_atual ? ' (atual)' : ''}
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--gray-500)', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={l.tipo_ciclo === 'pastagem'}
-                    onChange={() => update(idx, { tipo_ciclo: l.tipo_ciclo === 'pastagem' ? 'confinamento' : 'pastagem' })} />
-                  É pastagem
-                </label>
+                <div className="form-group" style={{ flex: '0 0 auto', minWidth: 160 }}>
+                  <select className="form-input" value={l.tipo_ciclo} style={{ fontSize: 12, padding: '4px 8px' }}
+                    onChange={e => update(idx, { tipo_ciclo: e.target.value as TipoCiclo })}>
+                    <option value="confinamento">Confinamento</option>
+                    <option value="pastagem">Pastagem</option>
+                    <option value="misto">Misto (ração + pasto)</option>
+                  </select>
+                </div>
               </div>
               <div className="form-row-2">
                 <div className="form-group">

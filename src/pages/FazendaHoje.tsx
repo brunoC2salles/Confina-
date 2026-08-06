@@ -343,8 +343,8 @@ export default function FazendaHoje() {
                     <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>{g.cicloNome}</div>
                   </div>
                   {g.tipoCiclo && (
-                    <span className={`badge ${g.tipoCiclo === 'confinamento' ? 'badge-green' : 'badge-amber'}`}>
-                      {g.tipoCiclo === 'confinamento' ? 'Confinamento' : 'Pastagem'}
+                    <span className={`badge ${g.tipoCiclo === 'confinamento' ? 'badge-green' : g.tipoCiclo === 'misto' ? 'badge-blue' : 'badge-amber'}`}>
+                      {g.tipoCiclo === 'confinamento' ? 'Confinamento' : g.tipoCiclo === 'misto' ? 'Misto' : 'Pastagem'}
                     </span>
                   )}
                 </div>

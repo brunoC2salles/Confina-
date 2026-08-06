@@ -16,8 +16,8 @@ interface Resumo {
   custos_variaveis: number; custos_fixos: number; custo_total: number
   lucro_total: number; qtd_saidas: number; qtd_animais: number
   lucro_por_animal: number; margem_pct: number
-  custo_pastagem: number; custo_confinamento: number
-  ganho_pastagem: number; ganho_confinamento: number
+  custo_pastagem: number; custo_confinamento: number; custo_misto: number
+  ganho_pastagem: number; ganho_confinamento: number; ganho_misto: number
 }
 
 export default function Relatorios() {
@@ -67,14 +67,16 @@ export default function Relatorios() {
 
         const custo_pastagem      = ss.reduce((t, s) => t + (s.custo_alimentacao_pastagem_total ?? 0) + (s.custo_operacional_pastagem_total ?? 0), 0)
         const custo_confinamento  = ss.reduce((t, s) => t + (s.custo_alimentacao_confinamento_total ?? 0) + (s.custo_operacional_confinamento_total ?? 0), 0)
+        const custo_misto         = ss.reduce((t, s) => t + (s.custo_alimentacao_misto_total ?? 0) + (s.custo_operacional_misto_total ?? 0), 0)
         const ganho_pastagem      = ss.reduce((t, s) => t + (s.ganho_peso_pastagem_total ?? 0), 0)
         const ganho_confinamento  = ss.reduce((t, s) => t + (s.ganho_peso_confinamento_total ?? 0), 0)
+        const ganho_misto         = ss.reduce((t, s) => t + (s.ganho_peso_misto_total ?? 0), 0)
 
         setResumo({
           receita_bruta, total_comissoes, total_encargos, receita_liquida,
           custo_compra, custo_alimentacao, custos_variaveis, custos_fixos, custo_total,
           lucro_total, qtd_saidas: ss.length, qtd_animais, lucro_por_animal, margem_pct,
-          custo_pastagem, custo_confinamento, ganho_pastagem, ganho_confinamento,
+          custo_pastagem, custo_confinamento, custo_misto, ganho_pastagem, ganho_confinamento, ganho_misto,
         })
       } catch {
         setErro('Não foi possível carregar os relatórios. Verifique sua conexão.')
@@ -116,6 +118,8 @@ export default function Relatorios() {
       ['Ganho de peso em pastagem (kg)', fmtNum(resumo.ganho_pastagem, 0)],
       ['Custo em confinamento', fmt(resumo.custo_confinamento)],
       ['Ganho de peso em confinamento (kg)', fmtNum(resumo.ganho_confinamento, 0)],
+      ['Custo em misto', fmt(resumo.custo_misto)],
+      ['Ganho de peso em misto (kg)', fmtNum(resumo.ganho_misto, 0)],
     ]
     const csv = rows.map(r => r.join(',')).join('\n')
     const a = document.createElement('a')
@@ -200,9 +204,9 @@ export default function Relatorios() {
             </div>
           </div>
 
-          {(resumo.custo_pastagem > 0 || resumo.ganho_pastagem > 0) && (
+          {(resumo.custo_pastagem > 0 || resumo.ganho_pastagem > 0 || resumo.custo_misto > 0 || resumo.ganho_misto > 0) && (
             <div className="no-print card" style={{ marginTop: 16 }}>
-              <div style={{ fontWeight: 600, marginBottom: 14 }}>Pastagem x Confinamento no período</div>
+              <div style={{ fontWeight: 600, marginBottom: 14 }}>Pastagem x Confinamento x Misto no período</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
                 <div>
                   <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 4 }}>Pastagem</div>
@@ -214,6 +218,13 @@ export default function Relatorios() {
                   <Row label="Custo" value={fmt(resumo.custo_confinamento)} />
                   <Row label="Ganho de peso" value={`${fmtNum(resumo.ganho_confinamento, 0)} kg`} />
                 </div>
+                {(resumo.custo_misto > 0 || resumo.ganho_misto > 0) && (
+                  <div>
+                    <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 4 }}>Misto</div>
+                    <Row label="Custo" value={fmt(resumo.custo_misto)} />
+                    <Row label="Ganho de peso" value={`${fmtNum(resumo.ganho_misto, 0)} kg`} />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -272,15 +283,21 @@ function RelatorioImprimivel({ periodo, inicio, fim, resumo }: { periodo: Period
         </tbody>
       </table>
 
-      {(resumo.custo_pastagem > 0 || resumo.ganho_pastagem > 0) && (
+      {(resumo.custo_pastagem > 0 || resumo.ganho_pastagem > 0 || resumo.custo_misto > 0 || resumo.ganho_misto > 0) && (
         <>
-          <h2 style={{ fontSize: 14, fontWeight: 700, borderBottom: '1px solid #000', paddingBottom: 4, marginBottom: 10, marginTop: 20 }}>Pastagem x Confinamento</h2>
+          <h2 style={{ fontSize: 14, fontWeight: 700, borderBottom: '1px solid #000', paddingBottom: 4, marginBottom: 10, marginTop: 20 }}>Pastagem x Confinamento x Misto</h2>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <tbody>
               <LinhaRelatorio label="Custo em pastagem" valor={fmt(resumo.custo_pastagem)} />
               <LinhaRelatorio label="Ganho de peso em pastagem" valor={`${fmtNum(resumo.ganho_pastagem, 0)} kg`} />
               <LinhaRelatorio label="Custo em confinamento" valor={fmt(resumo.custo_confinamento)} />
               <LinhaRelatorio label="Ganho de peso em confinamento" valor={`${fmtNum(resumo.ganho_confinamento, 0)} kg`} />
+              {(resumo.custo_misto > 0 || resumo.ganho_misto > 0) && (
+                <>
+                  <LinhaRelatorio label="Custo em misto" valor={fmt(resumo.custo_misto)} />
+                  <LinhaRelatorio label="Ganho de peso em misto" valor={`${fmtNum(resumo.ganho_misto, 0)} kg`} />
+                </>
+              )}
             </tbody>
           </table>
         </>

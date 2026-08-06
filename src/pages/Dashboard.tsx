@@ -22,8 +22,8 @@ export default function Dashboard() {
     totalAnimais: 0, pesoMedioGeral: 0,
     receitaTotal: 0, custoTotal: 0, lucroTotal: 0, qtdVendidos: 0,
     valorCompraTotal: 0,
-    custoPastagemTotal: 0, custoConfinamentoTotal: 0,
-    ganhoPastagemTotal: 0, ganhoConfinamentoTotal: 0,
+    custoPastagemTotal: 0, custoConfinamentoTotal: 0, custoMistoTotal: 0,
+    ganhoPastagemTotal: 0, ganhoConfinamentoTotal: 0, ganhoMistoTotal: 0,
   })
   const [loadMetricas, setLoadMetricas] = useState(true)
   const [erroMetricas, setErroMetricas] = useState<string | null>(null)
@@ -36,7 +36,7 @@ export default function Dashboard() {
       try {
         const [{ data: animais, error: e1 }, { data: saidas, error: e2 }, { count: qtdVendidos, error: e3 }] = await Promise.all([
           supabase.from('animais').select('peso_entrada, valor_compra').eq('user_id', user.id).eq('status', 'ativo'),
-          supabase.from('saidas_grupo').select('receita_liquida, custo_compra_total, custo_alimentacao_total, custos_variaveis_total, custos_fixos_rateados, lucro_total, custo_alimentacao_pastagem_total, custo_alimentacao_confinamento_total, custo_operacional_pastagem_total, custo_operacional_confinamento_total, ganho_peso_pastagem_total, ganho_peso_confinamento_total').eq('user_id', user.id),
+          supabase.from('saidas_grupo').select('receita_liquida, custo_compra_total, custo_alimentacao_total, custos_variaveis_total, custos_fixos_rateados, lucro_total, custo_alimentacao_pastagem_total, custo_alimentacao_confinamento_total, custo_alimentacao_misto_total, custo_operacional_pastagem_total, custo_operacional_confinamento_total, custo_operacional_misto_total, ganho_peso_pastagem_total, ganho_peso_confinamento_total, ganho_peso_misto_total').eq('user_id', user.id),
           supabase.from('movimentacoes_animais').select('id', { count: 'exact', head: true }).eq('user_id', user.id).not('saida_grupo_id', 'is', null),
         ])
         if (e1) throw e1
@@ -57,12 +57,14 @@ export default function Dashboard() {
 
         const custoPastagemTotal = ss.reduce((t, s) => t + (s.custo_alimentacao_pastagem_total ?? 0) + (s.custo_operacional_pastagem_total ?? 0), 0)
         const custoConfinamentoTotal = ss.reduce((t, s) => t + (s.custo_alimentacao_confinamento_total ?? 0) + (s.custo_operacional_confinamento_total ?? 0), 0)
+        const custoMistoTotal = ss.reduce((t, s) => t + (s.custo_alimentacao_misto_total ?? 0) + (s.custo_operacional_misto_total ?? 0), 0)
         const ganhoPastagemTotal = ss.reduce((t, s) => t + (s.ganho_peso_pastagem_total ?? 0), 0)
         const ganhoConfinamentoTotal = ss.reduce((t, s) => t + (s.ganho_peso_confinamento_total ?? 0), 0)
+        const ganhoMistoTotal = ss.reduce((t, s) => t + (s.ganho_peso_misto_total ?? 0), 0)
 
         setMetricas({
           totalAnimais, pesoMedioGeral, receitaTotal, custoTotal, lucroTotal, qtdVendidos: qtdVendidos ?? 0, valorCompraTotal,
-          custoPastagemTotal, custoConfinamentoTotal, ganhoPastagemTotal, ganhoConfinamentoTotal,
+          custoPastagemTotal, custoConfinamentoTotal, custoMistoTotal, ganhoPastagemTotal, ganhoConfinamentoTotal, ganhoMistoTotal,
         })
       } catch {
         setErroMetricas('Não foi possível carregar as métricas. Verifique sua conexão.')
@@ -167,8 +169,8 @@ export default function Dashboard() {
       )}
 
       {/* Só aparece se houver animais vendidos que passaram por algum ciclo
-          marcado como pastagem — senão a quebra fica sempre zerada e é ruído. */}
-      {!loadMetricas && (metricas.custoPastagemTotal > 0 || metricas.ganhoPastagemTotal > 0) && (
+          marcado como pastagem/misto — senão a quebra fica sempre zerada e é ruído. */}
+      {!loadMetricas && (metricas.custoPastagemTotal > 0 || metricas.ganhoPastagemTotal > 0 || metricas.custoMistoTotal > 0 || metricas.ganhoMistoTotal > 0) && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
           <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0', minWidth: 0 }}>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>Pastagem — custo e ganho (vendidos)</div>
@@ -180,6 +182,13 @@ export default function Dashboard() {
             <div style={{ fontSize: 15, fontWeight: 600, overflowWrap: 'break-word' }}>{fmt(metricas.custoConfinamentoTotal)}</div>
             <div style={{ fontSize: 12, color: '#9e9e9e', marginTop: 2 }}>{fmtNum(metricas.ganhoConfinamentoTotal, 0)} kg ganhos</div>
           </div>
+          {(metricas.custoMistoTotal > 0 || metricas.ganhoMistoTotal > 0) && (
+            <div style={{ background: '#fafafa', borderRadius: 10, padding: 16, border: '1px solid #f0f0f0', minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 6 }}>Misto — custo e ganho (vendidos)</div>
+              <div style={{ fontSize: 15, fontWeight: 600, overflowWrap: 'break-word' }}>{fmt(metricas.custoMistoTotal)}</div>
+              <div style={{ fontSize: 12, color: '#9e9e9e', marginTop: 2 }}>{fmtNum(metricas.ganhoMistoTotal, 0)} kg ganhos</div>
+            </div>
+          )}
         </div>
       )}
 
