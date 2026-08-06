@@ -36,6 +36,45 @@ interface LinhaVendido {
   lucroPorAnimal: number
 }
 
+type SortDir = 'asc' | 'desc'
+interface SortState<T> { key: keyof T; dir: SortDir }
+
+function ordenarLinhas<T>(arr: T[], sort: SortState<T> | null): T[] {
+  if (!sort) return arr
+  const { key, dir } = sort
+  const copia = [...arr]
+  copia.sort((a, b) => {
+    const va = a[key] as unknown
+    const vb = b[key] as unknown
+    if (va == null && vb == null) return 0
+    if (va == null) return 1
+    if (vb == null) return -1
+    if (typeof va === 'string' && typeof vb === 'string') {
+      return va.localeCompare(vb, 'pt-BR', { numeric: true }) * (dir === 'asc' ? 1 : -1)
+    }
+    return ((va as number) - (vb as number)) * (dir === 'asc' ? 1 : -1)
+  })
+  return copia
+}
+
+function SortableTh<T>({ label, columnKey, sort, onSort }: {
+  label: string
+  columnKey: keyof T
+  sort: SortState<T> | null
+  onSort: (key: keyof T) => void
+}) {
+  const ativo = sort?.key === columnKey
+  return (
+    <th
+      onClick={() => onSort(columnKey)}
+      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+      title="Clique para ordenar"
+    >
+      {label}{ativo ? (sort!.dir === 'asc' ? ' (crescente)' : ' (decrescente)') : ''}
+    </th>
+  )
+}
+
 export default function Comparativo() {
   const { user } = useAuth()
   const { lotes } = useLotes()
@@ -47,6 +86,15 @@ export default function Comparativo() {
   const [vendidos, setVendidos] = useState<LinhaVendido[]>([])
   const [loadingAtivos, setLoadingAtivos] = useState(true)
   const [loadingVendidos, setLoadingVendidos] = useState(true)
+  const [sortAtivos, setSortAtivos] = useState<SortState<LinhaAtivo> | null>(null)
+  const [sortVendidos, setSortVendidos] = useState<SortState<LinhaVendido> | null>(null)
+
+  const toggleSortAtivos = useCallback((key: keyof LinhaAtivo) => {
+    setSortAtivos(prev => prev?.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+  }, [])
+  const toggleSortVendidos = useCallback((key: keyof LinhaVendido) => {
+    setSortVendidos(prev => prev?.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+  }, [])
 
   const [preco, setPreco] = useState('')
   const [pctComissao, setPctComissao] = useState('2')
@@ -195,6 +243,8 @@ export default function Comparativo() {
 
   const loading = tab === 'ativos' ? loadingAtivos : loadingVendidos
   const listaVazia = tab === 'ativos' ? ativos.length === 0 : vendidos.length === 0
+  const ativosOrdenados = useMemo(() => ordenarLinhas(ativos, sortAtivos), [ativos, sortAtivos])
+  const vendidosOrdenados = useMemo(() => ordenarLinhas(vendidos, sortVendidos), [vendidos, sortVendidos])
 
   return (
     <div className="page">
@@ -241,12 +291,18 @@ export default function Comparativo() {
             <table>
               <thead>
                 <tr>
-                  <th>Lote</th><th>Animais</th><th>Peso médio</th><th>GMD</th>
-                  <th>Custo/kg ganho</th><th>Valor investido</th><th>Lucro projetado</th><th>Margem projetada</th>
+                  <SortableTh<LinhaAtivo> label="Lote" columnKey="loteNome" sort={sortAtivos} onSort={toggleSortAtivos} />
+                  <SortableTh<LinhaAtivo> label="Animais" columnKey="qtd" sort={sortAtivos} onSort={toggleSortAtivos} />
+                  <SortableTh<LinhaAtivo> label="Peso médio" columnKey="pesoMedio" sort={sortAtivos} onSort={toggleSortAtivos} />
+                  <SortableTh<LinhaAtivo> label="GMD" columnKey="gmdMedio" sort={sortAtivos} onSort={toggleSortAtivos} />
+                  <SortableTh<LinhaAtivo> label="Custo/kg ganho" columnKey="custoPorKg" sort={sortAtivos} onSort={toggleSortAtivos} />
+                  <SortableTh<LinhaAtivo> label="Valor investido" columnKey="valorCompraTotal" sort={sortAtivos} onSort={toggleSortAtivos} />
+                  <SortableTh<LinhaAtivo> label="Lucro projetado" columnKey="lucroProjetado" sort={sortAtivos} onSort={toggleSortAtivos} />
+                  <SortableTh<LinhaAtivo> label="Margem projetada" columnKey="margemProjetada" sort={sortAtivos} onSort={toggleSortAtivos} />
                 </tr>
               </thead>
               <tbody>
-                {ativos.map(l => (
+                {ativosOrdenados.map(l => (
                   <tr key={l.loteId}>
                     <td><strong>{l.loteNome}</strong></td>
                     <td>{l.qtd}</td>
@@ -270,12 +326,18 @@ export default function Comparativo() {
             <table>
               <thead>
                 <tr>
-                  <th>Lote</th><th>Animais vendidos</th><th>Peso médio na venda</th><th>GMD</th>
-                  <th>Custo/kg ganho</th><th>Lucro total</th><th>Margem</th><th>Lucro por animal</th>
+                  <SortableTh<LinhaVendido> label="Lote" columnKey="loteNome" sort={sortVendidos} onSort={toggleSortVendidos} />
+                  <SortableTh<LinhaVendido> label="Animais vendidos" columnKey="qtd" sort={sortVendidos} onSort={toggleSortVendidos} />
+                  <SortableTh<LinhaVendido> label="Peso médio na venda" columnKey="pesoMedioVenda" sort={sortVendidos} onSort={toggleSortVendidos} />
+                  <SortableTh<LinhaVendido> label="GMD" columnKey="gmdMedio" sort={sortVendidos} onSort={toggleSortVendidos} />
+                  <SortableTh<LinhaVendido> label="Custo/kg ganho" columnKey="custoPorKg" sort={sortVendidos} onSort={toggleSortVendidos} />
+                  <SortableTh<LinhaVendido> label="Lucro total" columnKey="lucroTotal" sort={sortVendidos} onSort={toggleSortVendidos} />
+                  <SortableTh<LinhaVendido> label="Margem" columnKey="margemPct" sort={sortVendidos} onSort={toggleSortVendidos} />
+                  <SortableTh<LinhaVendido> label="Lucro por animal" columnKey="lucroPorAnimal" sort={sortVendidos} onSort={toggleSortVendidos} />
                 </tr>
               </thead>
               <tbody>
-                {vendidos.map(l => (
+                {vendidosOrdenados.map(l => (
                   <tr key={l.loteId}>
                     <td><strong>{l.loteNome}</strong></td>
                     <td>{l.qtd}</td>

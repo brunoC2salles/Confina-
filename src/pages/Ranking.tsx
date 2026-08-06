@@ -6,9 +6,10 @@ import { supabase } from '@/lib/supabase'
 import { PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt, fmtNum, obterRendimento, obterBonus } from '@/lib/calculations'
 
-type Criterio = 'rendimento' | 'ganho' | 'custo_kg' | 'lucro'
+type Criterio = 'rendimento' | 'ganho' | 'custo_kg' | 'lucro' | 'peso'
 const CRITERIOS: Array<{ value: Criterio; label: string }> = [
   { value: 'lucro',    label: 'Lucro' },
+  { value: 'peso',     label: 'Peso' },
   { value: 'ganho',    label: 'Ganho de peso' },
   { value: 'custo_kg', label: 'Custo por kg ganho' },
   { value: 'rendimento', label: 'Rendimento' },
@@ -174,14 +175,14 @@ export default function Ranking() {
 
   const ativosOrdenados = useMemo(() => {
     const arr = [...ativosFiltrados]
-    const key = (a: LinhaAtivo) => criterio === 'rendimento' ? a.rendPct : criterio === 'ganho' ? a.ganho : criterio === 'custo_kg' ? (a.custoPorKg ?? -Infinity) : (a.lucroProjetado ?? -Infinity)
+    const key = (a: LinhaAtivo) => criterio === 'rendimento' ? a.rendPct : criterio === 'peso' ? a.pesoAtual : criterio === 'ganho' ? a.ganho : criterio === 'custo_kg' ? (a.custoPorKg ?? -Infinity) : (a.lucroProjetado ?? -Infinity)
     arr.sort((a, b) => (key(b) - key(a)) * (ordemDesc ? 1 : -1))
     return arr
   }, [ativosFiltrados, criterio, ordemDesc])
 
   const vendidosOrdenados = useMemo(() => {
     const arr = [...vendidosFiltrados]
-    const key = (v: LinhaVendido) => criterio === 'rendimento' ? v.rendPct : criterio === 'ganho' ? v.ganho : criterio === 'custo_kg' ? (v.custoPorKg ?? -Infinity) : v.lucro
+    const key = (v: LinhaVendido) => criterio === 'rendimento' ? v.rendPct : criterio === 'peso' ? v.pesoVenda : criterio === 'ganho' ? v.ganho : criterio === 'custo_kg' ? (v.custoPorKg ?? -Infinity) : v.lucro
     arr.sort((a, b) => (key(b) - key(a)) * (ordemDesc ? 1 : -1))
     return arr
   }, [vendidosFiltrados, criterio, ordemDesc])
