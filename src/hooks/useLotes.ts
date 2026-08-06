@@ -325,19 +325,56 @@ export function useLotes() {
   }
 
   // Reescreve todos os ciclos de um lote de uma vez: permite adicionar ciclo
-  // novo (linha sem id), editar os existentes, e SEMPRE recalcula data_inicio/
-  // data_fim de todos em cascata a partir de data_criacao — pra não deixar
-  // ciclo nenhum com data desencontrada depois de qualquer alteração. Isso é
-  // o que o motor de custo usa pra saber qual ciclo (e qual dieta) vale em
-  // cada dia, então precisa estar sempre consistente.
+  // novo (linha sem id), editar os existentes, e agora recebe a data_inicio
+  // de cada ciclo (numero >= 2) diretamente do usuário — não é mais derivada
+  // por cascata de dias_planejados (esse campo virou só uma estimativa de
+  // planejamento, sem efeito no cálculo). O ciclo 1 continua amarrado à data
+  // de entrada do lote (dataCriacao). data_fim de cada ciclo é sempre
+  // recalculado = data_inicio do próximo (ou null no último), pra nunca
+  // deixar gap nem sobreposição — é o que o motor de custo usa pra saber
+  // qual ciclo (e qual dieta) vale em cada dia.
+  //
+  // As datas dos ciclos precisam ser preenchidas em prefixo contíguo a partir
+  // do 1 (não pode ter ciclo 3 com data e ciclo 2 sem) e estritamente
+  // crescentes entre si.
+  //
+  // Quando a data_inicio de um ciclo já existente muda, os eventos
+  // individuais em animais_ciclo_eventos que apontavam pra data antiga desse
+  // mesmo lote/ciclo são atualizados junto — sem isso, animais que passaram
+  // por avancarCiclo (evento próprio) ignorariam a nova data do lote, porque
+  // o motor de custo prioriza o evento do animal sobre a data do ciclo do
+  // lote (ver encontrarCicloAtivoParaAnimal em custoAnimal.ts). Avanços
+  // parciais com data própria e diferente da data do lote não são tocados —
+  // só os eventos cuja data batia exatamente com a data antiga do ciclo.
   const salvarCiclosLote = async (
     loteId: string,
     dataCriacao: string,
-    ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null }>
+    ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null }>
   ) => {
     if (!user) return { error: 'Não autenticado' }
     if (ciclos.length === 0) return { error: 'O lote precisa ter ao menos um ciclo' }
     if (ciclos.length > 8) return { error: 'Máximo de 8 ciclos por lote' }
+
+    const ordenados = [...ciclos].sort((a, b) => a.numero - b.numero)
+
+    // Ciclo 1 sempre começa na data de entrada do lote.
+    const datasFinais = ordenados.map((c, i) => i === 0 ? dataCriacao : c.data_inicio)
+
+    // Prefixo contíguo: se um ciclo não tem data, nenhum dos seguintes pode ter.
+    const primeiroSemData = datasFinais.findIndex(d => !d)
+    if (primeiroSemData !== -1) {
+      const sobrouComData = datasFinais.slice(primeiroSemData + 1).some(d => !!d)
+      if (sobrouComData) {
+        return { error: `Ciclo ${ordenados[primeiroSemData].numero}: informe a data de início antes de datar os ciclos seguintes` }
+      }
+    }
+
+    // Datas estritamente crescentes entre os ciclos que já têm data.
+    for (let i = 1; i < datasFinais.length; i++) {
+      if (datasFinais[i] && datasFinais[i - 1] && datasFinais[i]! <= datasFinais[i - 1]!) {
+        return { error: `Ciclo ${ordenados[i].numero}: a data de início precisa ser posterior à do ciclo ${ordenados[i - 1].numero}` }
+      }
+    }
 
     const { error: eLote } = await supabase.from('lotes')
       .update({ data_criacao: dataCriacao, num_ciclos: ciclos.length }).eq('id', loteId)
@@ -349,7 +386,7 @@ export function useLotes() {
     // novo inserido depois, violando a constraint única (lote_id, numero).
     const idsMantidos = ciclos.filter(c => c.id).map(c => c.id as string)
     const { data: existentes, error: eExistentes } = await supabase
-      .from('ciclos_lote').select('id').eq('lote_id', loteId)
+      .from('ciclos_lote').select('id, numero, data_inicio').eq('lote_id', loteId)
     if (eExistentes) return { error: eExistentes.message }
     const idsParaRemover = (existentes ?? [])
       .map(e => e.id as string)
@@ -359,14 +396,15 @@ export function useLotes() {
       if (eDel) return { error: eDel.message }
     }
 
-    const ordenados = [...ciclos].sort((a, b) => a.numero - b.numero)
-    let cursor = new Date(dataCriacao + 'T00:00:00')
+    // Data antiga por número de ciclo, pra saber depois quais eventos por
+    // animal precisam ser sincronizados com a data nova.
+    const dataAntigaPorNumero = new Map<number, string | null>()
+    for (const e of existentes ?? []) dataAntigaPorNumero.set(e.numero as number, e.data_inicio as string | null)
+
     for (let i = 0; i < ordenados.length; i++) {
       const c = ordenados[i]
-      const dataInicio = cursor.toISOString().slice(0, 10)
-      const proximo = new Date(cursor)
-      proximo.setDate(proximo.getDate() + c.dias_planejados)
-      const dataFim = i === ordenados.length - 1 ? null : proximo.toISOString().slice(0, 10)
+      const dataInicio = datasFinais[i]
+      const dataFim = i === ordenados.length - 1 ? null : datasFinais[i + 1]
 
       if (c.id) {
         const { error } = await supabase.from('ciclos_lote').update({
@@ -382,7 +420,15 @@ export function useLotes() {
         })
         if (error) return { error: `Ciclo ${c.numero}: ${error.message}` }
       }
-      cursor = proximo
+
+      // Sincroniza animais_ciclo_eventos quando a data desse ciclo mudou.
+      const dataAntiga = dataAntigaPorNumero.get(c.numero) ?? null
+      if (dataAntiga && dataInicio && dataAntiga !== dataInicio) {
+        const { error: eEv } = await supabase.from('animais_ciclo_eventos')
+          .update({ data: dataInicio })
+          .eq('lote_id', loteId).eq('ciclo_numero', c.numero).eq('data', dataAntiga)
+        if (eEv) return { error: `Ciclo ${c.numero}: eventos de animais não puderam ser sincronizados (${eEv.message})` }
+      }
     }
 
     await fetchLotes()
