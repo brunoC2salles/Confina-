@@ -265,6 +265,70 @@ export interface Compra {
   created_at: string
 }
 
+// ─── Grupos de Consumo de Ração (compra rateada entre lotes) ──────────────
+// Um grupo representa um conjunto de lotes que dividem fisicamente a mesma
+// leva de ração comprada, para uma dieta formulada específica. Ver
+// src/lib/custoRacaoGrupo.ts para o motor de cálculo (saldo, custo médio
+// ponderado, rateio por lote/dia).
+export type GrupoConsumoStatus = 'ativo' | 'encerrado'
+
+export interface GrupoConsumoRacao {
+  id: string
+  nome: string
+  dieta_id: string
+  status: GrupoConsumoStatus
+  observacoes: string | null
+  user_id: string
+  created_at: string
+  updated_at: string
+}
+
+// Lote que participa de um grupo, com janela de participação (permite lote
+// entrar/sair do grupo ao longo do tempo sem perder o histórico).
+export interface GrupoConsumoLoteRow {
+  id: string
+  grupo_id: string
+  lote_id: string
+  data_inicio: string
+  data_fim: string | null
+  user_id: string
+  created_at: string
+}
+
+// Compra de ração vinculada ao grupo. data_inicio_uso é quando a leva
+// comprada começa a ser consumida (pode ser diferente de data_compra) — é
+// essa data que fecha o período de custo médio anterior e abre um novo.
+export interface CompraRacaoGrupo {
+  id: string
+  grupo_id: string
+  parceiro_id: string | null
+  quantidade_kg: number
+  valor_total: number
+  data_compra: string
+  data_inicio_uso: string
+  observacoes: string | null
+  user_id: string
+  created_at: string
+}
+
+// Histórico de custo médio ponderado do grupo (kardex) — cada nova compra
+// fecha o período aberto (vigente_ate = data_inicio_uso da compra nova) e
+// abre um período novo com o custo médio recalculado. saldo_kg_inicio e
+// custo_medio_kg são calculados pela aplicação (useGruposConsumoRacao.ts),
+// não pelo banco, porque dependem do consumo teórico (peso x %MS) do motor
+// de custo existente.
+export interface GrupoConsumoPeriodo {
+  id: string
+  grupo_id: string
+  compra_id: string | null
+  vigente_desde: string
+  vigente_ate: string | null
+  saldo_kg_inicio: number
+  custo_medio_kg: number
+  user_id: string
+  created_at: string
+}
+
 export interface Parceiro {
   id: string
   nome: string

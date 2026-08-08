@@ -1216,7 +1216,7 @@ export function useCustoEngine() {
 
     if (loteIdsEnvolvidos.size > 0) {
       const loteIdsArr = Array.from(loteIdsEnvolvidos)
-      const [{ data: ciclosData }, { data: custosOpData }, { data: racaoRealData }, ativosData, { data: eventosCicloData }, { data: trocasDietaData }] = await Promise.all([
+      const [{ data: ciclosData }, { data: custosOpData }, { data: racaoRealData }, ativosData, { data: eventosCicloData }, { data: trocasDietaData }, { data: membrosGrupoData }] = await Promise.all([
         supabase.from('ciclos_lote').select('lote_id, numero, tipo_ciclo, dieta_id, gmd_esperado, data_inicio, data_fim').in('lote_id', loteIdsArr),
         supabase.from('custos_operacionais_lote').select('lote_id, valor, data_lancamento').in('lote_id', loteIdsArr),
         supabase.from('custos_racao_real_lote').select('lote_id, valor_total, data_inicio, ciclo_numero').in('lote_id', loteIdsArr),
@@ -1224,6 +1224,11 @@ export function useCustoEngine() {
           supabase.from('animais').select('lote_atual_id').eq('status', 'ativo').in('lote_atual_id', loteIdsArr).range(from, to)),
         supabase.from('animais_ciclo_eventos').select('animal_id, lote_id, ciclo_numero, ciclo_numero_anterior, data').in('lote_id', loteIdsArr),
         supabase.from('trocas_dieta_lote').select('lote_id, ciclo_numero, dieta_id, data').in('lote_id', loteIdsArr),
+        // Grupos de Consumo de Ração (compra rateada) em que algum desses lotes
+        // participa — usado abaixo pra gerar custo real "sintético" por dia, no
+        // mesmo formato do custo real manual (custosRacaoRealPorLote), a partir
+        // do custo médio ponderado das compras do grupo (ver custoRacaoGrupo.ts).
+        supabase.from('grupos_consumo_lotes').select('lote_id, grupo_id, data_inicio, data_fim').in('lote_id', loteIdsArr),
       ])
       ciclos = (ciclosData ?? []) as CicloInfo[]
       trocasDieta = (trocasDietaData ?? []) as TrocaDietaCiclo[]
@@ -1241,8 +1246,9 @@ export function useCustoEngine() {
 
       const custosOp = (custosOpData ?? []) as Array<{ lote_id: string; valor: number; data_lancamento: string }>
       const racaoReal = (racaoRealData ?? []) as Array<{ lote_id: string; valor_total: number; data_inicio: string; ciclo_numero: number | null }>
+      const membrosGrupo = (membrosGrupoData ?? []) as Array<{ lote_id: string; grupo_id: string; data_inicio: string; data_fim: string | null }>
 
-      if (custosOp.length > 0 || racaoReal.length > 0) {
+      if (custosOp.length > 0 || racaoReal.length > 0 || membrosGrupo.length > 0) {
         // rateio histórico: busca TODAS as movimentações desses lotes (qualquer
         // animal que já passou por eles, não só o lote em cálculo), reconstrói
         // os períodos de cada um e conta quantos estavam no lote em qualquer
@@ -1385,6 +1391,111 @@ export function useCustoEngine() {
                 }
                 ;((custosRacaoRealPorLote[loteId] ??= {} as CustoRacaoRealPorDia)[dia] ??= []).push(info)
               }
+            }
+          }
+        }
+
+        // ─── Custo real de ração via Grupo de Consumo (compra rateada) ─────
+        // Mesmo destino (custosRacaoRealPorLote), mas a fonte do valor não é
+        // um lançamento manual: é o consumo teórico do lote (peso x %MS da
+        // dieta DO GRUPO — pode ser diferente da dieta do ciclo, já que quem
+        // decide quais lotes compartilham a leva física é a composição do
+        // grupo, não o ciclo) multiplicado pelo custo médio ponderado vigente
+        // no período que cobre aquele dia (ver grupos_consumo_periodos /
+        // custoRacaoGrupo.ts). Sempre cicloNumero null — rateio de grupo vale
+        // pro lote inteiro; a exclusão de quem não compartilha a compra já
+        // acontece na composição do grupo (produtor escolhe os membros).
+        if (membrosGrupo.length > 0) {
+          const grupoIds = Array.from(new Set(membrosGrupo.map(m => m.grupo_id)))
+          const [{ data: gruposData }, { data: periodosGrupoData }] = await Promise.all([
+            supabase.from('grupos_consumo_racao').select('id, dieta_id').in('id', grupoIds),
+            supabase.from('grupos_consumo_periodos').select('grupo_id, vigente_desde, vigente_ate, custo_medio_kg').in('grupo_id', grupoIds),
+          ])
+          const dietaIdPorGrupo: Record<string, string> = {}
+          for (const g of (gruposData ?? []) as Array<{ id: string; dieta_id: string }>) dietaIdPorGrupo[g.id] = g.dieta_id
+
+          const dietaIdsGrupo = Array.from(new Set(Object.values(dietaIdPorGrupo)))
+          const pctPorDietaGrupo: Record<string, number | null> = {}
+          if (dietaIdsGrupo.length > 0) {
+            const { data: dietasPctData } = await supabase.from('dietas').select('id, pct_consumo_pv_ms').in('id', dietaIdsGrupo)
+            for (const d of (dietasPctData ?? []) as Array<{ id: string; pct_consumo_pv_ms: number | null }>) pctPorDietaGrupo[d.id] = d.pct_consumo_pv_ms
+          }
+
+          const periodosPorGrupo: Record<string, Array<{ vigente_desde: string; vigente_ate: string | null; custo_medio_kg: number }>> = {}
+          for (const p of (periodosGrupoData ?? []) as Array<{ grupo_id: string; vigente_desde: string; vigente_ate: string | null; custo_medio_kg: number }>) {
+            (periodosPorGrupo[p.grupo_id] ??= []).push(p)
+          }
+
+          // Peso de cada animal, de novo a partir de todo mundo que já passou
+          // pelos lotes envolvidos (mesmo animalIdsEnvolvidos usado acima pro
+          // racaoReal manual) — busca independente pra não acoplar este bloco
+          // ao `if (racaoReal.length > 0)` acima (grupo pode existir mesmo sem
+          // nenhum lançamento manual).
+          const animalIdsGrupo = Object.keys(periodosPorAnimalTodos)
+          const animaisGrupoBasicoPorId: Record<string, { peso_entrada: number; data_entrada: string }> = {}
+          const pesagensGrupoPorAnimal: Record<string, Array<{ data: string; peso: number }>> = {}
+          if (animalIdsGrupo.length > 0) {
+            const [animaisBasicoData, pesagensTodasData] = await Promise.all([
+              buscarPorIds<{ id: string; peso_entrada: number; data_entrada: string }>(animalIdsGrupo, (idsChunk, from, to) =>
+                supabase.from('animais').select('id, peso_entrada, data_entrada').in('id', idsChunk).range(from, to)),
+              buscarPorIds<{ animal_id: string; data: string; peso: number }>(animalIdsGrupo, (idsChunk, from, to) =>
+                supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', idsChunk).range(from, to)),
+            ])
+            for (const a of animaisBasicoData) animaisGrupoBasicoPorId[a.id] = { peso_entrada: a.peso_entrada, data_entrada: a.data_entrada }
+            for (const p of pesagensTodasData) (pesagensGrupoPorAnimal[p.animal_id] ??= []).push({ data: p.data, peso: p.peso })
+          }
+
+          const hojeDiaGrupo = toDay(new Date().toISOString().slice(0, 10))
+
+          for (const membro of membrosGrupo) {
+            const dietaId = dietaIdPorGrupo[membro.grupo_id]
+            const pct = dietaId ? pctPorDietaGrupo[dietaId] : null
+            if (pct == null) continue
+            const periodosDoGrupo = periodosPorGrupo[membro.grupo_id] ?? []
+            if (periodosDoGrupo.length === 0) continue
+
+            const diaInicioMembro = toDay(membro.data_inicio)
+            const diaFimMembro = membro.data_fim ? toDay(membro.data_fim) : hojeDiaGrupo + 1
+
+            const pesoTotalPorDiaGrupo: Record<number, number> = {}
+            const qtdAtivaPorDiaGrupo: Record<number, number> = {}
+            for (const animalId of animalIdsGrupo) {
+              const periodosDoAnimal = periodosPorAnimalTodos[animalId] ?? []
+              const estevoNesseLote = periodosDoAnimal.some(p => p.lote_id === membro.lote_id)
+              if (!estevoNesseLote) continue
+              const animalBasico = animaisGrupoBasicoPorId[animalId]
+              if (!animalBasico) continue
+              const pesoPorDiaDoAnimal = projetarPesoPorDia(
+                animalBasico, pesagensGrupoPorAnimal[animalId] ?? [], periodosDoAnimal, ciclos,
+                diaInicioMembro, diaFimMembro, eventosPorAnimal[animalId] ?? [],
+              )
+              for (const [diaStr, peso] of Object.entries(pesoPorDiaDoAnimal)) {
+                const dia = Number(diaStr)
+                const periodo = encontrarLoteAtivo(dia, periodosDoAnimal)
+                if (!periodo || periodo.lote_id !== membro.lote_id) continue
+                pesoTotalPorDiaGrupo[dia] = (pesoTotalPorDiaGrupo[dia] ?? 0) + peso
+                qtdAtivaPorDiaGrupo[dia] = (qtdAtivaPorDiaGrupo[dia] ?? 0) + 1
+              }
+            }
+
+            for (let dia = diaInicioMembro; dia < diaFimMembro; dia++) {
+              const pesoTotalDia = pesoTotalPorDiaGrupo[dia] ?? 0
+              if (pesoTotalDia <= 0) continue
+              const periodoVigente = periodosDoGrupo.find(p => {
+                const desde = toDay(p.vigente_desde)
+                const ate = p.vigente_ate ? toDay(p.vigente_ate) : null
+                return dia >= desde && (ate === null || dia < ate)
+              })
+              if (!periodoVigente) continue
+              const consumoKgDia = pesoTotalDia * (pct / 100)
+              const valorTotalDia = consumoKgDia * periodoVigente.custo_medio_kg
+              const info: CustoRacaoRealDiaInfo = {
+                valorTotalDia,
+                pesoTotalDia,
+                qtdAtivaDia: qtdAtivaPorDiaGrupo[dia] ?? 1,
+                cicloNumero: null,
+              }
+              ;((custosRacaoRealPorLote[membro.lote_id] ??= {} as CustoRacaoRealPorDia)[dia] ??= []).push(info)
             }
           }
         }

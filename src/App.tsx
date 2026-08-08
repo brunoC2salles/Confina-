@@ -15,6 +15,7 @@ import Comparativo from '@/pages/Comparativo'
 import Importar from '@/pages/Importar'
 import Dietas from '@/pages/Dietas'
 import Ingredientes from '@/pages/Ingredientes'
+import Compras from '@/pages/Compras'
 import Parceiros from '@/pages/Parceiros'
 import Relatorios from '@/pages/Relatorios'
 import Configuracoes from '@/pages/Configuracoes'
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="importar"     element={<Importar />} />
             <Route path="dietas"       element={<Dietas />} />
             <Route path="ingredientes" element={<Ingredientes />} />
+            <Route path="compras"      element={<Compras />} />
             <Route path="parceiros"    element={<Parceiros />} />
             <Route path="relatorios"   element={<Relatorios />} />
             <Route path="config"       element={<Configuracoes />} />

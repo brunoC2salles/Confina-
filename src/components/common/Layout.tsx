@@ -14,6 +14,7 @@ const NAV_PRINCIPAL = [
   { to: '/importar',      label: 'Importar',     end: false },
   { to: '/dietas',        label: 'Dietas',       end: false },
   { to: '/ingredientes',  label: 'Ingredientes', end: false },
+  { to: '/compras',       label: 'Compras',      end: false },
 ]
 
 const NAV_GESTAO = [
