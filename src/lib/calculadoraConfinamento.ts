@@ -51,14 +51,13 @@ const CAIXA_AGUA_LIMIAR_2A_CAIXA = 360
 const CAIXA_AGUA_VALOR_UNITARIO = 4000
 
 // ── Cocho de alimentação — especificação de material Confina+ ──────────
-// Fonte: planilha de material para cocho de 6 m fornecida por Bruno (ago/2026).
-// O custo cobrado pelo cocho na calculadora usa o total fechado por metro
-// (COCHO_VALOR_POR_METRO = R$2.550,00), que é a fonte da verdade.
-// Os itens abaixo (materiaisCocho) são exibidos apenas como referência/
-// detalhamento — a soma deles não precisa bater exatamente com o total
-// fechado (diferença conhecida de ~R$274,00/m, provavelmente por causa da
-// Corda 3/8, que veio sem valor informado).
-const COCHO_VALOR_POR_METRO = 2550
+// Fonte: planilha de material para cocho de 6 m fornecida por Bruno (ago/2026, v2).
+// O total geral informado na planilha (R$13.563,00 / R$2.393,00 por metro) não bate
+// com a soma dos 26 itens abaixo. Por decisão de Bruno, o valor cobrado pelo cocho
+// na calculadora usa a SOMA RECALCULADA dos itens (R$2.419,00/m), não o total da
+// planilha. Os itens em MATERIAIS_COCHO_REFERENCIA_6M são também exibidos como
+// detalhamento de referência para o cliente.
+const COCHO_VALOR_POR_METRO = 2419
 
 interface MaterialCochoReferencia {
   nome: string
@@ -79,13 +78,14 @@ const MATERIAIS_COCHO_REFERENCIA_6M: MaterialCochoReferencia[] = [
   { nome: 'Telhas Aluzinco 4m', quantidade6m: 6, unidade: 'un', valorUnitario: 184.00, valorPorMetro: 185.00 },
   { nome: 'Cantoneiras mais grossas', quantidade6m: 9, unidade: 'm', valorUnitario: 162.00, valorPorMetro: 41.00 },
   { nome: 'Cantoneiras mais finas', quantidade6m: 12.8, unidade: 'm', valorUnitario: 76.00, valorPorMetro: 27.00 },
+  { nome: 'Tirante 3/8', quantidade6m: 9, unidade: 'm', valorUnitario: 92.00, valorPorMetro: 23.00 },
   { nome: 'Corrente fina', quantidade6m: 3, unidade: 'm', valorUnitario: 12.00, valorPorMetro: 6.00 },
   { nome: 'Tinta', quantidade6m: 1, unidade: 'L', valorUnitario: 65.00, valorPorMetro: 11.00 },
-  { nome: 'Corda 3/8', quantidade6m: 15, unidade: 'm', valorUnitario: null, valorPorMetro: null },
+  { nome: 'Corda 3/8', quantidade6m: 15, unidade: 'm', valorUnitario: 8.00, valorPorMetro: 120.00 },
   { nome: 'Roldana', quantidade6m: 1, unidade: 'un', valorUnitario: 42.00, valorPorMetro: 7.00 },
-  { nome: 'Prego 17 galvanizado', quantidade6m: 4, unidade: 'kg', valorUnitario: 20.00, valorPorMetro: 14.00 },
-  { nome: 'Prego 19 galvanizado', quantidade6m: 2, unidade: 'kg', valorUnitario: 20.00, valorPorMetro: 7.00 },
-  { nome: 'Prego 57', quantidade6m: 2, unidade: 'kg', valorUnitario: 20.00, valorPorMetro: 7.00 },
+  { nome: 'Prego 17x27 galvanizado', quantidade6m: 4, unidade: 'kg', valorUnitario: 20.00, valorPorMetro: 14.00 },
+  { nome: 'Prego 19x39 galvanizado', quantidade6m: 2, unidade: 'kg', valorUnitario: 20.00, valorPorMetro: 7.00 },
+  { nome: 'Prego 24x60', quantidade6m: 2, unidade: 'kg', valorUnitario: 20.00, valorPorMetro: 7.00 },
   { nome: 'Prego telhado', quantidade6m: 2, unidade: 'kg', valorUnitario: 25.00, valorPorMetro: 9.00 },
   { nome: 'Tijolo maciço', quantidade6m: 120, unidade: 'un', valorUnitario: 1.00, valorPorMetro: 30.00 },
   { nome: 'Tijolo 6 furos', quantidade6m: 30, unidade: 'un', valorUnitario: 1.00, valorPorMetro: 5.00 },
