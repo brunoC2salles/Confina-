@@ -35,6 +35,7 @@ export default function CalculadoraConfinamento() {
   const [resultado, setResultado] = useState<CalculadoraResultado | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [detalheCochoAberto, setDetalheCochoAberto] = useState(false)
 
   function handleChange(campo: keyof FormState, valor: string) {
     setForm((prev) => ({ ...prev, [campo]: valor }))
@@ -74,6 +75,7 @@ export default function CalculadoraConfinamento() {
 
     const calculo = calcularConfinamento(input)
     setResultado(calculo)
+    setDetalheCochoAberto(false)
 
     setEnviando(true)
     const { error } = await supabase.from('leads_calculadora').insert({
@@ -102,6 +104,7 @@ export default function CalculadoraConfinamento() {
     setResultado(null)
     setForm(FORM_INICIAL)
     setErro(null)
+    setDetalheCochoAberto(false)
   }
 
   return (
@@ -260,6 +263,45 @@ export default function CalculadoraConfinamento() {
                 </tbody>
               </table>
             </div>
+
+            {resultado.materiaisCocho.length > 0 && (
+              <div className="calc-detalhe-cocho">
+                <button
+                  type="button"
+                  className="calc-detalhe-toggle"
+                  onClick={() => setDetalheCochoAberto((aberto) => !aberto)}
+                >
+                  {detalheCochoAberto ? 'Ocultar detalhamento do cocho' : 'Ver detalhamento do cocho (material item a item)'}
+                </button>
+
+                {detalheCochoAberto && (
+                  <div className="calc-tabela-wrap calc-detalhe-cocho-tabela">
+                    <table className="calc-tabela">
+                      <thead>
+                        <tr>
+                          <th>Material</th>
+                          <th>Quantidade</th>
+                          <th>Valor de referência</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {resultado.materiaisCocho.map((item) => (
+                          <tr key={item.nome}>
+                            <td>{item.nome}</td>
+                            <td>{formatarNumero(item.quantidade, 2)} {item.unidade}</td>
+                            <td>{item.valorTotal > 0 ? formatarMoeda(item.valorTotal) : 'A definir'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="calc-detalhe-cocho-nota">
+                      Detalhamento de referência para orçamento de material. O valor cobrado no cocho
+                      usa o custo fechado por metro; a soma destes itens pode não bater exatamente com ele.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <button type="button" className="calc-btn calc-btn-secundario" onClick={handleNovoCalculo}>
               Fazer novo cálculo
