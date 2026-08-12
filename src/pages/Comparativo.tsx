@@ -5,6 +5,7 @@ import { useFaixas } from '@/hooks/useFaixas'
 import { supabase } from '@/lib/supabase'
 import { PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt, fmtNum, obterRendimento, obterBonus } from '@/lib/calculations'
+import type { ResultadoAnimalNaData } from '@/lib/custoAnimal'
 
 const hojeStr = () => new Date().toISOString().split('T')[0]
 
@@ -34,6 +35,22 @@ interface LinhaVendido {
   lucroTotal: number
   margemPct: number | null
   lucroPorAnimal: number
+}
+
+// ─── Linha: custo médio por ciclo, agregando os ciclos selecionados pelo
+// produtor (ex: só o ciclo 2, ou ciclo 1+2 juntos) — só para lotes com
+// animais ativos, já que a quebra por etapa (porEtapa) só existe no
+// cálculo em tempo real do motor, não em vendas já liquidadas. ───
+interface LinhaPorCiclo {
+  loteId: string
+  loteNome: string
+  qtd: number
+  diasMedio: number
+  ganhoMedio: number
+  gmdMedio: number
+  custoAlimMedio: number
+  custoOpMedio: number
+  custoPorKg: number | null
 }
 
 type SortDir = 'asc' | 'desc'
@@ -77,17 +94,17 @@ function SortableTh<T>({ label, columnKey, sort, onSort }: {
 
 export default function Comparativo() {
   const { user } = useAuth()
-  const { lotes } = useLotes()
+  const { lotes, ciclosPorLote } = useLotes()
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
 
   const [tab, setTab] = useState<'ativos' | 'vendidos'>('ativos')
-  const [ativos, setAtivos] = useState<LinhaAtivo[]>([])
   const [vendidos, setVendidos] = useState<LinhaVendido[]>([])
   const [loadingAtivos, setLoadingAtivos] = useState(true)
   const [loadingVendidos, setLoadingVendidos] = useState(true)
   const [sortAtivos, setSortAtivos] = useState<SortState<LinhaAtivo> | null>(null)
   const [sortVendidos, setSortVendidos] = useState<SortState<LinhaVendido> | null>(null)
+  const [sortPorCiclo, setSortPorCiclo] = useState<SortState<LinhaPorCiclo> | null>(null)
 
   const toggleSortAtivos = useCallback((key: keyof LinhaAtivo) => {
     setSortAtivos(prev => prev?.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
@@ -95,16 +112,51 @@ export default function Comparativo() {
   const toggleSortVendidos = useCallback((key: keyof LinhaVendido) => {
     setSortVendidos(prev => prev?.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
   }, [])
+  const toggleSortPorCiclo = useCallback((key: keyof LinhaPorCiclo) => {
+    setSortPorCiclo(prev => prev?.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+  }, [])
 
   const [preco, setPreco] = useState('')
   const [pctComissao, setPctComissao] = useState('2')
   const [pctEncargo, setPctEncargo] = useState('1.5')
+
+  // ─── Seleção de ciclos: vazio = todo o processo (comportamento padrão,
+  // tabela de sempre); com números marcados, uma tabela adicional aparece
+  // mostrando só o custo/ganho médio daqueles ciclos específicos. ───
+  const [ciclosSelecionados, setCiclosSelecionados] = useState<Set<number>>(new Set())
+  const toggleCiclo = (n: number) => {
+    setCiclosSelecionados(prev => {
+      const novo = new Set(prev)
+      if (novo.has(n)) novo.delete(n); else novo.add(n)
+      return novo
+    })
+  }
 
   const nomePorLote = useMemo(() => {
     const m: Record<string, { nome: string; status: string }> = {}
     for (const l of lotes) m[l.id] = { nome: l.nome_lote, status: l.status }
     return m
   }, [lotes])
+
+  // Números de ciclo disponíveis para seleção — união de todos os ciclos já
+  // configurados em qualquer lote ativo (cada lote pode ter uma quantidade
+  // diferente de ciclos).
+  const ciclosDisponiveis = useMemo(() => {
+    const nums = new Set<number>()
+    for (const lote of lotes) {
+      if (lote.status !== 'ativo') continue
+      for (const c of ciclosPorLote[lote.id] ?? []) nums.add(c.numero)
+    }
+    return Array.from(nums).sort((a, b) => a - b)
+  }, [lotes, ciclosPorLote])
+
+  // ─── Dados brutos dos animais ativos (guardados em estado sem agregar) ────
+  // A agregação em si (por lote, ou por ciclo selecionado) acontece nos
+  // useMemo abaixo — assim trocar a seleção de ciclos ou o preço esperado
+  // não exige nova consulta ao banco, só reprocessa o que já foi buscado.
+  const [animaisAtivosRaw, setAnimaisAtivosRaw] = useState<Array<{ id: string; peso_entrada: number; valor_compra: number; lote_atual_id: string }>>([])
+  const [resultadosAtivos, setResultadosAtivos] = useState<Record<string, ResultadoAnimalNaData>>({})
+  const [custosVarAtivos, setCustosVarAtivos] = useState<Record<string, number>>({})
 
   // ─── Lotes com animais ativos: peso/GMD/custo são o estado atual; lucro e
   // margem só aparecem se um preço esperado for informado (projeção, igual à
@@ -117,7 +169,10 @@ export default function Comparativo() {
       .eq('user_id', user.id).eq('status', 'ativo')
 
     const lista = (animaisData ?? []) as Array<{ id: string; peso_entrada: number; valor_compra: number; lote_atual_id: string }>
-    if (lista.length === 0) { setAtivos([]); setLoadingAtivos(false); return }
+    if (lista.length === 0) {
+      setAnimaisAtivosRaw([]); setResultadosAtivos({}); setCustosVarAtivos({}); setLoadingAtivos(false)
+      return
+    }
 
     const [resultados, custosVarData] = await Promise.all([
       calcularEmLote(lista.map(a => a.id), hojeStr()),
@@ -129,6 +184,14 @@ export default function Comparativo() {
       custosVarPorAnimal[c.animal_id] = (custosVarPorAnimal[c.animal_id] ?? 0) + c.valor
     }
 
+    setAnimaisAtivosRaw(lista)
+    setResultadosAtivos(resultados)
+    setCustosVarAtivos(custosVarPorAnimal)
+    setLoadingAtivos(false)
+  }, [user, calcularEmLote])
+
+  // ─── Tabela de sempre: todo o processo, do jeito que já funcionava ─────────
+  const ativos = useMemo<LinhaAtivo[]>(() => {
     const p = Number(preco) || 0
     const pc = Number(pctComissao) || 0
     const pe = Number(pctEncargo) || 0
@@ -139,15 +202,15 @@ export default function Comparativo() {
       valorCompraSoma: number; receitaLiquidaSoma: number; custoTotalSoma: number
     }> = {}
 
-    for (const a of lista) {
-      const r = resultados[a.id]
+    for (const a of animaisAtivosRaw) {
+      const r = resultadosAtivos[a.id]
       if (!r) continue
       const g = grupos[a.lote_atual_id] ??= {
         qtd: 0, pesoSoma: 0, gmdSoma: 0, ganhoSoma: 0,
         custoAlimSoma: 0, custoOpSoma: 0, custoVarSoma: 0,
         valorCompraSoma: 0, receitaLiquidaSoma: 0, custoTotalSoma: 0,
       }
-      const custoVar = custosVarPorAnimal[a.id] ?? 0
+      const custoVar = custosVarAtivos[a.id] ?? 0
       const custoTotalAnimal = r.custoAcumulado + custoVar + a.valor_compra
       const ganho = r.peso - a.peso_entrada
 
@@ -170,7 +233,7 @@ export default function Comparativo() {
       }
     }
 
-    const linhas: LinhaAtivo[] = Object.entries(grupos).map(([loteId, g]) => {
+    return Object.entries(grupos).map(([loteId, g]) => {
       const lucroProjetado = p > 0 ? g.receitaLiquidaSoma - g.custoTotalSoma : null
       return {
         loteId, loteNome: nomePorLote[loteId]?.nome ?? '—', status: nomePorLote[loteId]?.status ?? '—',
@@ -184,9 +247,49 @@ export default function Comparativo() {
         margemProjetada: p > 0 && g.receitaLiquidaSoma > 0 ? (lucroProjetado! / g.receitaLiquidaSoma) * 100 : null,
       }
     })
-    setAtivos(linhas)
-    setLoadingAtivos(false)
-  }, [user, calcularEmLote, nomePorLote, preco, pctComissao, pctEncargo, rendimentos, bonus])
+  }, [animaisAtivosRaw, resultadosAtivos, custosVarAtivos, nomePorLote, preco, pctComissao, pctEncargo, rendimentos, bonus])
+
+  // ─── Tabela por ciclo: só aparece quando o produtor marca ao menos um
+  // número de ciclo. Agrega, por lote, apenas os dias/ganho/custo que
+  // aconteceram DENTRO dos ciclos marcados (via porEtapa, já calculado pelo
+  // motor) — não é projeção nem venda, é o que já foi vivido naquele(s)
+  // ciclo(s) até hoje. Custos variáveis e valor de compra ficam de fora
+  // (não são amarrados a um ciclo específico). ───
+  const linhasPorCiclo = useMemo<LinhaPorCiclo[]>(() => {
+    if (ciclosSelecionados.size === 0) return []
+
+    const grupos: Record<string, {
+      qtd: number; diasSoma: number; ganhoSoma: number
+      custoAlimSoma: number; custoOpSoma: number
+    }> = {}
+
+    for (const a of animaisAtivosRaw) {
+      const r = resultadosAtivos[a.id]
+      if (!r) continue
+      const etapas = Object.values(r.porEtapa).filter(e => ciclosSelecionados.has(e.numero))
+      if (etapas.length === 0) continue
+
+      const g = grupos[a.lote_atual_id] ??= { qtd: 0, diasSoma: 0, ganhoSoma: 0, custoAlimSoma: 0, custoOpSoma: 0 }
+      g.qtd += 1
+      for (const e of etapas) {
+        g.diasSoma += e.dias
+        g.ganhoSoma += e.ganhoPeso
+        g.custoAlimSoma += e.custoAlimentacao
+        g.custoOpSoma += e.custoOperacional
+      }
+    }
+
+    return Object.entries(grupos).map(([loteId, g]) => ({
+      loteId, loteNome: nomePorLote[loteId]?.nome ?? '—',
+      qtd: g.qtd,
+      diasMedio: g.qtd > 0 ? g.diasSoma / g.qtd : 0,
+      ganhoMedio: g.qtd > 0 ? g.ganhoSoma / g.qtd : 0,
+      gmdMedio: g.diasSoma > 0 ? g.ganhoSoma / g.diasSoma : 0,
+      custoAlimMedio: g.qtd > 0 ? g.custoAlimSoma / g.qtd : 0,
+      custoOpMedio: g.qtd > 0 ? g.custoOpSoma / g.qtd : 0,
+      custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
+    }))
+  }, [animaisAtivosRaw, resultadosAtivos, ciclosSelecionados, nomePorLote])
 
   // ─── Lotes com vendas registradas: dados realizados (peso na venda, custo e
   // lucro já liquidados na hora da venda), não é projeção. Um lote pode
@@ -311,6 +414,68 @@ export default function Comparativo() {
               <input className="form-input" type="number" step="0.1" value={pctEncargo} onChange={e => setPctEncargo(e.target.value)} />
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === 'ativos' && ciclosDisponiveis.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+            Marque um ou mais ciclos para ver o custo e ganho médios só naquele(s) período(s) — sem marcar nenhum, a tabela acima continua mostrando o processo todo.
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="form-label" style={{ margin: 0 }}>Ver por ciclo:</span>
+            {ciclosDisponiveis.map(n => (
+              <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', padding: '4px 10px', borderRadius: 20, border: '1px solid var(--border)', background: ciclosSelecionados.has(n) ? 'var(--green-bg)' : '#fff' }}>
+                <input type="checkbox" checked={ciclosSelecionados.has(n)} onChange={() => toggleCiclo(n)} />
+                Ciclo {n}
+              </label>
+            ))}
+            {ciclosSelecionados.size > 0 && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setCiclosSelecionados(new Set())}>Limpar seleção</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === 'ativos' && ciclosSelecionados.size > 0 && (
+        <div className="card" style={{ padding: 0, marginBottom: 16 }}>
+          <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--gray-500)', borderBottom: '1px solid var(--border)' }}>
+            Custo e ganho médios só do(s) ciclo(s) {Array.from(ciclosSelecionados).sort((a, b) => a - b).join(', ')} — não inclui valor de compra nem custos variáveis (não são amarrados a um ciclo específico).
+          </div>
+          {linhasPorCiclo.length === 0 ? (
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--gray-500)', fontSize: 13 }}>Nenhum lote tem animais com dados nesse(s) ciclo(s) ainda.</div>
+          ) : (
+            <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+              <table>
+                <thead>
+                  <tr>
+                    <SortableTh<LinhaPorCiclo> label="Lote" columnKey="loteNome" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
+                    <SortableTh<LinhaPorCiclo> label="Animais" columnKey="qtd" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
+                    <SortableTh<LinhaPorCiclo> label="Dias (ciclo)" columnKey="diasMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
+                    <SortableTh<LinhaPorCiclo> label="Ganho de peso (ciclo)" columnKey="ganhoMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
+                    <SortableTh<LinhaPorCiclo> label="GMD (ciclo)" columnKey="gmdMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
+                    <SortableTh<LinhaPorCiclo> label="Custo alimentação" columnKey="custoAlimMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
+                    <SortableTh<LinhaPorCiclo> label="Custo operacional" columnKey="custoOpMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
+                    <SortableTh<LinhaPorCiclo> label="Custo/kg ganho" columnKey="custoPorKg" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {ordenarLinhas(linhasPorCiclo, sortPorCiclo).map(l => (
+                    <tr key={l.loteId}>
+                      <td><strong>{l.loteNome}</strong></td>
+                      <td>{l.qtd}</td>
+                      <td>{fmtNum(l.diasMedio, 1)}</td>
+                      <td>{fmtNum(l.ganhoMedio, 1)} kg</td>
+                      <td>{fmtNum(l.gmdMedio, 2)} kg/dia</td>
+                      <td>{fmt(l.custoAlimMedio)}</td>
+                      <td>{fmt(l.custoOpMedio)}</td>
+                      <td>{l.custoPorKg != null ? `${fmt(l.custoPorKg)}/kg` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
