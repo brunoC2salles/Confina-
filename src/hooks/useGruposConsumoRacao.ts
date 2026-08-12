@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { buscarPorIds } from '@/hooks/useLotes'
 import {
   toDay, construirPeriodosDeMovimentacoes,
-  type PeriodoLote, type CicloInfo, type PesagemPonto, type CicloAnimalEvento,
+  type PeriodoLote, type CicloInfo, type PesagemPonto, type CicloAnimalEvento, type TrocaDietaCiclo,
 } from '@/lib/custoAnimal'
 import {
   calcularConsumoTeoricoPorLotePorDia, calcularSaldoGrupo, calcularNovoPeriodo,
@@ -139,9 +139,10 @@ export function useResumoGrupo(grupoId: string | null) {
       return
     }
 
-    const [{ data: lotesData }, { data: ciclosData }, movsOrigem, movsDestino] = await Promise.all([
+    const [{ data: lotesData }, { data: ciclosData }, { data: trocasDietaData }, movsOrigem, movsDestino] = await Promise.all([
       supabase.from('lotes').select('id, nome_lote, codigo_lote').in('id', loteIds),
       supabase.from('ciclos_lote').select('lote_id, numero, tipo_ciclo, dieta_id, gmd_esperado, data_inicio, data_fim').in('lote_id', loteIds),
+      supabase.from('trocas_dieta_lote').select('lote_id, ciclo_numero, dieta_id, data').in('lote_id', loteIds),
       buscarPorIds<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>(loteIds, (idsChunk, from, to) =>
         supabase.from('movimentacoes_animais').select('animal_id, tipo, lote_origem_id, lote_destino_id, data').in('lote_origem_id', idsChunk).range(from, to)),
       buscarPorIds<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>(loteIds, (idsChunk, from, to) =>
@@ -153,6 +154,7 @@ export function useResumoGrupo(grupoId: string | null) {
     setLotesInfo(info)
 
     const ciclos = (ciclosData ?? []) as CicloInfo[]
+    const trocasDieta = (trocasDietaData ?? []) as TrocaDietaCiclo[]
 
     // Dedupe entre as duas buscas (um movimento pode ter lote_origem_id E
     // lote_destino_id dentro do mesmo conjunto de loteIds, ex.: transferência
@@ -164,11 +166,13 @@ export function useResumoGrupo(grupoId: string | null) {
     const movs = Array.from(movsMap.values())
     const animalIds = Array.from(new Set(movs.map(m => m.animal_id)))
 
-    const [animaisData, pesagensData] = await Promise.all([
+    const [animaisData, pesagensData, eventosCicloData] = await Promise.all([
       buscarPorIds<{ id: string; peso_entrada: number; data_entrada: string }>(animalIds, (idsChunk, from, to) =>
         supabase.from('animais').select('id, peso_entrada, data_entrada').in('id', idsChunk).range(from, to)),
       buscarPorIds<{ animal_id: string; data: string; peso: number }>(animalIds, (idsChunk, from, to) =>
         supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', idsChunk).range(from, to)),
+      buscarPorIds<{ animal_id: string; lote_id: string; ciclo_numero: number; ciclo_numero_anterior: number | null; data: string }>(animalIds, (idsChunk, from, to) =>
+        supabase.from('animais_ciclo_eventos').select('animal_id, lote_id, ciclo_numero, ciclo_numero_anterior, data').in('animal_id', idsChunk).range(from, to)),
     ])
 
     const animaisPorId: Record<string, { peso_entrada: number; data_entrada: string }> = {}
@@ -177,6 +181,12 @@ export function useResumoGrupo(grupoId: string | null) {
     for (const p of pesagensData) (pesagensPorAnimal[p.animal_id] ??= []).push({ data: p.data, peso: p.peso })
     const movsPorAnimal: Record<string, typeof movs> = {}
     for (const m of movs) (movsPorAnimal[m.animal_id] ??= []).push(m)
+    const eventosCicloPorAnimal: Record<string, CicloAnimalEvento[]> = {}
+    for (const e of eventosCicloData) {
+      (eventosCicloPorAnimal[e.animal_id] ??= []).push({
+        lote_id: e.lote_id, ciclo_numero: e.ciclo_numero, ciclo_numero_anterior: e.ciclo_numero_anterior, data: e.data,
+      })
+    }
 
     const animaisPorLote: Record<string, AnimalConsumoInput[]> = {}
     for (const loteId of loteIds) animaisPorLote[loteId] = []
@@ -190,16 +200,41 @@ export function useResumoGrupo(grupoId: string | null) {
         if (periodosDoAnimal.some(p => p.lote_id === loteId)) {
           animaisPorLote[loteId].push({
             animal, pesagens: pesagensPorAnimal[animalId] ?? [], periodos: periodosDoAnimal,
-            eventosCiclo: [] as CicloAnimalEvento[],
+            eventosCiclo: eventosCicloPorAnimal[animalId] ?? [],
           })
         }
       }
     }
 
-    if (pct != null) {
+    // Limite de fim de participação por lote (equivalente a "Encerrar
+    // participação" na UI): se alguma linha de participação desse lote nesse
+    // grupo está em aberto (sem data_fim), não há corte. Senão, usa a
+    // data_fim mais recente entre as participações já encerradas — cobre o
+    // caso raro de um lote ter sido removido e readicionado ao grupo mais de
+    // uma vez. "Desde" (data_inicio) não entra mais nessa conta — é só
+    // informativo agora, porque quem define desde quando um lote conta pra
+    // esse grupo é a dieta que ele de fato estava consumindo, não a data em
+    // que foi cadastrado na tela.
+    const limiteFimPorLote: Record<string, number | null> = {}
+    for (const loteId of loteIds) {
+      const linhasDoLote = membrosArr.filter(m => m.lote_id === loteId)
+      const semCorte = linhasDoLote.some(m => !m.data_fim)
+      limiteFimPorLote[loteId] = semCorte ? null : Math.max(...linhasDoLote.map(m => toDay(m.data_fim as string)))
+    }
+
+    if (pct != null && grupoData?.dieta_id) {
       const hojeDia = toDay(new Date().toISOString().slice(0, 10))
-      const diaInicial = Math.min(...membrosArr.map(m => toDay(m.data_inicio)))
-      const consumo = calcularConsumoTeoricoPorLotePorDia(loteIds, animaisPorLote, ciclos, pct, diaInicial, hojeDia + 1)
+      // Só faz sentido contar consumo a partir da primeira compra do grupo —
+      // dias com a dieta batendo mas sem nenhuma compra registrada ainda não
+      // têm preço vigente pra eles, e não devem "gastar" saldo que ainda nem
+      // existia (ver calcularSaldoGrupo). Sem nenhuma compra, não há o que
+      // calcular.
+      const diaInicial = comprasArr.length > 0 ? Math.min(...comprasArr.map(c => toDay(c.data_inicio_uso))) : null
+      const consumo = diaInicial !== null
+        ? calcularConsumoTeoricoPorLotePorDia(
+            loteIds, animaisPorLote, ciclos, pct, grupoData.dieta_id, trocasDieta, diaInicial, hojeDia + 1, limiteFimPorLote,
+          )
+        : {}
       setConsumoTeoricoPorLote(consumo)
 
       const comprasInfo: CompraGrupoInfo[] = comprasArr.map(c => ({
