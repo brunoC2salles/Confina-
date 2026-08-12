@@ -122,8 +122,8 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
   onExcluir: () => void
 }) {
   const {
-    membros, compras, lotesInfo, saldo, loading,
-    registrarCompra, adicionarLote, encerrarParticipacao, rankingPorCompra,
+    membros, compras, lotesInfo, saldo, loading, mostrarAlertaSaldo,
+    registrarCompra, editarCompra, confirmarSaldoAtual, adicionarLote, encerrarParticipacao, rankingPorCompra,
   } = useResumoGrupo(grupo.id)
 
   const [showCompra, setShowCompra] = useState(false)
@@ -134,6 +134,11 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
   const [showAddLote, setShowAddLote] = useState(false)
   const [loteParaAdicionar, setLoteParaAdicionar] = useState('')
   const [dataInicioLote, setDataInicioLote] = useState(new Date().toISOString().slice(0, 10))
+  const [compraEditando, setCompraEditando] = useState<string | null>(null)
+  const [formEdicao, setFormEdicao] = useState({ quantidade_kg: '', valor_total: '' })
+  const [savingEdicao, setSavingEdicao] = useState(false)
+  const [erroEdicao, setErroEdicao] = useState<string | null>(null)
+  const [confirmandoSaldo, setConfirmandoSaldo] = useState(false)
 
   const loteIdsNoGrupo = new Set(membros.filter(m => !m.data_fim).map(m => m.lote_id))
   const lotesDisponiveis = lotesAtivos.filter(l => !loteIdsNoGrupo.has(l.id))
@@ -162,6 +167,30 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
     setLoteParaAdicionar('')
   }
 
+  const abrirEdicao = (compraId: string, quantidade_kg: number, valor_total: number) => {
+    setCompraEditando(compraId)
+    setFormEdicao({ quantidade_kg: String(quantidade_kg), valor_total: String(valor_total) })
+    setErroEdicao(null)
+  }
+
+  const handleSalvarEdicao = async (compraId: string) => {
+    setErroEdicao(null)
+    const quantidade_kg = Number(formEdicao.quantidade_kg)
+    const valor_total = Number(formEdicao.valor_total)
+    if (!quantidade_kg || !valor_total) return
+    setSavingEdicao(true)
+    const { error } = await editarCompra(compraId, { quantidade_kg, valor_total })
+    setSavingEdicao(false)
+    if (error) { setErroEdicao(error); return }
+    setCompraEditando(null)
+  }
+
+  const handleConfirmarSaldoAtual = async () => {
+    setConfirmandoSaldo(true)
+    await confirmarSaldoAtual()
+    setConfirmandoSaldo(false)
+  }
+
   return (
     <Modal open onClose={onClose} title={grupo.nome} subtitle={grupo.dieta_nome ?? undefined} size="xl">
       {loading
@@ -178,13 +207,16 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
                     <MetricaCard label="Comprado" valor={`${fmtNum(saldo.totalCompradoKg, 0)} kg`} />
                     <MetricaCard label="Consumido (teórico)" valor={`${fmtNum(saldo.totalConsumidoTeoricoKg, 0)} kg`} />
-                    <MetricaCard label="Saldo" valor={`${fmtNum(saldo.saldoKg, 0)} kg`} alerta={saldo.saldoKg < 0} />
+                    <MetricaCard label="Saldo" valor={`${fmtNum(saldo.saldoKg, 0)} kg`} alerta={mostrarAlertaSaldo}
+                      alertaTitulo="Saldo negativo — o consumo teórico já passou do que foi comprado. Lance uma nova compra, edite uma existente, ou use “Confirmar saldo atual” se esse já for o valor real." />
                     <MetricaCard label="Custo médio/kg vigente" valor={saldo.custoMedioKgVigente != null ? fmt(saldo.custoMedioKgVigente) : '—'} />
                   </div>
                 )}
-              {saldo && saldo.saldoKg < 0 && (
-                <div style={{ marginTop: 8, fontSize: 12, color: '#b91c1c', background: '#fef2f2', padding: '8px 12px', borderRadius: 8 }}>
-                  Saldo negativo — o consumo teórico já passou do que foi comprado. Verifique se falta lançar uma compra.
+              {mostrarAlertaSaldo && (
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={handleConfirmarSaldoAtual} disabled={confirmandoSaldo}>
+                    {confirmandoSaldo ? 'Confirmando...' : 'Confirmar saldo atual'}
+                  </button>
                 </div>
               )}
             </div>
@@ -250,19 +282,53 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
                   <tbody>
                     {compras.map(c => (
                       <Fragment key={c.id}>
-                        <tr>
-                          <td>{fmtData(c.data_compra)}</td>
-                          <td>{fmtData(c.data_inicio_uso)}</td>
-                          <td>{fmtNum(c.quantidade_kg, 0)} kg</td>
-                          <td>{fmt(c.valor_total)}</td>
-                          <td>{fmt(c.valor_total / c.quantidade_kg)}</td>
-                          <td>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setCompraExpandida(compraExpandida === c.id ? null : c.id)}>
-                              {compraExpandida === c.id ? 'Ocultar' : 'Ver estatística'}
-                            </button>
-                          </td>
-                        </tr>
-                        {compraExpandida === c.id && (
+                        {compraEditando === c.id ? (
+                          <tr>
+                            <td>{fmtData(c.data_compra)}</td>
+                            <td>{fmtData(c.data_inicio_uso)}</td>
+                            <td>
+                              <input type="number" step="0.01" className="form-input" style={{ width: 110 }}
+                                value={formEdicao.quantidade_kg} onChange={e => setFormEdicao(f => ({ ...f, quantidade_kg: e.target.value }))} />
+                            </td>
+                            <td>
+                              <input type="number" step="0.01" className="form-input" style={{ width: 110 }}
+                                value={formEdicao.valor_total} onChange={e => setFormEdicao(f => ({ ...f, valor_total: e.target.value }))} />
+                            </td>
+                            <td>
+                              {Number(formEdicao.quantidade_kg) > 0
+                                ? fmt(Number(formEdicao.valor_total) / Number(formEdicao.quantidade_kg))
+                                : '—'}
+                            </td>
+                            <td style={{ display: 'flex', gap: 6 }}>
+                              <button className="btn btn-primary btn-sm" onClick={() => handleSalvarEdicao(c.id)} disabled={savingEdicao}>
+                                {savingEdicao ? '...' : 'Salvar'}
+                              </button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setCompraEditando(null)}>Cancelar</button>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr>
+                            <td>{fmtData(c.data_compra)}</td>
+                            <td>{fmtData(c.data_inicio_uso)}</td>
+                            <td>{fmtNum(c.quantidade_kg, 0)} kg</td>
+                            <td>{fmt(c.valor_total)}</td>
+                            <td>{fmt(c.valor_total / c.quantidade_kg)}</td>
+                            <td style={{ display: 'flex', gap: 6 }}>
+                              <button className="btn btn-ghost btn-sm" onClick={() => abrirEdicao(c.id, c.quantidade_kg, c.valor_total)}>
+                                Editar
+                              </button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setCompraExpandida(compraExpandida === c.id ? null : c.id)}>
+                                {compraExpandida === c.id ? 'Ocultar' : 'Ver estatística'}
+                              </button>
+                            </td>
+                          </tr>
+                        )}
+                        {compraEditando === c.id && erroEdicao && (
+                          <tr>
+                            <td colSpan={6} style={{ fontSize: 12, color: '#b91c1c', paddingTop: 0 }}>{erroEdicao}</td>
+                          </tr>
+                        )}
+                        {compraExpandida === c.id && compraEditando !== c.id && (
                           <tr>
                             <td colSpan={6} style={{ background: '#fafafa' }}>
                               <RankingCompra ranking={rankingPorCompra(c.id)} lotesInfo={lotesInfo} />
@@ -332,11 +398,14 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
   )
 }
 
-function MetricaCard({ label, valor, alerta }: { label: string; valor: string; alerta?: boolean }) {
+function MetricaCard({ label, valor, alerta, alertaTitulo }: { label: string; valor: string; alerta?: boolean; alertaTitulo?: string }) {
   return (
     <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: '10px 14px' }}>
       <div style={{ fontSize: 11, color: '#9e9e9e' }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 600, color: alerta ? '#b91c1c' : '#000' }}>{valor}</div>
+      <div style={{ fontSize: 18, fontWeight: 600 }}>
+        {valor}
+        {alerta && <span title={alertaTitulo} style={{ color: '#b91c1c', marginLeft: 3, cursor: 'default' }}>*</span>}
+      </div>
     </div>
   )
 }
