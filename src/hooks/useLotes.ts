@@ -1447,11 +1447,15 @@ export function useCustoEngine() {
         if (membrosGrupo.length > 0) {
           const grupoIds = Array.from(new Set(membrosGrupo.map(m => m.grupo_id)))
           const [{ data: gruposData }, { data: periodosGrupoData }] = await Promise.all([
-            supabase.from('grupos_consumo_racao').select('id, dieta_id').in('id', grupoIds),
+            supabase.from('grupos_consumo_racao').select('id, dieta_id, custo_confirmado_kg').in('id', grupoIds),
             supabase.from('grupos_consumo_periodos').select('grupo_id, vigente_desde, vigente_ate, custo_medio_kg').in('grupo_id', grupoIds),
           ])
           const dietaIdPorGrupo: Record<string, string> = {}
-          for (const g of (gruposData ?? []) as Array<{ id: string; dieta_id: string }>) dietaIdPorGrupo[g.id] = g.dieta_id
+          const custoConfirmadoPorGrupo: Record<string, number | null> = {}
+          for (const g of (gruposData ?? []) as Array<{ id: string; dieta_id: string; custo_confirmado_kg: number | null }>) {
+            dietaIdPorGrupo[g.id] = g.dieta_id
+            custoConfirmadoPorGrupo[g.id] = g.custo_confirmado_kg
+          }
 
           const dietaIdsGrupo = Array.from(new Set(Object.values(dietaIdPorGrupo)))
           const pctPorDietaGrupo: Record<string, number | null> = {}
@@ -1557,7 +1561,15 @@ export function useCustoEngine() {
               })
               if (!periodoVigente) continue
               const consumoKgDia = pesoTotalDia * (pct / 100)
-              const valorTotalDia = consumoKgDia * periodoVigente.custo_medio_kg
+              // Se o produtor confirmou manualmente a situação como final
+              // (ver confirmarSaldoAtual em useGruposConsumoRacao.ts), usa
+              // essa taxa em vez do custo médio calculado a partir da
+              // quantidade real comprada — isso garante que o total rateado
+              // entre os animais nunca ultrapasse o que de fato foi pago,
+              // mesmo quando o consumo teórico diverge do físico. A compra
+              // em si (quantidade_kg/valor_total) nunca é alterada por isso.
+              const custoKgVigente = custoConfirmadoPorGrupo[grupo_id] ?? periodoVigente.custo_medio_kg
+              const valorTotalDia = consumoKgDia * custoKgVigente
               const info: CustoRacaoRealDiaInfo = {
                 valorTotalDia,
                 pesoTotalDia,
