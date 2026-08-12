@@ -278,6 +278,12 @@ export interface GrupoConsumoRacao {
   dieta_id: string
   status: GrupoConsumoStatus
   observacoes: string | null
+  // R$/kg teórico confirmado manualmente pelo produtor, quando o consumo
+  // teórico diverge do que foi de fato comprado (ver confirmarSaldoAtual em
+  // useGruposConsumoRacao.ts). Null = usa o custo médio calculado normalmente
+  // a partir da quantidade real comprada. NUNCA altera quantidade_kg/valor_total
+  // de nenhuma compra — só a taxa usada pra ratear custo entre os animais.
+  custo_confirmado_kg: number | null
   user_id: string
   created_at: string
   updated_at: string
