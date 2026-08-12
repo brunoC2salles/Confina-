@@ -4,7 +4,7 @@ import {
   useLotes, useAnimaisDoLote, useCustoEngine, useVendas, useCustosOperacionais, useCustosRacaoReal, useCompras,
   useMovimentacoesLote, buscarPorIds,
   type CriarLoteInput, type CicloInput, type LinhaAnimalInput, type CompraInput, type CriarAnimaisInput,
-  type MovimentacaoGrupoLote, type PesagemNaTroca,
+  type MovimentacaoGrupoLote, type PesagemNaTroca, type CustoOperacionalComQtd,
 } from '@/hooks/useLotes'
 import { useDietas } from '@/hooks/useDietas'
 import { useFaixas } from '@/hooks/useFaixas'
@@ -2932,7 +2932,7 @@ function ModalCustosOperacionais({
 }: {
   lote: Lote
   loteAtivo: boolean
-  custos: CustoOperacionalLote[]
+  custos: CustoOperacionalComQtd[]
   loading: boolean
   total: number
   onClose: () => void
@@ -2958,7 +2958,7 @@ function ModalCustosOperacionais({
 
   return (
     <Modal open onClose={onClose} title={`Custos operacionais — ${lote.nome_lote}`}
-      subtitle="Somados ao custo do lote e divididos igualmente entre os animais ativos" size="lg">
+      subtitle="Valor por animal — multiplicado pelos animais ativos na data do lançamento" size="lg">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {loteAtivo && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
@@ -2980,7 +2980,7 @@ function ModalCustosOperacionais({
                 <input className="form-input" value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Ex: Vacina aftosa" />
               </div>
               <div className="form-group">
-                <label className="form-label">Valor (R$)</label>
+                <label className="form-label">Valor por animal (R$)</label>
                 <input className="form-input" type="number" step="0.01" value={valor} onChange={e => setValor(e.target.value)} />
               </div>
             </div>
@@ -2998,7 +2998,13 @@ function ModalCustosOperacionais({
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>Valor</th>{loteAtivo && <th></th>}</tr></thead>
+              <thead>
+                <tr>
+                  <th>Data</th><th>Categoria</th><th>Descrição</th>
+                  <th>Valor/animal</th><th>Animais</th><th>Total</th>
+                  {loteAtivo && <th></th>}
+                </tr>
+              </thead>
               <tbody>
                 {custos.map(c => (
                   <tr key={c.id}>
@@ -3006,6 +3012,8 @@ function ModalCustosOperacionais({
                     <td>{categoriaCustoOpLabel(c.categoria)}</td>
                     <td>{c.descricao || '—'}</td>
                     <td>{fmt(c.valor)}</td>
+                    <td>{c.qtdAtivaNaData}</td>
+                    <td>{fmt(c.valor * c.qtdAtivaNaData)}</td>
                     {loteAtivo && (
                       <td>
                         <button onClick={() => onRemover(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 16 }}>×</button>
