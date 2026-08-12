@@ -64,12 +64,15 @@ export default function CalculadoraConfinamento() {
       return
     }
 
+    // O formulário coleta a área em hectares (ha), mas o motor de cálculo
+    // (calcularConfinamento) trabalha internamente em m² — conversão: 1 ha = 10.000 m².
+    const HA_PARA_M2 = 10000
     const input = {
       nomeCompleto: form.nomeCompleto.trim(),
       nomePropriedade: form.nomePropriedade.trim(),
       cidade: form.cidade.trim(),
-      areaTotal: Number(form.areaTotal),
-      areaProdutivaReal: Number(form.areaProdutivaReal),
+      areaTotal: Number(form.areaTotal) * HA_PARA_M2,
+      areaProdutivaReal: Number(form.areaProdutivaReal) * HA_PARA_M2,
       numeroAnimais: Number(form.numeroAnimais),
     }
 
@@ -157,11 +160,12 @@ export default function CalculadoraConfinamento() {
 
               <div className="calc-row">
                 <div className="calc-field">
-                  <label htmlFor="areaTotal">Área total (m²)</label>
+                  <label htmlFor="areaTotal">Área total (ha)</label>
                   <input
                     id="areaTotal"
                     type="number"
                     min="0"
+                    step="0.01"
                     value={form.areaTotal}
                     onChange={(e) => handleChange('areaTotal', e.target.value)}
                     placeholder="0"
@@ -169,11 +173,12 @@ export default function CalculadoraConfinamento() {
                 </div>
 
                 <div className="calc-field">
-                  <label htmlFor="areaProdutivaReal">Área produtiva real (m²)</label>
+                  <label htmlFor="areaProdutivaReal">Área produtiva real (ha)</label>
                   <input
                     id="areaProdutivaReal"
                     type="number"
                     min="0"
+                    step="0.01"
                     value={form.areaProdutivaReal}
                     onChange={(e) => handleChange('areaProdutivaReal', e.target.value)}
                     placeholder="0"
@@ -226,7 +231,7 @@ export default function CalculadoraConfinamento() {
               </div>
               <div className="calc-info-card">
                 <span className="calc-info-label">Área recomendada</span>
-                <span className="calc-info-valor">{formatarNumero(resultado.areaRecomendada)} m²</span>
+                <span className="calc-info-valor">{formatarNumero(resultado.areaRecomendada / 10000, 2)} ha</span>
                 <span className={resultado.areaSuficiente ? 'calc-nota-ok' : 'calc-nota-alerta'}>
                   {resultado.areaSuficiente
                     ? 'Área produtiva informada é suficiente'
