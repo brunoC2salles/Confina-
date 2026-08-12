@@ -9,12 +9,11 @@
 //    OU o custo manual da dieta (custo_manual_ativo/custo_manual_valor), quando
 //    o produtor optar por informar um preço geral em vez de custear por insumo
 //  - custos operacionais lançados no lote (sanitário, maquinário, mão de obra,
-//    medicamentos, outros): o valor lançado é POR ANIMAL — aplicado
-//    integralmente a cada animal que estava ativo NAQUELE LOTE na data exata
-//    do lançamento (o custo total do lote naquele lançamento é, portanto,
-//    valor x quantidade de animais ativos na data — histórica; se naquele
-//    dia não havia nenhum animal registrado, cai no fallback da quantidade
-//    ativa atual, resolvido antes de chegar aqui)
+//    medicamentos, outros): o valor lançado é POR ANIMAL, ratado igualmente
+//    por dia ao longo de TODOS os dias que o animal já viveu naquele lote
+//    (todos os ciclos, não só o vigente na data exata do lançamento) — um
+//    ciclo mais longo absorve proporcionalmente mais, mas nenhum ciclo já
+//    vivido fica de fora, mesmo os anteriores à data do lançamento
 //  - custo real de ração lançado pelo produtor no lote (recalibração): quando
 //    existe, SUBSTITUI o custo de alimentação estimado por dieta a partir da
 //    data do lançamento até o próximo lançamento (ou até hoje), rateado por
@@ -365,6 +364,20 @@ export function calcularAnimalNaData(
 
   const pesagensOrdenadas = [...pesagens].sort((a, b) => toDay(a.data) - toDay(b.data))
 
+  // ─── Dias vividos em cada lote (até diaAlvo) ───────────────────────────────
+  // Usado para ratear cada lançamento de custo operacional igualmente por dia
+  // ao longo de TODOS os ciclos que o animal já viveu naquele lote — não só o
+  // ciclo vigente no dia exato do lançamento. Ex.: lançamento feito no dia 5
+  // (ciclo 1) mas o animal já está no dia 90 (ciclo 3): o valor é dividido
+  // pelos 90 dias e absorvido proporcionalmente por todos os ciclos já
+  // vividos até agora, inclusive os anteriores à data do próprio lançamento.
+  const diasPorLote: Record<string, number> = {}
+  for (const p of periodos) {
+    const inicio = toDay(p.data_inicio)
+    const fim = p.data_fim ? Math.min(toDay(p.data_fim), diaAlvo) : diaAlvo
+    if (fim > inicio) diasPorLote[p.lote_id] = (diasPorLote[p.lote_id] ?? 0) + (fim - inicio)
+  }
+
   // Peso é acumulado incrementalmente dia a dia (peso += gmd do ciclo vigente
   // NESSE dia), nunca recalculado como "base + tempo decorrido" — essa segunda
   // forma aplicaria retroativamente o GMD do ciclo mais recente a dias que
@@ -484,19 +497,20 @@ export function calcularAnimalNaData(
     if (periodo) {
       const custosDoLote = custosOperacionaisPorLote[periodo.lote_id] ?? []
       if (custosDoLote.length > 0) {
+        const diasNoLote = diasPorLote[periodo.lote_id] ?? 1
         for (const c of custosDoLote) {
-          if (toDay(c.data_lancamento) === dia) {
-            // valor é por animal — aplicado integralmente, sem dividir pela
-            // quantidade de animais ativos (qtdAtivaNaData só serve para
-            // exibir o total do lançamento em telas/relatórios, ver
-            // useCustosOperacionais em useLotes.ts)
-            const custoDoAnimal = c.valor
-            custoOperacional += custoDoAnimal
-            if (tipoCiclo === 'pastagem') custoOperacionalPastagem += custoDoAnimal
-            else if (tipoCiclo === 'misto') custoOperacionalMisto += custoDoAnimal
-            else custoOperacionalConfinamento += custoDoAnimal
-            if (etapa) etapa.custoOperacional += custoDoAnimal
-          }
+          // Só considera lançamentos já feitos até a data alvo (não traz
+          // custo do futuro pra um cálculo "como estava em tal data").
+          if (toDay(c.data_lancamento) > diaAlvo) continue
+          // valor é por animal, ratado igualmente por dia ao longo de TODOS
+          // os dias já vividos pelo animal naquele lote (todos os ciclos),
+          // não só no dia exato do lançamento — ver diasPorLote acima.
+          const custoDoAnimal = c.valor / Math.max(diasNoLote, 1)
+          custoOperacional += custoDoAnimal
+          if (tipoCiclo === 'pastagem') custoOperacionalPastagem += custoDoAnimal
+          else if (tipoCiclo === 'misto') custoOperacionalMisto += custoDoAnimal
+          else custoOperacionalConfinamento += custoDoAnimal
+          if (etapa) etapa.custoOperacional += custoDoAnimal
         }
       }
     }
