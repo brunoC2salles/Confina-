@@ -99,6 +99,10 @@ interface DadosConsumoGrupo {
   lotesInfo: Record<string, { nome_lote: string; codigo_lote: string }>
   pct: number | null
   dietaId: string | null
+  // R$/kg teórico confirmado manualmente (ver confirmarSaldoAtual, abaixo) —
+  // null = usa o custo médio calculado normalmente a partir da quantidade
+  // real comprada.
+  custoConfirmadoKg: number | null
   consumoTeoricoPorLote: Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>>
   // Se algum animal de algum lote do grupo está HOJE de fato num ciclo com a
   // mesma dieta associada à compra — usado pra tratar um saldo negativo como
@@ -116,7 +120,7 @@ interface DadosConsumoGrupo {
 // dentro de useResumoGrupo).
 async function carregarDadosConsumoGrupo(grupoId: string): Promise<DadosConsumoGrupo> {
   const [{ data: grupoData }, { data: membrosData }, { data: comprasData }, { data: periodosData }] = await Promise.all([
-    supabase.from('grupos_consumo_racao').select('dieta_id').eq('id', grupoId).single(),
+    supabase.from('grupos_consumo_racao').select('dieta_id, custo_confirmado_kg').eq('id', grupoId).single(),
     supabase.from('grupos_consumo_lotes').select('*').eq('grupo_id', grupoId).order('data_inicio'),
     supabase.from('compras_racao_grupo').select('*').eq('grupo_id', grupoId).order('data_inicio_uso'),
     supabase.from('grupos_consumo_periodos').select('*').eq('grupo_id', grupoId).order('vigente_desde'),
@@ -126,6 +130,7 @@ async function carregarDadosConsumoGrupo(grupoId: string): Promise<DadosConsumoG
   const comprasArr = (comprasData ?? []) as CompraRacaoGrupo[]
   const periodosArr = (periodosData ?? []) as GrupoConsumoPeriodo[]
   const dietaId = grupoData?.dieta_id ?? null
+  const custoConfirmadoKg = grupoData?.custo_confirmado_kg ?? null
 
   const loteIds = Array.from(new Set(membrosArr.map(m => m.lote_id)))
 
@@ -136,7 +141,7 @@ async function carregarDadosConsumoGrupo(grupoId: string): Promise<DadosConsumoG
   }
 
   if (loteIds.length === 0) {
-    return { membrosArr, comprasArr, periodosArr, lotesInfo: {}, pct, dietaId, consumoTeoricoPorLote: {}, algumAnimalNaDietaHoje: false }
+    return { membrosArr, comprasArr, periodosArr, lotesInfo: {}, pct, dietaId, custoConfirmadoKg, consumoTeoricoPorLote: {}, algumAnimalNaDietaHoje: false }
   }
 
   const [{ data: lotesData }, { data: ciclosData }, { data: trocasDietaData }, movsOrigem, movsDestino] = await Promise.all([
@@ -250,7 +255,7 @@ async function carregarDadosConsumoGrupo(grupoId: string): Promise<DadosConsumoG
     }
   }
 
-  return { membrosArr, comprasArr, periodosArr, lotesInfo, pct, dietaId, consumoTeoricoPorLote, algumAnimalNaDietaHoje }
+  return { membrosArr, comprasArr, periodosArr, lotesInfo, pct, dietaId, custoConfirmadoKg, consumoTeoricoPorLote, algumAnimalNaDietaHoje }
 }
 
 export function useResumoGrupo(grupoId: string | null) {
@@ -266,6 +271,10 @@ export function useResumoGrupo(grupoId: string | null) {
   // Ver DadosConsumoGrupo.algumAnimalNaDietaHoje. Começa true (postura
   // conservadora): antes de carregar, prefere não sugerir "ok" indevidamente.
   const [algumAnimalNaDietaHoje, setAlgumAnimalNaDietaHoje] = useState(true)
+  // R$/kg teórico confirmado manualmente (ver confirmarSaldoAtual) — null
+  // enquanto não há confirmação, ou depois que uma nova compra invalida a
+  // confirmação anterior.
+  const [custoConfirmadoKg, setCustoConfirmadoKg] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   const fetch = useCallback(async () => {
@@ -280,6 +289,7 @@ export function useResumoGrupo(grupoId: string | null) {
     setPctConsumoPvMs(dados.pct)
     setConsumoTeoricoPorLote(dados.consumoTeoricoPorLote)
     setAlgumAnimalNaDietaHoje(dados.algumAnimalNaDietaHoje)
+    setCustoConfirmadoKg(dados.custoConfirmadoKg)
 
     if (dados.membrosArr.length === 0) {
       setSaldo({ totalCompradoKg: dados.comprasArr.reduce((s, c) => s + c.quantidade_kg, 0), totalConsumidoTeoricoKg: 0, saldoKg: 0, custoMedioKgVigente: null })
@@ -293,7 +303,13 @@ export function useResumoGrupo(grupoId: string | null) {
         id: p.id, compra_id: p.compra_id, vigente_desde: p.vigente_desde, vigente_ate: p.vigente_ate,
         saldo_kg_inicio: p.saldo_kg_inicio, custo_medio_kg: p.custo_medio_kg,
       }))
-      setSaldo(calcularSaldoGrupo(comprasInfo, dados.consumoTeoricoPorLote, periodosInfo, hojeDia))
+      const saldoCalculado = calcularSaldoGrupo(comprasInfo, dados.consumoTeoricoPorLote, periodosInfo, hojeDia)
+      // "Comprado", "Consumido (teórico)" e "Saldo" (em kg) nunca mudam — são
+      // sempre os números reais/estimados como já eram. Só o custo médio
+      // exibido reflete a confirmação manual, quando existir, porque é ela
+      // que de fato passa a valer no rateio de custo por animal (ver
+      // useLotes.ts, construirContexto).
+      setSaldo(dados.custoConfirmadoKg != null ? { ...saldoCalculado, custoMedioKgVigente: dados.custoConfirmadoKg } : saldoCalculado)
     } else {
       setSaldo(null)
     }
@@ -378,6 +394,11 @@ export function useResumoGrupo(grupoId: string | null) {
     }).select().single()
     if (e1 || !novaCompra) return { error: e1?.message ?? 'Erro ao registrar compra' }
 
+    // Uma compra nova muda o consumo teórico coberto e invalida qualquer
+    // confirmação de custo anterior — o produtor precisa reavaliar e
+    // confirmar de novo, se for o caso.
+    await supabase.from('grupos_consumo_racao').update({ custo_confirmado_kg: null }).eq('id', grupoId)
+
     const dados = await carregarDadosConsumoGrupo(grupoId)
     const { error: eRecalc } = await recomputarPeriodos(dados.comprasArr, dados.consumoTeoricoPorLote)
     if (eRecalc) return { error: eRecalc }
@@ -399,6 +420,8 @@ export function useResumoGrupo(grupoId: string | null) {
       .update({ quantidade_kg: input.quantidade_kg, valor_total: input.valor_total }).eq('id', compraId)
     if (eUpd) return { error: eUpd.message }
 
+    await supabase.from('grupos_consumo_racao').update({ custo_confirmado_kg: null }).eq('id', grupoId)
+
     const dados = await carregarDadosConsumoGrupo(grupoId)
     const { error: eRecalc } = await recomputarPeriodos(dados.comprasArr, dados.consumoTeoricoPorLote)
     if (eRecalc) return { error: eRecalc }
@@ -407,18 +430,38 @@ export function useResumoGrupo(grupoId: string | null) {
     return { error: null }
   }
 
-  // Ajusta a quantidade da última compra (por data_inicio_uso) pra que o
-  // saldo do grupo feche em zero — usado quando o produtor confirma que o
-  // consumo teórico atual já é o valor real/final. O valor pago (valor_total)
-  // não muda — só a quantidade em kg é corrigida — então o custo médio final
-  // por kg cai (mais ração "coube" no mesmo valor pago do que o esperado).
+  // Confirma que a situação atual (consumo teórico x total pago) é a
+  // versão final/real — grava só a TAXA (R$/kg teórico) usada pra ratear
+  // custo entre os animais, calculada como valor total realmente pago
+  // dividido pelo consumo teórico acumulado até agora. NUNCA altera
+  // quantidade_kg nem valor_total de nenhuma compra — "Comprado" e cada
+  // linha da tabela de compras continuam mostrando exatamente o que foi
+  // comprado e pago. O que muda é só quanto disso é debitado de cada
+  // animal (ver useLotes.ts, que usa custo_confirmado_kg no lugar do custo
+  // médio baseado em kg real quando ele estiver preenchido).
   const confirmarSaldoAtual = async () => {
-    if (!saldo || compras.length === 0) return { error: 'Nenhuma compra para ajustar' }
-    const ordenadas = [...compras].sort((a, b) => a.data_inicio_uso.localeCompare(b.data_inicio_uso))
-    const ultimaCompra = ordenadas[ordenadas.length - 1]
-    const novaQuantidade = ultimaCompra.quantidade_kg - saldo.saldoKg
-    if (novaQuantidade <= 0) return { error: 'Ajuste resultaria numa quantidade inválida — verifique as compras lançadas' }
-    return editarCompra(ultimaCompra.id, { quantidade_kg: novaQuantidade, valor_total: ultimaCompra.valor_total })
+    if (!user || !grupoId) return { error: 'Não autenticado' }
+    if (!saldo || compras.length === 0) return { error: 'Nenhuma compra para confirmar' }
+    if (saldo.totalConsumidoTeoricoKg <= 0) return { error: 'Ainda não há consumo teórico calculado' }
+
+    const totalPago = compras.reduce((s, c) => s + c.valor_total, 0)
+    const custoConfirmado = totalPago / saldo.totalConsumidoTeoricoKg
+
+    const { error } = await supabase.from('grupos_consumo_racao').update({ custo_confirmado_kg: custoConfirmado }).eq('id', grupoId)
+    if (error) return { error: error.message }
+
+    await fetch()
+    return { error: null }
+  }
+
+  // Desfaz a confirmação: volta a usar o custo médio calculado normalmente
+  // a partir da quantidade real comprada.
+  const limparConfirmacaoSaldo = async () => {
+    if (!user || !grupoId) return { error: 'Não autenticado' }
+    const { error } = await supabase.from('grupos_consumo_racao').update({ custo_confirmado_kg: null }).eq('id', grupoId)
+    if (error) return { error: error.message }
+    await fetch()
+    return { error: null }
   }
 
   const adicionarLote = async (loteId: string, dataInicio: string) => {
@@ -448,12 +491,13 @@ export function useResumoGrupo(grupoId: string | null) {
   }, [periodos, consumoTeoricoPorLote])
 
   // Só mostra o alerta de saldo negativo se ainda houver consumo em aberto
-  // nessa dieta hoje — senão é uma situação histórica/fechada, não algo que
-  // precise da atenção do produtor agora.
-  const mostrarAlertaSaldo = !!saldo && saldo.saldoKg < 0 && algumAnimalNaDietaHoje
+  // nessa dieta hoje E ainda não houver uma confirmação de custo vigente —
+  // depois de confirmado, o rateio já está correto (capado no que foi
+  // realmente pago), não precisa mais chamar atenção.
+  const mostrarAlertaSaldo = !!saldo && saldo.saldoKg < 0 && algumAnimalNaDietaHoje && custoConfirmadoKg == null
 
   return {
-    membros, compras, periodos, lotesInfo, saldo, loading, pctConsumoPvMs, mostrarAlertaSaldo,
-    registrarCompra, editarCompra, confirmarSaldoAtual, adicionarLote, encerrarParticipacao, rankingPorCompra, refetch: fetch,
+    membros, compras, periodos, lotesInfo, saldo, loading, pctConsumoPvMs, mostrarAlertaSaldo, custoConfirmadoKg,
+    registrarCompra, editarCompra, confirmarSaldoAtual, limparConfirmacaoSaldo, adicionarLote, encerrarParticipacao, rankingPorCompra, refetch: fetch,
   }
 }
