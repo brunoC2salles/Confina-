@@ -304,12 +304,16 @@ export function useResumoGrupo(grupoId: string | null) {
         saldo_kg_inicio: p.saldo_kg_inicio, custo_medio_kg: p.custo_medio_kg,
       }))
       const saldoCalculado = calcularSaldoGrupo(comprasInfo, dados.consumoTeoricoPorLote, periodosInfo, hojeDia)
-      // "Comprado", "Consumido (teórico)" e "Saldo" (em kg) nunca mudam — são
-      // sempre os números reais/estimados como já eram. Só o custo médio
-      // exibido reflete a confirmação manual, quando existir, porque é ela
-      // que de fato passa a valer no rateio de custo por animal (ver
-      // useLotes.ts, construirContexto).
-      setSaldo(dados.custoConfirmadoKg != null ? { ...saldoCalculado, custoMedioKgVigente: dados.custoConfirmadoKg } : saldoCalculado)
+      // "Comprado" nunca muda — é sempre o real. Quando há confirmação
+      // manual, "Consumido" passa a mostrar o mesmo valor de "Comprado" (o
+      // produtor confirmou que tudo que comprou foi de fato consumido) e o
+      // saldo zera — em vez de continuar mostrando a estimativa teórica
+      // (que pode divergir bastante do que foi realmente comprado). O custo
+      // médio exibido passa a ser o preço REAL pago (valor total / kg
+      // comprado), não uma taxa diluída pelo teórico.
+      setSaldo(dados.custoConfirmadoKg != null
+        ? { ...saldoCalculado, totalConsumidoTeoricoKg: saldoCalculado.totalCompradoKg, saldoKg: 0, custoMedioKgVigente: dados.custoConfirmadoKg }
+        : saldoCalculado)
     } else {
       setSaldo(null)
     }
@@ -430,22 +434,22 @@ export function useResumoGrupo(grupoId: string | null) {
     return { error: null }
   }
 
-  // Confirma que a situação atual (consumo teórico x total pago) é a
-  // versão final/real — grava só a TAXA (R$/kg teórico) usada pra ratear
-  // custo entre os animais, calculada como valor total realmente pago
-  // dividido pelo consumo teórico acumulado até agora. NUNCA altera
+  // Confirma que a situação atual é a versão final/real: grava o preço REAL
+  // pago por kg (valor total realmente pago / kg realmente comprado) — o
+  // mesmo número que aparece em cada compra da lista. NUNCA altera
   // quantidade_kg nem valor_total de nenhuma compra — "Comprado" e cada
   // linha da tabela de compras continuam mostrando exatamente o que foi
-  // comprado e pago. O que muda é só quanto disso é debitado de cada
-  // animal (ver useLotes.ts, que usa custo_confirmado_kg no lugar do custo
-  // médio baseado em kg real quando ele estiver preenchido).
+  // comprado e pago. O motor de custo (useLotes.ts) é quem aplica um fator
+  // de escala sobre o consumo teórico pra que o total debitado dos animais
+  // nunca ultrapasse o que foi de fato pago, mesmo usando o preço real (não
+  // uma taxa diluída) — ver custoConfirmadoPorGrupo/fatorEscala lá.
   const confirmarSaldoAtual = async () => {
     if (!user || !grupoId) return { error: 'Não autenticado' }
     if (!saldo || compras.length === 0) return { error: 'Nenhuma compra para confirmar' }
-    if (saldo.totalConsumidoTeoricoKg <= 0) return { error: 'Ainda não há consumo teórico calculado' }
+    if (saldo.totalCompradoKg <= 0) return { error: 'Nenhuma quantidade comprada registrada' }
 
     const totalPago = compras.reduce((s, c) => s + c.valor_total, 0)
-    const custoConfirmado = totalPago / saldo.totalConsumidoTeoricoKg
+    const custoConfirmado = totalPago / saldo.totalCompradoKg
 
     const { error } = await supabase.from('grupos_consumo_racao').update({ custo_confirmado_kg: custoConfirmado }).eq('id', grupoId)
     if (error) return { error: error.message }
