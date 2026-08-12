@@ -212,7 +212,7 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
                     <MetricaCard label="Custo médio/kg vigente" valor={saldo.custoMedioKgVigente != null ? fmt(saldo.custoMedioKgVigente) : '—'} />
                   </div>
                 )}
-              {mostrarAlertaSaldo && (
+              {saldo && Math.round(saldo.saldoKg) !== 0 && (
                 <div style={{ marginTop: 8 }}>
                   <button className="btn btn-ghost btn-sm" onClick={handleConfirmarSaldoAtual} disabled={confirmandoSaldo}>
                     {confirmandoSaldo ? 'Confirmando...' : 'Confirmar saldo atual'}
