@@ -315,6 +315,24 @@ export function cicloNumeroDoAnimalNoDia(
   return encontrarCicloAtivoParaAnimal(loteId, dia, ciclos, eventosAnimal)?.numero ?? null
 }
 
+// Versão exportada que devolve a DIETA vigente (id) de um animal num dia
+// específico — mesma resolução usada internamente em calcularAnimalNaData
+// (ciclo ativo do animal naquele dia + troca de dieta dentro do ciclo, se
+// houver), exposta pra uso externo. Usada por custoRacaoGrupo.ts para saber,
+// dia a dia, se um animal estava de fato na dieta associada a uma compra do
+// grupo de consumo — sem isso, o rateio de uma compra vinculada à dieta X
+// contaria também dias em que o animal já tinha mudado de dieta/ciclo, ou
+// ainda não tinha entrado nela. Única fonte de verdade sobre "qual dieta o
+// animal comia em tal dia" — nunca duplicar essa lógica em outro arquivo.
+export function dietaVigenteDoAnimalNoDia(
+  loteId: string, dia: number, ciclos: CicloInfo[],
+  eventosAnimal: CicloAnimalEvento[], trocasDieta: TrocaDietaCiclo[],
+): string | null {
+  const ciclo = encontrarCicloAtivoParaAnimal(loteId, dia, ciclos, eventosAnimal)
+  if (!ciclo) return null
+  return resolverDietaIdNoDia(loteId, ciclo.numero, dia, ciclo.dieta_id, trocasDieta)
+}
+
 function custoVigenteNoDia(dia: number, historico: HistoricoCustoPonto[]): number | null {
   for (const h of historico) {
     const desde = toDay(h.vigente_desde)
