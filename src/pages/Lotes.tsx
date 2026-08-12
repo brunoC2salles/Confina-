@@ -2962,7 +2962,7 @@ function ModalCustosOperacionais({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {loteAtivo && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div className="form-row-2">
               <div className="form-group">
                 <label className="form-label">Categoria</label>
                 <select className="form-input" value={categoria} onChange={e => setCategoria(e.target.value as CategoriaCustoOperacional)}>
@@ -3098,7 +3098,7 @@ function ModalCustoRacaoReal({
         {loteAtivo && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600 }}>{editandoId ? 'Editando lançamento' : 'Novo lançamento'}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div className="form-row-2">
               <div className="form-group">
                 <label className="form-label">A partir de</label>
                 <input className="form-input" type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
