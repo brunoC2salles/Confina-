@@ -255,7 +255,7 @@ export default function Ranking() {
               <thead>
                 <tr>
                   <th>#</th><th>Código</th><th>Lote</th><th>Peso atual</th><th>Ganho de peso</th>
-                  <th>Rendimento</th><th>Custo/kg ganho</th><th>Lucro projetado</th>
+                  <th>Custo/kg ganho</th><th>Lucro projetado</th>
                 </tr>
               </thead>
               <tbody>
@@ -266,7 +266,6 @@ export default function Ranking() {
                     <td>{a.loteNome}</td>
                     <td>{fmtNum(a.pesoAtual, 1)} kg</td>
                     <td>{fmtNum(a.ganho, 1)} kg</td>
-                    <td>{fmtNum(a.rendPct, 1)}%</td>
                     <td>{a.custoPorKg != null ? `${fmt(a.custoPorKg)}/kg` : '—'}</td>
                     <td style={{ color: a.lucroProjetado == null ? undefined : a.lucroProjetado >= 0 ? '#2e7d32' : '#b91c1c' }}>
                       {a.lucroProjetado != null ? fmt(a.lucroProjetado) : '—'}
@@ -284,7 +283,7 @@ export default function Ranking() {
               <thead>
                 <tr>
                   <th>#</th><th>Código</th><th>Lote de origem</th><th>Data</th><th>Peso na venda</th>
-                  <th>Ganho de peso</th><th>Rendimento</th><th>Custo/kg ganho</th><th>Lucro</th>
+                  <th>Ganho de peso</th><th>Custo/kg ganho</th><th>Lucro</th>
                 </tr>
               </thead>
               <tbody>
@@ -296,7 +295,6 @@ export default function Ranking() {
                     <td>{v.data}</td>
                     <td>{fmtNum(v.pesoVenda, 1)} kg</td>
                     <td>{fmtNum(v.ganho, 1)} kg</td>
-                    <td>{fmtNum(v.rendPct, 1)}%</td>
                     <td>{v.custoPorKg != null ? `${fmt(v.custoPorKg)}/kg` : '—'}</td>
                     <td style={{ color: v.lucro >= 0 ? '#2e7d32' : '#b91c1c' }}>{fmt(v.lucro)}</td>
                   </tr>
