@@ -220,15 +220,15 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
               </div>
 
               {showAddLote && (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginTop: 10 }}>
-                  <div className="form-group" style={{ flex: 1 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
+                  <div className="form-group" style={{ flex: '1 1 160px' }}>
                     <label className="form-label">Lote</label>
                     <select className="form-input" value={loteParaAdicionar} onChange={e => setLoteParaAdicionar(e.target.value)}>
                       <option value="">Selecione</option>
                       {lotesDisponiveis.map(l => <option key={l.id} value={l.id}>{l.nome_lote}</option>)}
                     </select>
                   </div>
-                  <div className="form-group">
+                  <div className="form-group" style={{ flex: '1 1 140px' }}>
                     <label className="form-label">Desde</label>
                     <input type="date" className="form-input" value={dataInicioLote} onChange={e => setDataInicioLote(e.target.value)} />
                   </div>

@@ -304,7 +304,7 @@ export default function Configuracoes() {
 
           {planoEfetivo === 'free' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-primary btn-sm" disabled={processando}
                   onClick={async () => { const r = await assinar(PRICE_IDS.pro_mensal); if (r.error) setErroAssinatura(r.error) }}>
                   Assinar Pro (mensal)
@@ -314,7 +314,7 @@ export default function Configuracoes() {
                   Pro (anual)
                 </button>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-primary btn-sm" disabled={processando}
                   onClick={async () => { const r = await assinar(PRICE_IDS.master_mensal); if (r.error) setErroAssinatura(r.error) }}>
                   Assinar Master (mensal)
