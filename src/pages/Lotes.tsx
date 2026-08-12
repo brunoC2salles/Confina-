@@ -33,10 +33,14 @@ const fmtDataCurta = (d: string) => {
 // sem avanço parcial), mostra "Ciclo N/total" como sempre. Com ciclos
 // mistos (algum animal foi adiantado via avanço parcial), mostra a
 // distribuição — sem tentar resumir num único número, que deixaria de
-// contar a história certa.
-function rotuloCiclo(lote: Lote, dist: Record<number, number> | undefined): string {
+// contar a história certa. O "total" é o maior número de ciclo configurado
+// (não a contagem de ciclos) — lotes que começam a numeração em algo
+// diferente de 1 (ex: direto no ciclo 2) não têm uma contagem que bata com
+// o número absoluto do ciclo atual.
+function rotuloCiclo(lote: Lote, dist: Record<number, number> | undefined, ciclos: Array<{ numero: number }>): string {
   const entradas = Object.entries(dist ?? {}).map(([n, qtd]) => [Number(n), qtd] as [number, number])
-  if (entradas.length <= 1) return `Ciclo ${lote.ciclo_atual}/${lote.num_ciclos}`
+  const maiorNumero = ciclos.length > 0 ? Math.max(...ciclos.map(c => c.numero)) : lote.num_ciclos
+  if (entradas.length <= 1) return `Ciclo ${lote.ciclo_atual}/${maiorNumero}`
   return entradas
     .sort((a, b) => a[0] - b[0])
     .map(([numero, qtd]) => `Ciclo ${numero} (${qtd})`)
@@ -127,7 +131,7 @@ export default function Lotes() {
                   <span style={{ fontSize: 11, background: lote.status === 'encerrado' ? '#f5f5f5' : '#e8f5e9', color: lote.status === 'encerrado' ? '#757575' : '#2e7d32', padding: '2px 8px', borderRadius: 20, border: `1px solid ${lote.status === 'encerrado' ? '#e0e0e0' : '#a5d6a7'}` }}>
                     {lote.status === 'encerrado'
                       ? (lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado')
-                      : rotuloCiclo(lote, distribuicaoCiclos[lote.id])}
+                      : rotuloCiclo(lote, distribuicaoCiclos[lote.id], ciclosPorLote[lote.id] ?? [])}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--gray-500)', flexWrap: 'wrap' }}>
@@ -266,6 +270,12 @@ function FormLoteBase({
   const [origemEstado, setOrigemEstado] = useState('')
 
   const [numCiclos, setNumCiclos] = useState(4)
+  // Número do primeiro ciclo do lote — normalmente 1, mas pode começar em
+  // outro número (ex: 2) quando o produtor pula uma etapa que não faz mais
+  // parte do fluxo (ex: "Recebimento" virou trivial e ele já entra direto
+  // na etapa que sempre chamou de "ciclo 2", mantendo a numeração antiga
+  // para não quebrar a comparação com lotes anteriores).
+  const [cicloInicial, setCicloInicial] = useState(1)
   const [ciclos, setCiclos] = useState<CicloInput[]>(
     Array.from({ length: 4 }, (_, i) => ({
       numero: i + 1, nome: cicloLabelPadrao(i + 1), tipo_ciclo: 'confinamento' as TipoCiclo,
@@ -279,13 +289,23 @@ function FormLoteBase({
     setCiclos(prev => {
       const arr = [...prev]
       while (arr.length < novo) {
+        const numero = cicloInicial + arr.length
         arr.push({
-          numero: arr.length + 1, nome: cicloLabelPadrao(arr.length + 1), tipo_ciclo: 'confinamento' as TipoCiclo,
+          numero, nome: cicloLabelPadrao(numero), tipo_ciclo: 'confinamento' as TipoCiclo,
           dias_planejados: 30, dieta_id: null, gmd_esperado: null,
         })
       }
       return arr.slice(0, novo)
     })
+  }
+
+  // Muda o número do primeiro ciclo — renumera todos os ciclos já
+  // configurados a partir dele (mantém os nomes/dietas/GMD já escolhidos,
+  // só ajusta o número de cada um).
+  const ajustarCicloInicial = (n: number) => {
+    const novo = Math.max(1, n)
+    setCicloInicial(novo)
+    setCiclos(prev => prev.map((c, i) => ({ ...c, numero: novo + i })))
   }
 
   // Nomes sugeridos são iguais nas duas telas de ciclo (criação e edição) —
@@ -440,10 +460,20 @@ function FormLoteBase({
 
       {step === 2 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="form-group">
-            <label className="form-label">Número de ciclos (máx. 8)</label>
-            <input className="form-input" type="number" min={1} max={8} value={numCiclos}
-              onChange={e => ajustarNumCiclos(Number(e.target.value))} style={{ maxWidth: 100 }} />
+          <div className="form-row-2">
+            <div className="form-group" style={{ maxWidth: 200 }}>
+              <label className="form-label">Número de ciclos (máx. 8)</label>
+              <input className="form-input" type="number" min={1} max={8} value={numCiclos}
+                onChange={e => ajustarNumCiclos(Number(e.target.value))} />
+            </div>
+            <div className="form-group" style={{ maxWidth: 200 }}>
+              <label className="form-label">Começar no ciclo número</label>
+              <input className="form-input" type="number" min={1} value={cicloInicial}
+                onChange={e => ajustarCicloInicial(Number(e.target.value))} />
+              <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                Normalmente 1. Use um número maior se este lote deve pular direto para uma etapa que você já numera de forma fixa (ex: começar em 2).
+              </div>
+            </div>
           </div>
           {ciclos.map((c, idx) => (
             <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1038,7 +1068,7 @@ function DetalheLote({
   // botão "Avançar ciclo dos selecionados".
   const animaisSelecionadosArr = animais.filter(a => selecionados.has(a.id))
   const ciclosDaSelecao = new Set(animaisSelecionadosArr.map(a => a.ciclo_atual))
-  const cicloOrigemSelecao = ciclosDaSelecao.size === 1 && animaisSelecionadosArr[0].ciclo_atual < lote.num_ciclos
+  const cicloOrigemSelecao = ciclosDaSelecao.size === 1 && ciclos.some(c => c.numero === animaisSelecionadosArr[0].ciclo_atual + 1)
     ? animaisSelecionadosArr[0].ciclo_atual
     : null
 
@@ -1127,7 +1157,7 @@ function DetalheLote({
 
   return (
     <Modal open onClose={onClose} title={lote.nome_lote}
-      subtitle={`${lote.codigo_lote} · ${rotuloCiclo(lote, distribuicaoCiclos[loteId])}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="xl"
+      subtitle={`${lote.codigo_lote} · ${rotuloCiclo(lote, distribuicaoCiclos[loteId], ciclos)}${!loteAtivo ? ` · ${lote.motivo_encerramento === 'venda' ? 'Vendido' : lote.motivo_encerramento === 'extincao' ? 'Extinto' : 'Encerrado'}` : ''}`} size="xl"
       footer={selecionados.size > 0 && loteAtivo ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1171,7 +1201,7 @@ function DetalheLote({
         {loteAtivo && (
           <div className="flex-between" style={{ flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowAvancarCiclo('total')} disabled={lote.ciclo_atual >= lote.num_ciclos}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowAvancarCiclo('total')} disabled={!ciclos.some(c => c.numero === lote.ciclo_atual + 1)}>
                 Avançar ciclo
               </button>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowTrocarDieta(true)}>
