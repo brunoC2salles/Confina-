@@ -122,8 +122,8 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
   onExcluir: () => void
 }) {
   const {
-    membros, compras, lotesInfo, saldo, loading, mostrarAlertaSaldo,
-    registrarCompra, editarCompra, confirmarSaldoAtual, adicionarLote, encerrarParticipacao, rankingPorCompra,
+    membros, compras, lotesInfo, saldo, loading, mostrarAlertaSaldo, custoConfirmadoKg,
+    registrarCompra, editarCompra, confirmarSaldoAtual, limparConfirmacaoSaldo, adicionarLote, encerrarParticipacao, rankingPorCompra,
   } = useResumoGrupo(grupo.id)
 
   const [showCompra, setShowCompra] = useState(false)
@@ -191,6 +191,12 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
     setConfirmandoSaldo(false)
   }
 
+  const handleLimparConfirmacao = async () => {
+    setConfirmandoSaldo(true)
+    await limparConfirmacaoSaldo()
+    setConfirmandoSaldo(false)
+  }
+
   return (
     <Modal open onClose={onClose} title={grupo.nome} subtitle={grupo.dieta_nome ?? undefined} size="xl">
       {loading
@@ -208,15 +214,28 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
                     <MetricaCard label="Comprado" valor={`${fmtNum(saldo.totalCompradoKg, 0)} kg`} />
                     <MetricaCard label="Consumido (teórico)" valor={`${fmtNum(saldo.totalConsumidoTeoricoKg, 0)} kg`} />
                     <MetricaCard label="Saldo" valor={`${fmtNum(saldo.saldoKg, 0)} kg`} alerta={mostrarAlertaSaldo}
-                      alertaTitulo="Saldo negativo — o consumo teórico já passou do que foi comprado. Lance uma nova compra ou edite uma existente." />
+                      alertaTitulo="Saldo negativo — o consumo teórico já passou do que foi comprado. Lance uma nova compra, edite uma existente, ou use “Confirmar saldo atual” se esse já for o valor final." />
                     <MetricaCard label="Custo médio/kg vigente" valor={saldo.custoMedioKgVigente != null ? fmt(saldo.custoMedioKgVigente) : '—'} />
                   </div>
                 )}
-              {/* Botão "Confirmar saldo atual" temporariamente fora do ar: a
-                  implementação anterior alterava quantidade_kg da compra (o
-                  registro real do que foi comprado) pra fechar a conta, o que
-                  falsificava esse dado. Será reintroduzido recalibrando só a
-                  taxa de rateio de custo, sem tocar em quantidade_kg/valor_total. */}
+              {saldo && Math.round(saldo.saldoKg) !== 0 && (
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {custoConfirmadoKg == null ? (
+                    <button className="btn btn-ghost btn-sm" onClick={handleConfirmarSaldoAtual} disabled={confirmandoSaldo}>
+                      {confirmandoSaldo ? 'Confirmando...' : 'Confirmar saldo atual'}
+                    </button>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 12, color: '#9e9e9e' }}>
+                        Custo médio confirmado manualmente — quantidade e valor das compras não foram alterados.
+                      </span>
+                      <button className="btn btn-ghost btn-sm" onClick={handleLimparConfirmacao} disabled={confirmandoSaldo}>
+                        Recalcular pelo teórico
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Membros */}
