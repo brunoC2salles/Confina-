@@ -1446,15 +1446,24 @@ export function useCustoEngine() {
         // acontece na composição do grupo (produtor escolhe os membros).
         if (membrosGrupo.length > 0) {
           const grupoIds = Array.from(new Set(membrosGrupo.map(m => m.grupo_id)))
-          const [{ data: gruposData }, { data: periodosGrupoData }] = await Promise.all([
+          const [{ data: gruposData }, { data: periodosGrupoData }, { data: comprasGrupoData }] = await Promise.all([
             supabase.from('grupos_consumo_racao').select('id, dieta_id, custo_confirmado_kg').in('id', grupoIds),
             supabase.from('grupos_consumo_periodos').select('grupo_id, vigente_desde, vigente_ate, custo_medio_kg').in('grupo_id', grupoIds),
+            supabase.from('compras_racao_grupo').select('grupo_id, quantidade_kg').in('grupo_id', grupoIds),
           ])
           const dietaIdPorGrupo: Record<string, string> = {}
           const custoConfirmadoPorGrupo: Record<string, number | null> = {}
           for (const g of (gruposData ?? []) as Array<{ id: string; dieta_id: string; custo_confirmado_kg: number | null }>) {
             dietaIdPorGrupo[g.id] = g.dieta_id
             custoConfirmadoPorGrupo[g.id] = g.custo_confirmado_kg
+          }
+          // Total realmente comprado por grupo (soma de todas as compras) —
+          // usado só quando há confirmação manual, pra calcular o fator de
+          // escala que mantém o total debitado dos animais igual ao total
+          // pago, mesmo exibindo/aplicando o preço REAL por kg (ver abaixo).
+          const totalCompradoPorGrupo: Record<string, number> = {}
+          for (const c of (comprasGrupoData ?? []) as Array<{ grupo_id: string; quantidade_kg: number }>) {
+            totalCompradoPorGrupo[c.grupo_id] = (totalCompradoPorGrupo[c.grupo_id] ?? 0) + c.quantidade_kg
           }
 
           const dietaIdsGrupo = Array.from(new Set(Object.values(dietaIdPorGrupo)))
@@ -1506,7 +1515,20 @@ export function useCustoEngine() {
             ;(membrosPorLoteGrupo[chave] ??= { grupo_id: m.grupo_id, lote_id: m.lote_id, linhas: [] }).linhas.push({ data_fim: m.data_fim })
           }
 
-          for (const { grupo_id, lote_id, linhas } of Object.values(membrosPorLoteGrupo)) {
+          // ─── 1ª passada: peso/consumo teórico por dia de cada (grupo,lote),
+          // e o total teórico acumulado do GRUPO INTEIRO (soma de todos os
+          // lotes que dividem essa compra) — precisa disso ANTES de aplicar
+          // qualquer preço, porque o fator de escala da confirmação manual
+          // (ver 2ª passada) depende do total teórico do grupo todo, não só
+          // de um lote por vez.
+          const dadosPorLoteGrupo: Record<string, {
+            grupo_id: string; lote_id: string; pct: number; limiteFim: number | null
+            diaInicioGrupo: number; diaFimGrupo: number
+            pesoTotalPorDiaGrupo: Record<number, number>; qtdAtivaPorDiaGrupo: Record<number, number>
+          }> = {}
+          const totalTeoricoPorGrupo: Record<string, number> = {}
+
+          for (const [chave, { grupo_id, lote_id, linhas }] of Object.entries(membrosPorLoteGrupo)) {
             const dietaId = dietaIdPorGrupo[grupo_id]
             const pct = dietaId ? pctPorDietaGrupo[dietaId] : null
             if (pct == null || !dietaId) continue
@@ -1550,26 +1572,45 @@ export function useCustoEngine() {
               }
             }
 
+            dadosPorLoteGrupo[chave] = { grupo_id, lote_id, pct, limiteFim, diaInicioGrupo, diaFimGrupo, pesoTotalPorDiaGrupo, qtdAtivaPorDiaGrupo }
+            let teoricoLote = 0
+            for (const peso of Object.values(pesoTotalPorDiaGrupo)) teoricoLote += peso * (pct / 100)
+            totalTeoricoPorGrupo[grupo_id] = (totalTeoricoPorGrupo[grupo_id] ?? 0) + teoricoLote
+          }
+
+          // ─── 2ª passada: gera o custo real por dia, aplicando o preço
+          // vigente (histórico, baseado em kg real comprado) OU, quando há
+          // confirmação manual, o preço REAL pago escalado por
+          // (total comprado do grupo / total teórico do grupo) — assim o
+          // preço exibido/usado é o real, e o total somado entre todos os
+          // animais do grupo nunca ultrapassa o que foi de fato pago.
+          for (const { grupo_id, lote_id, pct, limiteFim, diaInicioGrupo, diaFimGrupo, pesoTotalPorDiaGrupo, qtdAtivaPorDiaGrupo } of Object.values(dadosPorLoteGrupo)) {
+            const periodosDoGrupo = periodosPorGrupo[grupo_id] ?? []
+            const custoConfirmado = custoConfirmadoPorGrupo[grupo_id]
+            const teoricoGrupo = totalTeoricoPorGrupo[grupo_id] ?? 0
+            const fatorEscala = custoConfirmado != null && teoricoGrupo > 0
+              ? (totalCompradoPorGrupo[grupo_id] ?? 0) / teoricoGrupo
+              : 1
+
             for (let dia = diaInicioGrupo; dia < diaFimGrupo; dia++) {
               if (limiteFim !== null && dia > limiteFim) continue
               const pesoTotalDia = pesoTotalPorDiaGrupo[dia] ?? 0
               if (pesoTotalDia <= 0) continue
-              const periodoVigente = periodosDoGrupo.find(p => {
-                const desde = toDay(p.vigente_desde)
-                const ate = p.vigente_ate ? toDay(p.vigente_ate) : null
-                return dia >= desde && (ate === null || dia < ate)
-              })
-              if (!periodoVigente) continue
               const consumoKgDia = pesoTotalDia * (pct / 100)
-              // Se o produtor confirmou manualmente a situação como final
-              // (ver confirmarSaldoAtual em useGruposConsumoRacao.ts), usa
-              // essa taxa em vez do custo médio calculado a partir da
-              // quantidade real comprada — isso garante que o total rateado
-              // entre os animais nunca ultrapasse o que de fato foi pago,
-              // mesmo quando o consumo teórico diverge do físico. A compra
-              // em si (quantidade_kg/valor_total) nunca é alterada por isso.
-              const custoKgVigente = custoConfirmadoPorGrupo[grupo_id] ?? periodoVigente.custo_medio_kg
-              const valorTotalDia = consumoKgDia * custoKgVigente
+
+              let valorTotalDia: number
+              if (custoConfirmado != null) {
+                valorTotalDia = consumoKgDia * fatorEscala * custoConfirmado
+              } else {
+                const periodoVigente = periodosDoGrupo.find(p => {
+                  const desde = toDay(p.vigente_desde)
+                  const ate = p.vigente_ate ? toDay(p.vigente_ate) : null
+                  return dia >= desde && (ate === null || dia < ate)
+                })
+                if (!periodoVigente) continue
+                valorTotalDia = consumoKgDia * periodoVigente.custo_medio_kg
+              }
+
               const info: CustoRacaoRealDiaInfo = {
                 valorTotalDia,
                 pesoTotalDia,
