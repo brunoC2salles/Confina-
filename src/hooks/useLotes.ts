@@ -1167,6 +1167,42 @@ export async function buscarPorIds<T>(
   return resultadosPorChunk.flat()
 }
 
+// ─── Contagem histórica de animais ativos num lote, numa data qualquer ────────
+// Reconstrói os períodos de TODOS os animais que já passaram pelo lote (não só
+// os ativos hoje) a partir de movimentacoes_animais, e conta quantos estavam
+// ativos nele na data pedida. Usado para exibir o TOTAL de um lançamento de
+// custo operacional (valor por animal x quantidade de animais ativos na data
+// do lançamento — ver custoAnimal.ts, onde o valor por animal já é aplicado
+// sem essa multiplicação, cabeça por cabeça). Fallback: se não há ninguém
+// registrado exatamente naquela data (situação anômala), usa a quantidade
+// ativa atual do lote.
+export async function contarAtivosNoDiaDoLote(loteId: string, dataAlvo: string): Promise<number> {
+  const movs = await buscarTudoPaginado<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>((from, to) =>
+    supabase
+      .from('movimentacoes_animais')
+      .select('animal_id, tipo, lote_origem_id, lote_destino_id, data')
+      .or(`lote_origem_id.eq.${loteId},lote_destino_id.eq.${loteId}`)
+      .range(from, to))
+
+  const movsPorAnimal: Record<string, Array<{ tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>> = {}
+  for (const m of movs) (movsPorAnimal[m.animal_id] ??= []).push(m)
+
+  const dia = toDay(dataAlvo)
+  let count = 0
+  for (const animalMovs of Object.values(movsPorAnimal)) {
+    const periodos = construirPeriodosDeMovimentacoes(animalMovs)
+    const periodo = encontrarLoteAtivo(dia, periodos)
+    if (periodo && periodo.lote_id === loteId) count++
+  }
+
+  if (count > 0) return count
+
+  const { count: countAtual } = await supabase
+    .from('animais').select('id', { count: 'exact', head: true })
+    .eq('lote_atual_id', loteId).eq('status', 'ativo')
+  return countAtual ?? 1
+}
+
 export function useCustoEngine() {
   const { user } = useAuth()
 
@@ -1567,9 +1603,15 @@ export function useCustoEngine() {
 
 // ─── Hook: custos operacionais de um lote ──────────────────────────────────────
 
+// Custo operacional lançado + a quantidade de animais ativos na data desse
+// lançamento (para exibir o total real: valor por animal x quantidade).
+export interface CustoOperacionalComQtd extends CustoOperacionalLote {
+  qtdAtivaNaData: number
+}
+
 export function useCustosOperacionais(loteId: string | null) {
   const { user } = useAuth()
-  const [custos, setCustos] = useState<CustoOperacionalLote[]>([])
+  const [custos, setCustos] = useState<CustoOperacionalComQtd[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetch = useCallback(async () => {
@@ -1578,7 +1620,14 @@ export function useCustosOperacionais(loteId: string | null) {
     const { data } = await supabase
       .from('custos_operacionais_lote').select('*')
       .eq('lote_id', loteId).order('data_lancamento', { ascending: false })
-    setCustos((data ?? []) as CustoOperacionalLote[])
+    const linhas = (data ?? []) as CustoOperacionalLote[]
+    // Quantidade ativa na data de cada lançamento — cada linha resolvida em
+    // paralelo (reconstrução de períodos é feita uma vez por chamada, mas o
+    // volume de lançamentos operacionais por lote é tipicamente pequeno).
+    const comQtd = await Promise.all(linhas.map(async c => ({
+      ...c, qtdAtivaNaData: await contarAtivosNoDiaDoLote(loteId, c.data_lancamento),
+    })))
+    setCustos(comQtd)
     setLoading(false)
   }, [user, loteId])
 
@@ -1600,7 +1649,9 @@ export function useCustosOperacionais(loteId: string | null) {
     return { error: error?.message ?? null }
   }
 
-  const total = custos.reduce((s, c) => s + c.valor, 0)
+  // valor é por animal — o total exibido é valor x quantidade de animais
+  // ativos na data de cada lançamento (ver custoAnimal.ts)
+  const total = custos.reduce((s, c) => s + c.valor * c.qtdAtivaNaData, 0)
 
   return { custos, loading, total, adicionarCusto, removerCusto }
 }
