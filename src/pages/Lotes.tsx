@@ -1152,8 +1152,22 @@ function DetalheLote({
     acc.diasPastagem += r.diasEmPastagem
     acc.diasConfinamento += r.diasEmConfinamento
     acc.diasMisto += r.diasEmMisto
+    // Conta só os animais que de fato passaram por aquele tipo de ciclo —
+    // usado para calcular a MÉDIA de dias por animal (abaixo), em vez de
+    // exibir a soma bruta de dias de todos os animais somados (que, num
+    // lote com 100 animais x 70 dias cada, mostrava "7000 dia(s)" — uma
+    // soma de cabeça-dia, não um número de dias que faz sentido pro produtor).
+    if (r.diasEmPastagem > 0) acc.qtdPastagem += 1
+    if (r.diasEmConfinamento > 0) acc.qtdConfinamento += 1
+    if (r.diasEmMisto > 0) acc.qtdMisto += 1
     return acc
-  }, { ganhoPastagem: 0, ganhoConfinamento: 0, ganhoMisto: 0, custoPastagem: 0, custoConfinamento: 0, custoMisto: 0, diasPastagem: 0, diasConfinamento: 0, diasMisto: 0 })
+  }, {
+    ganhoPastagem: 0, ganhoConfinamento: 0, ganhoMisto: 0, custoPastagem: 0, custoConfinamento: 0, custoMisto: 0,
+    diasPastagem: 0, diasConfinamento: 0, diasMisto: 0, qtdPastagem: 0, qtdConfinamento: 0, qtdMisto: 0,
+  })
+  const diasMedioPastagem = somaPorTipo.qtdPastagem > 0 ? somaPorTipo.diasPastagem / somaPorTipo.qtdPastagem : 0
+  const diasMedioConfinamento = somaPorTipo.qtdConfinamento > 0 ? somaPorTipo.diasConfinamento / somaPorTipo.qtdConfinamento : 0
+  const diasMedioMisto = somaPorTipo.qtdMisto > 0 ? somaPorTipo.diasMisto / somaPorTipo.qtdMisto : 0
 
   return (
     <Modal open onClose={onClose} title={lote.nome_lote}
@@ -1269,7 +1283,7 @@ function DetalheLote({
             <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 220 }}>
               <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 6 }}>Pastagem (até agora)</div>
               <div style={{ fontSize: 12, display: 'flex', gap: 14 }}>
-                <span>{somaPorTipo.diasPastagem} dia(s)</span>
+                <span>{fmtNum(diasMedioPastagem, 0)} dia(s) em média</span>
                 <span>{fmtNum(somaPorTipo.ganhoPastagem, 1)} kg ganhos</span>
                 <span>{fmt(somaPorTipo.custoPastagem)} custo</span>
               </div>
@@ -1277,7 +1291,7 @@ function DetalheLote({
             <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 220 }}>
               <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 6 }}>Confinamento (até agora)</div>
               <div style={{ fontSize: 12, display: 'flex', gap: 14 }}>
-                <span>{somaPorTipo.diasConfinamento} dia(s)</span>
+                <span>{fmtNum(diasMedioConfinamento, 0)} dia(s) em média</span>
                 <span>{fmtNum(somaPorTipo.ganhoConfinamento, 1)} kg ganhos</span>
                 <span>{fmt(somaPorTipo.custoConfinamento)} custo</span>
               </div>
@@ -1286,7 +1300,7 @@ function DetalheLote({
               <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 220 }}>
                 <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 6 }}>Misto (até agora)</div>
                 <div style={{ fontSize: 12, display: 'flex', gap: 14 }}>
-                  <span>{somaPorTipo.diasMisto} dia(s)</span>
+                  <span>{fmtNum(diasMedioMisto, 0)} dia(s) em média</span>
                   <span>{fmtNum(somaPorTipo.ganhoMisto, 1)} kg ganhos</span>
                   <span>{fmt(somaPorTipo.custoMisto)} custo</span>
                 </div>
