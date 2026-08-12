@@ -208,17 +208,15 @@ function DetalheGrupo({ grupo, lotesAtivos, fornecedores, onClose, onExcluir }: 
                     <MetricaCard label="Comprado" valor={`${fmtNum(saldo.totalCompradoKg, 0)} kg`} />
                     <MetricaCard label="Consumido (teórico)" valor={`${fmtNum(saldo.totalConsumidoTeoricoKg, 0)} kg`} />
                     <MetricaCard label="Saldo" valor={`${fmtNum(saldo.saldoKg, 0)} kg`} alerta={mostrarAlertaSaldo}
-                      alertaTitulo="Saldo negativo — o consumo teórico já passou do que foi comprado. Lance uma nova compra, edite uma existente, ou use “Confirmar saldo atual” se esse já for o valor real." />
+                      alertaTitulo="Saldo negativo — o consumo teórico já passou do que foi comprado. Lance uma nova compra ou edite uma existente." />
                     <MetricaCard label="Custo médio/kg vigente" valor={saldo.custoMedioKgVigente != null ? fmt(saldo.custoMedioKgVigente) : '—'} />
                   </div>
                 )}
-              {saldo && Math.round(saldo.saldoKg) !== 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <button className="btn btn-ghost btn-sm" onClick={handleConfirmarSaldoAtual} disabled={confirmandoSaldo}>
-                    {confirmandoSaldo ? 'Confirmando...' : 'Confirmar saldo atual'}
-                  </button>
-                </div>
-              )}
+              {/* Botão "Confirmar saldo atual" temporariamente fora do ar: a
+                  implementação anterior alterava quantidade_kg da compra (o
+                  registro real do que foi comprado) pra fechar a conta, o que
+                  falsificava esse dado. Será reintroduzido recalibrando só a
+                  taxa de rateio de custo, sem tocar em quantidade_kg/valor_total. */}
             </div>
 
             {/* Membros */}
