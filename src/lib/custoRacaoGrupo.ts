@@ -26,9 +26,9 @@
 // Todo cálculo aqui é derivado sob demanda a partir do histórico (mesma
 // filosofia de custoAnimal.ts) — nada de estado acumulado incorretamente.
 
-import { toDay, projetarPesoPorDia, encontrarLoteAtivo } from './custoAnimal'
+import { toDay, projetarPesoPorDia, encontrarLoteAtivo, dietaVigenteDoAnimalNoDia } from './custoAnimal'
 import type {
-  PeriodoLote, CicloInfo, PesagemPonto, CicloAnimalEvento, CustoRacaoRealDiaInfo,
+  PeriodoLote, CicloInfo, PesagemPonto, CicloAnimalEvento, CustoRacaoRealDiaInfo, TrocaDietaCiclo,
 } from './custoAnimal'
 
 // ─── Tipos de entrada (formato mínimo, independente do schema do Supabase) ────
@@ -70,21 +70,36 @@ export function periodoVigenteNoDia(dia: number, periodos: PeriodoCustoGrupo[]):
 }
 
 // ─── Consumo teórico em kg, por lote, dia a dia ────────────────────────────
-// Soma o peso projetado de todos os animais que estiveram em cada lote (do
-// grupo) em cada dia, multiplicado pelo %MS da dieta do grupo.
+// Soma o peso projetado dos animais que estiveram em cada lote (do grupo) EM
+// CADA DIA, multiplicado pelo %MS da dieta do grupo — mas só conta o dia se
+// o animal de fato estava, naquele dia, num ciclo com a MESMA dieta
+// associada à compra do grupo (dietaGrupoId). Isso é o que dá acurácia ao
+// rateio: uma compra vinculada à dieta X só é distribuída entre os dias em
+// que os animais realmente comeram a dieta X, não em qualquer dia em que o
+// lote esteve listado no grupo. Sem pesagem intermediária real, o peso ainda
+// vem de projetarPesoPorDia (mesma base do resto do motor de custo).
+//
+// limiteFimPorLote (opcional): dia (toDay) a partir do qual um lote deixa de
+// contar nesse grupo, mesmo que a dieta ainda bata — corresponde a
+// "Encerrar participação" na UI (grupos_consumo_lotes.data_fim). Ausente ou
+// null para um lote = sem corte (participação em aberto).
 export function calcularConsumoTeoricoPorLotePorDia(
   loteIds: string[],
   animaisPorLote: Record<string, AnimalConsumoInput[]>,
   ciclos: CicloInfo[],
   pctConsumoPvMs: number,
+  dietaGrupoId: string,
+  trocasDieta: TrocaDietaCiclo[],
   diaInicial: number,
   diaFinalExclusivo: number,
+  limiteFimPorLote: Record<string, number | null> = {},
 ): Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>> {
   const resultado: Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>> = {}
 
   for (const loteId of loteIds) {
     const animais = animaisPorLote[loteId] ?? []
     const porDia: Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }> = {}
+    const limiteFim = limiteFimPorLote[loteId] ?? null
 
     for (const a of animais) {
       const pesoPorDia = projetarPesoPorDia(
@@ -92,8 +107,11 @@ export function calcularConsumoTeoricoPorLotePorDia(
       )
       for (const [diaStr, peso] of Object.entries(pesoPorDia)) {
         const dia = Number(diaStr)
+        if (limiteFim !== null && dia > limiteFim) continue
         const periodo = encontrarLoteAtivo(dia, a.periodos)
         if (!periodo || periodo.lote_id !== loteId) continue
+        const dietaDoAnimalNoDia = dietaVigenteDoAnimalNoDia(loteId, dia, ciclos, a.eventosCiclo, trocasDieta)
+        if (dietaDoAnimalNoDia !== dietaGrupoId) continue
         const bucket = (porDia[dia] ??= { pesoTotalKg: 0, qtdAtiva: 0, consumoKg: 0 })
         bucket.pesoTotalKg += peso
         bucket.qtdAtiva += 1
