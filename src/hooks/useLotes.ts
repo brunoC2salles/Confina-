@@ -273,12 +273,18 @@ export function useLotes() {
       }
     }
 
+    // Número do primeiro ciclo configurado — normalmente 1, mas o produtor
+    // pode escolher começar em outro número (ver FormLoteBase/cicloInicial em
+    // Lotes.tsx), quando o lote pula direto para uma etapa que ele numera de
+    // forma fixa entre lotes (ex: sempre chamar a etapa principal de "ciclo 2").
+    const numeroInicial = Math.min(...input.ciclos.map(c => c.numero))
+
     const { data: lote, error: e1 } = await supabase.from('lotes').insert({
       nome_lote: input.nome_lote,
       codigo_lote: input.codigo_lote,
       prefixo: input.prefixo,
       data_criacao: input.data_criacao,
-      ciclo_atual: 1,
+      ciclo_atual: numeroInicial,
       num_ciclos: input.num_ciclos,
       status: 'ativo',
       // preco_kg_compra e origem_fazenda ficam null na criação do lote — cada
@@ -308,7 +314,7 @@ export function useLotes() {
       dias_planejados: c.dias_planejados,
       dieta_id: c.dieta_id,
       gmd_esperado: c.gmd_esperado,
-      data_inicio: c.numero === 1 ? input.data_criacao : null,
+      data_inicio: c.numero === numeroInicial ? input.data_criacao : null,
       data_fim: null,
       user_id: user.id,
     }))
@@ -467,7 +473,6 @@ export function useLotes() {
     if (!user) return { error: 'Não autenticado' }
     const lote = lotes.find(l => l.id === loteId)
     if (!lote) return { error: 'Lote não encontrado' }
-    if (lote.ciclo_atual >= lote.num_ciclos) return { error: 'Lote já está no último ciclo configurado' }
 
     const dataEfetiva = data || new Date().toISOString().split('T')[0]
     const ciclos = ciclosPorLote[loteId] ?? []
@@ -528,8 +533,6 @@ export function useLotes() {
       return { error: 'Os animais selecionados estão em ciclos diferentes entre si — selecione animais que estejam todos no mesmo ciclo' }
     }
     const cicloOrigem = linhas[0].ciclo_atual
-    if (cicloOrigem >= lote.num_ciclos) return { error: 'Esses animais já estão no último ciclo configurado do lote' }
-
     const ciclos = ciclosPorLote[loteId] ?? []
     if (!ciclos.some(c => c.numero === cicloOrigem + 1)) {
       return { error: 'Próximo ciclo não está configurado para este lote' }
