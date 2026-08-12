@@ -9,7 +9,7 @@ import type {
 } from '@/types'
 import {
   calcularAnimalNaData, construirPeriodosDeMovimentacoes, gerarCodigoAnimal,
-  encontrarLoteAtivo, toDay, projetarPesoPorDia, cicloNumeroDoAnimalNoDia,
+  encontrarLoteAtivo, toDay, projetarPesoPorDia, cicloNumeroDoAnimalNoDia, dietaVigenteDoAnimalNoDia,
   type PeriodoLote, type CicloInfo, type DietaInfo, type ResultadoAnimalNaData, type CustoOperacionalInfo,
   type CustoRacaoRealPorDia, type CustoRacaoRealDiaInfo, type CicloAnimalEvento, type TrocaDietaCiclo,
 } from '@/lib/custoAnimal'
@@ -1486,38 +1486,68 @@ export function useCustoEngine() {
 
           const hojeDiaGrupo = toDay(new Date().toISOString().slice(0, 10))
 
-          for (const membro of membrosGrupo) {
-            const dietaId = dietaIdPorGrupo[membro.grupo_id]
+          // Agrupa as linhas de participação por (grupo, lote) — um lote pode
+          // ter mais de uma linha em grupos_consumo_lotes se foi removido e
+          // readicionado ao grupo mais de uma vez. "Desde" (data_inicio) de
+          // cada linha é só informativo agora (não limita mais o cálculo):
+          // quem decide a partir de quando um dia conta pro rateio é a dieta
+          // que o animal de fato consumia naquele dia (ver dietaVigenteDoAnimalNoDia
+          // abaixo), a partir da primeira compra do grupo. "Até" (data_fim),
+          // quando preenchido via "Encerrar participação", continua valendo
+          // como corte — dias depois dele não contam mais pra esse lote nesse
+          // grupo, mesmo que a dieta ainda bata.
+          const membrosPorLoteGrupo: Record<string, { grupo_id: string; lote_id: string; linhas: Array<{ data_fim: string | null }> }> = {}
+          for (const m of membrosGrupo) {
+            const chave = `${m.grupo_id}\u0000${m.lote_id}`
+            ;(membrosPorLoteGrupo[chave] ??= { grupo_id: m.grupo_id, lote_id: m.lote_id, linhas: [] }).linhas.push({ data_fim: m.data_fim })
+          }
+
+          for (const { grupo_id, lote_id, linhas } of Object.values(membrosPorLoteGrupo)) {
+            const dietaId = dietaIdPorGrupo[grupo_id]
             const pct = dietaId ? pctPorDietaGrupo[dietaId] : null
-            if (pct == null) continue
-            const periodosDoGrupo = periodosPorGrupo[membro.grupo_id] ?? []
+            if (pct == null || !dietaId) continue
+            const periodosDoGrupo = periodosPorGrupo[grupo_id] ?? []
             if (periodosDoGrupo.length === 0) continue
 
-            const diaInicioMembro = toDay(membro.data_inicio)
-            const diaFimMembro = membro.data_fim ? toDay(membro.data_fim) : hojeDiaGrupo + 1
+            // Só conta a partir da primeira compra do grupo — dias com a
+            // dieta batendo mas sem nenhum preço vigente ainda não entram.
+            const diaInicioGrupo = Math.min(...periodosDoGrupo.map(p => toDay(p.vigente_desde)))
+            const diaFimGrupo = hojeDiaGrupo + 1
+
+            const semCorte = linhas.some(l => !l.data_fim)
+            const limiteFim = semCorte ? null : Math.max(...linhas.map(l => toDay(l.data_fim as string)))
 
             const pesoTotalPorDiaGrupo: Record<number, number> = {}
             const qtdAtivaPorDiaGrupo: Record<number, number> = {}
             for (const animalId of animalIdsGrupo) {
               const periodosDoAnimal = periodosPorAnimalTodos[animalId] ?? []
-              const estevoNesseLote = periodosDoAnimal.some(p => p.lote_id === membro.lote_id)
+              const estevoNesseLote = periodosDoAnimal.some(p => p.lote_id === lote_id)
               if (!estevoNesseLote) continue
               const animalBasico = animaisGrupoBasicoPorId[animalId]
               if (!animalBasico) continue
               const pesoPorDiaDoAnimal = projetarPesoPorDia(
                 animalBasico, pesagensGrupoPorAnimal[animalId] ?? [], periodosDoAnimal, ciclos,
-                diaInicioMembro, diaFimMembro, eventosPorAnimal[animalId] ?? [],
+                diaInicioGrupo, diaFimGrupo, eventosPorAnimal[animalId] ?? [],
               )
               for (const [diaStr, peso] of Object.entries(pesoPorDiaDoAnimal)) {
                 const dia = Number(diaStr)
+                if (limiteFim !== null && dia > limiteFim) continue
                 const periodo = encontrarLoteAtivo(dia, periodosDoAnimal)
-                if (!periodo || periodo.lote_id !== membro.lote_id) continue
+                if (!periodo || periodo.lote_id !== lote_id) continue
+                // Só conta o dia se o animal de fato estava, naquele dia,
+                // num ciclo com a mesma dieta associada à compra — é isso
+                // que dá acurácia ao rateio (mesmo espírito de uma pesagem
+                // real recalibrar o peso: aqui a compra recalibra o custo,
+                // mas só nos dias em que a dieta realmente bate).
+                const dietaDoAnimalNoDia = dietaVigenteDoAnimalNoDia(lote_id, dia, ciclos, eventosPorAnimal[animalId] ?? [], trocasDieta)
+                if (dietaDoAnimalNoDia !== dietaId) continue
                 pesoTotalPorDiaGrupo[dia] = (pesoTotalPorDiaGrupo[dia] ?? 0) + peso
                 qtdAtivaPorDiaGrupo[dia] = (qtdAtivaPorDiaGrupo[dia] ?? 0) + 1
               }
             }
 
-            for (let dia = diaInicioMembro; dia < diaFimMembro; dia++) {
+            for (let dia = diaInicioGrupo; dia < diaFimGrupo; dia++) {
+              if (limiteFim !== null && dia > limiteFim) continue
               const pesoTotalDia = pesoTotalPorDiaGrupo[dia] ?? 0
               if (pesoTotalDia <= 0) continue
               const periodoVigente = periodosDoGrupo.find(p => {
@@ -1534,7 +1564,7 @@ export function useCustoEngine() {
                 qtdAtivaDia: qtdAtivaPorDiaGrupo[dia] ?? 1,
                 cicloNumero: null,
               }
-              ;((custosRacaoRealPorLote[membro.lote_id] ??= {} as CustoRacaoRealPorDia)[dia] ??= []).push(info)
+              ;((custosRacaoRealPorLote[lote_id] ??= {} as CustoRacaoRealPorDia)[dia] ??= []).push(info)
             }
           }
         }
