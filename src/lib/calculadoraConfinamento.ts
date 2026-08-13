@@ -38,7 +38,12 @@ export interface CalculadoraResultado {
 // ── Regras de negócio 2026 ──────────────────────────────────────────────
 const AREA_RECOMENDADA_POR_ANIMAL = 200       // m²
 const CAPACIDADE_POR_COCHO = 80               // animais por cocho de 8m (16m de bandeja / 0,20m)
-const METRO_LINEAR_COCHO_POR_ANIMAL = 0.20    // m
+const METRO_LINEAR_COCHO_POR_ANIMAL = 0.20    // m de espaço de alimentação por animal
+// Cada metro linear CONSTRUÍDO de cocho oferece 2 metros de espaço de alimentação
+// (bandeja dos dois lados). Por isso o custo e os materiais são calculados sobre
+// metragemConstrucaoCocho = metragemLinearCocho / 2, e não sobre a metragem de
+// alimentação em si.
+const METROS_ALIMENTACAO_POR_METRO_CONSTRUIDO = 2
 const METRO_LINEAR_BEBEDOURO_POR_ANIMAL = 0.03 // m
 const ESTOQUE_AGUA_POR_ANIMAL = 100           // L
 const SOBRA_ARTIFICIAL_POR_ANIMAL = 4         // m²
@@ -100,15 +105,15 @@ function arredondar(valor: number): number {
   return Math.round(valor * 100) / 100
 }
 
-function calcularMateriaisCocho(metragemLinearCocho: number): MaterialItem[] {
-  if (metragemLinearCocho <= 0) return []
-  const fator = metragemLinearCocho / 6
+function calcularMateriaisCocho(metragemConstrucaoCocho: number): MaterialItem[] {
+  if (metragemConstrucaoCocho <= 0) return []
+  const fator = metragemConstrucaoCocho / 6
   return MATERIAIS_COCHO_REFERENCIA_6M.map((item) => ({
     nome: item.nome,
     quantidade: arredondar(item.quantidade6m * fator),
     unidade: item.unidade,
     valorUnitario: item.valorUnitario ?? 0,
-    valorTotal: item.valorPorMetro !== null ? arredondar(item.valorPorMetro * metragemLinearCocho) : 0,
+    valorTotal: item.valorPorMetro !== null ? arredondar(item.valorPorMetro * metragemConstrucaoCocho) : 0,
   }))
 }
 
@@ -139,17 +144,21 @@ export function calcularConfinamento(input: CalculadoraInput): CalculadoraResult
 
   const numeroCaixasAgua = calcularNumeroCaixasAgua(numeroAnimais)
 
+  // metragemLinearCocho = espaço de alimentação necessário (exibido ao produtor).
+  // metragemConstrucaoCocho = metros que precisam ser efetivamente construídos,
+  // já que cada metro construído rende 2 metros de espaço de alimentação.
   const metragemLinearCocho = numeroAnimais * METRO_LINEAR_COCHO_POR_ANIMAL
+  const metragemConstrucaoCocho = metragemLinearCocho / METROS_ALIMENTACAO_POR_METRO_CONSTRUIDO
 
   const materiais: MaterialItem[] = []
 
-  if (metragemLinearCocho > 0) {
+  if (metragemConstrucaoCocho > 0) {
     materiais.push({
-      nome: `Cocho de alimentação (${metragemLinearCocho.toFixed(1)} m)`,
-      quantidade: arredondar(metragemLinearCocho),
+      nome: `Cocho de alimentação (${metragemConstrucaoCocho.toFixed(1)} m construídos / ${metragemLinearCocho.toFixed(1)} m de alimentação)`,
+      quantidade: arredondar(metragemConstrucaoCocho),
       unidade: 'm',
       valorUnitario: COCHO_VALOR_POR_METRO,
-      valorTotal: arredondar(metragemLinearCocho * COCHO_VALOR_POR_METRO),
+      valorTotal: arredondar(metragemConstrucaoCocho * COCHO_VALOR_POR_METRO),
     })
   }
 
@@ -198,6 +207,6 @@ export function calcularConfinamento(input: CalculadoraInput): CalculadoraResult
     estoqueAguaNecessario: numeroAnimais * ESTOQUE_AGUA_POR_ANIMAL,
     sobraArtificialNecessaria: numeroAnimais * SOBRA_ARTIFICIAL_POR_ANIMAL,
     materiais,
-    materiaisCocho: calcularMateriaisCocho(metragemLinearCocho),
+    materiaisCocho: calcularMateriaisCocho(metragemConstrucaoCocho),
   }
 }
