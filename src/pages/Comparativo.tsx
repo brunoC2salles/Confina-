@@ -17,6 +17,7 @@ interface LinhaAtivo {
   qtd: number
   pesoMedio: number
   gmdMedio: number
+  conversao: number | null
   custoPorKg: number | null
   valorCompraTotal: number
   custoAcumuladoTotal: number
@@ -31,6 +32,7 @@ interface LinhaVendido {
   qtd: number
   pesoMedioVenda: number
   gmdMedio: number
+  conversao: number | null
   custoPorKg: number | null
   lucroTotal: number
   margemPct: number | null
@@ -48,6 +50,7 @@ interface LinhaPorCiclo {
   diasMedio: number
   ganhoMedio: number
   gmdMedio: number
+  conversao: number | null
   custoAlimMedio: number
   custoOpMedio: number
   custoPorKg: number | null
@@ -198,6 +201,7 @@ export default function Comparativo() {
 
     const grupos: Record<string, {
       qtd: number; pesoSoma: number; gmdSoma: number; ganhoSoma: number
+      consumoConcSoma: number
       custoAlimSoma: number; custoOpSoma: number; custoVarSoma: number
       valorCompraSoma: number; receitaLiquidaSoma: number; custoTotalSoma: number
     }> = {}
@@ -207,6 +211,7 @@ export default function Comparativo() {
       if (!r) continue
       const g = grupos[a.lote_atual_id] ??= {
         qtd: 0, pesoSoma: 0, gmdSoma: 0, ganhoSoma: 0,
+        consumoConcSoma: 0,
         custoAlimSoma: 0, custoOpSoma: 0, custoVarSoma: 0,
         valorCompraSoma: 0, receitaLiquidaSoma: 0, custoTotalSoma: 0,
       }
@@ -218,6 +223,7 @@ export default function Comparativo() {
       g.pesoSoma += r.peso
       g.gmdSoma += r.gmdMedio
       g.ganhoSoma += ganho
+      g.consumoConcSoma += r.consumoConcentradoKg
       g.custoAlimSoma += r.custoAlimentacao
       g.custoOpSoma += r.custoOperacional
       g.custoVarSoma += custoVar
@@ -240,6 +246,7 @@ export default function Comparativo() {
         qtd: g.qtd,
         pesoMedio: g.qtd > 0 ? g.pesoSoma / g.qtd : 0,
         gmdMedio: g.qtd > 0 ? g.gmdSoma / g.qtd : 0,
+        conversao: g.ganhoSoma > 0 ? g.consumoConcSoma / g.ganhoSoma : null,
         custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
         valorCompraTotal: g.valorCompraSoma,
         custoAcumuladoTotal: g.custoAlimSoma + g.custoOpSoma + g.custoVarSoma,
@@ -260,6 +267,7 @@ export default function Comparativo() {
 
     const grupos: Record<string, {
       qtd: number; diasSoma: number; ganhoSoma: number
+      consumoConcSoma: number
       custoAlimSoma: number; custoOpSoma: number
     }> = {}
 
@@ -269,11 +277,12 @@ export default function Comparativo() {
       const etapas = Object.values(r.porEtapa).filter(e => ciclosSelecionados.has(e.numero))
       if (etapas.length === 0) continue
 
-      const g = grupos[a.lote_atual_id] ??= { qtd: 0, diasSoma: 0, ganhoSoma: 0, custoAlimSoma: 0, custoOpSoma: 0 }
+      const g = grupos[a.lote_atual_id] ??= { qtd: 0, diasSoma: 0, ganhoSoma: 0, consumoConcSoma: 0, custoAlimSoma: 0, custoOpSoma: 0 }
       g.qtd += 1
       for (const e of etapas) {
         g.diasSoma += e.dias
         g.ganhoSoma += e.ganhoPeso
+        g.consumoConcSoma += e.consumoConcentradoKg
         g.custoAlimSoma += e.custoAlimentacao
         g.custoOpSoma += e.custoOperacional
       }
@@ -285,6 +294,7 @@ export default function Comparativo() {
       diasMedio: g.qtd > 0 ? g.diasSoma / g.qtd : 0,
       ganhoMedio: g.qtd > 0 ? g.ganhoSoma / g.qtd : 0,
       gmdMedio: g.diasSoma > 0 ? g.ganhoSoma / g.diasSoma : 0,
+      conversao: g.ganhoSoma > 0 ? g.consumoConcSoma / g.ganhoSoma : null,
       custoAlimMedio: g.qtd > 0 ? g.custoAlimSoma / g.qtd : 0,
       custoOpMedio: g.qtd > 0 ? g.custoOpSoma / g.qtd : 0,
       custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
@@ -299,20 +309,43 @@ export default function Comparativo() {
     setLoadingVendidos(true)
     const { data: movsData } = await supabase
       .from('movimentacoes_animais')
-      .select('data, peso, valor, custo_atribuido, lucro, lote_origem_id, animais(peso_entrada, data_entrada)')
+      .select('animal_id, data, peso, valor, custo_atribuido, lucro, lote_origem_id, animais(peso_entrada, data_entrada)')
       .eq('user_id', user.id).not('lucro', 'is', null)
       .in('tipo', ['saida_venda', 'saida_abate', 'saida_transferencia', 'saida_morte'])
 
     const movs = (movsData ?? []) as any[]
 
+    // ─── Consumo de concentrado até a data de cada venda ───────────────────
+    // Esta tabela não usa o motor de custo (só dados já liquidados salvos no
+    // banco), mas a Conversão precisa do consumo de concentrado, que só o
+    // motor calcula. Roda o motor uma vez por data de venda distinta
+    // (agrupando os animais vendidos naquela data), reconstruindo o consumo
+    // de cada animal até o dia da própria venda dele.
+    const datasUnicas = Array.from(new Set(movs.map(m => m.data).filter(Boolean)))
+    const consumoConcPorAnimalData: Record<string, number> = {}
+    if (datasUnicas.length > 0) {
+      await Promise.all(datasUnicas.map(async (data) => {
+        const idsNaData = Array.from(new Set(
+          movs.filter(m => m.data === data && m.animal_id).map(m => m.animal_id as string)
+        ))
+        if (idsNaData.length === 0) return
+        const resultados = await calcularEmLote(idsNaData, data)
+        for (const id of idsNaData) {
+          const r = resultados[id]
+          if (r) consumoConcPorAnimalData[`${id}|${data}`] = r.consumoConcentradoKg
+        }
+      }))
+    }
+
     const grupos: Record<string, {
       qtd: number; pesoSoma: number; ganhoSoma: number; diasSoma: number
+      consumoConcSoma: number
       custoSoma: number; lucroSoma: number; receitaSoma: number
     }> = {}
 
     for (const m of movs) {
       if (!m.lote_origem_id || !m.animais || m.peso == null) continue
-      const g = grupos[m.lote_origem_id] ??= { qtd: 0, pesoSoma: 0, ganhoSoma: 0, diasSoma: 0, custoSoma: 0, lucroSoma: 0, receitaSoma: 0 }
+      const g = grupos[m.lote_origem_id] ??= { qtd: 0, pesoSoma: 0, ganhoSoma: 0, diasSoma: 0, consumoConcSoma: 0, custoSoma: 0, lucroSoma: 0, receitaSoma: 0 }
       const pesoEntrada = m.animais.peso_entrada as number
       const dataEntrada = m.animais.data_entrada as string
       const ganho = m.peso - pesoEntrada
@@ -322,6 +355,7 @@ export default function Comparativo() {
       g.pesoSoma += m.peso
       g.ganhoSoma += ganho
       g.diasSoma += dias
+      g.consumoConcSoma += consumoConcPorAnimalData[`${m.animal_id}|${m.data}`] ?? 0
       g.custoSoma += m.custo_atribuido ?? 0
       g.lucroSoma += m.lucro ?? 0
       g.receitaSoma += m.valor ?? 0
@@ -332,6 +366,7 @@ export default function Comparativo() {
       qtd: g.qtd,
       pesoMedioVenda: g.qtd > 0 ? g.pesoSoma / g.qtd : 0,
       gmdMedio: g.diasSoma > 0 ? g.ganhoSoma / g.diasSoma : 0,
+      conversao: g.ganhoSoma > 0 ? g.consumoConcSoma / g.ganhoSoma : null,
       custoPorKg: g.ganhoSoma > 0 ? g.custoSoma / g.ganhoSoma : null,
       lucroTotal: g.lucroSoma,
       margemPct: g.receitaSoma > 0 ? (g.lucroSoma / g.receitaSoma) * 100 : null,
@@ -339,7 +374,7 @@ export default function Comparativo() {
     }))
     setVendidos(linhas)
     setLoadingVendidos(false)
-  }, [user, nomePorLote])
+  }, [user, nomePorLote, calcularEmLote])
 
   useEffect(() => { carregarAtivos() }, [carregarAtivos])
   useEffect(() => { carregarVendidos() }, [carregarVendidos])
@@ -357,12 +392,14 @@ export default function Comparativo() {
     if (ativos.length === 0) return null
     const n = ativos.length
     const custos = ativos.map(l => l.custoPorKg).filter((v): v is number => v != null)
+    const conversoes = ativos.map(l => l.conversao).filter((v): v is number => v != null)
     const lucros = ativos.map(l => l.lucroProjetado).filter((v): v is number => v != null)
     const margens = ativos.map(l => l.margemProjetada).filter((v): v is number => v != null)
     return {
       qtd: ativos.reduce((s, l) => s + l.qtd, 0),
       pesoMedio: ativos.reduce((s, l) => s + l.pesoMedio, 0) / n,
       gmdMedio: ativos.reduce((s, l) => s + l.gmdMedio, 0) / n,
+      conversao: conversoes.length > 0 ? conversoes.reduce((s, v) => s + v, 0) / conversoes.length : null,
       custoPorKg: custos.length > 0 ? custos.reduce((s, v) => s + v, 0) / custos.length : null,
       valorCompraTotal: ativos.reduce((s, l) => s + l.valorCompraTotal, 0),
       lucroProjetado: lucros.length > 0 ? lucros.reduce((s, v) => s + v, 0) : null,
@@ -374,11 +411,13 @@ export default function Comparativo() {
     if (vendidos.length === 0) return null
     const n = vendidos.length
     const custos = vendidos.map(l => l.custoPorKg).filter((v): v is number => v != null)
+    const conversoes = vendidos.map(l => l.conversao).filter((v): v is number => v != null)
     const margens = vendidos.map(l => l.margemPct).filter((v): v is number => v != null)
     return {
       qtd: vendidos.reduce((s, l) => s + l.qtd, 0),
       pesoMedioVenda: vendidos.reduce((s, l) => s + l.pesoMedioVenda, 0) / n,
       gmdMedio: vendidos.reduce((s, l) => s + l.gmdMedio, 0) / n,
+      conversao: conversoes.length > 0 ? conversoes.reduce((s, v) => s + v, 0) / conversoes.length : null,
       custoPorKg: custos.length > 0 ? custos.reduce((s, v) => s + v, 0) / custos.length : null,
       lucroTotal: vendidos.reduce((s, l) => s + l.lucroTotal, 0),
       margemPct: margens.length > 0 ? margens.reduce((s, v) => s + v, 0) / margens.length : null,
@@ -388,7 +427,7 @@ export default function Comparativo() {
 
   return (
     <div className="page">
-      <PageHeader title="Comparativo de lotes" subtitle="Lotes lado a lado — peso médio, GMD, custo/kg ganho, lucro e margem" />
+      <PageHeader title="Comparativo de lotes" subtitle="Lotes lado a lado — peso médio, GMD, conversão, custo/kg ganho, lucro e margem" />
 
       <div className="tabs">
         <button className={`tab-btn${tab === 'ativos' ? ' active' : ''}`} onClick={() => setTab('ativos')}>Com animais ativos</button>
@@ -454,6 +493,7 @@ export default function Comparativo() {
                     <SortableTh<LinhaPorCiclo> label="Dias (ciclo)" columnKey="diasMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
                     <SortableTh<LinhaPorCiclo> label="Ganho de peso (ciclo)" columnKey="ganhoMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
                     <SortableTh<LinhaPorCiclo> label="GMD (ciclo)" columnKey="gmdMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
+                    <SortableTh<LinhaPorCiclo> label="Conversão" columnKey="conversao" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
                     <SortableTh<LinhaPorCiclo> label="Custo alimentação" columnKey="custoAlimMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
                     <SortableTh<LinhaPorCiclo> label="Custo operacional" columnKey="custoOpMedio" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
                     <SortableTh<LinhaPorCiclo> label="Custo/kg ganho" columnKey="custoPorKg" sort={sortPorCiclo} onSort={toggleSortPorCiclo} />
@@ -467,6 +507,7 @@ export default function Comparativo() {
                       <td>{fmtNum(l.diasMedio, 1)}</td>
                       <td>{fmtNum(l.ganhoMedio, 1)} kg</td>
                       <td>{fmtNum(l.gmdMedio, 2)} kg/dia</td>
+                      <td>{l.conversao != null ? `${fmtNum(l.conversao, 2)} kg/kg` : '—'}</td>
                       <td>{fmt(l.custoAlimMedio)}</td>
                       <td>{fmt(l.custoOpMedio)}</td>
                       <td>{l.custoPorKg != null ? `${fmt(l.custoPorKg)}/kg` : '—'}</td>
@@ -497,6 +538,7 @@ export default function Comparativo() {
                   <SortableTh<LinhaAtivo> label="Animais" columnKey="qtd" sort={sortAtivos} onSort={toggleSortAtivos} />
                   <SortableTh<LinhaAtivo> label="Peso médio" columnKey="pesoMedio" sort={sortAtivos} onSort={toggleSortAtivos} />
                   <SortableTh<LinhaAtivo> label="GMD" columnKey="gmdMedio" sort={sortAtivos} onSort={toggleSortAtivos} />
+                  <SortableTh<LinhaAtivo> label="Conversão" columnKey="conversao" sort={sortAtivos} onSort={toggleSortAtivos} />
                   <SortableTh<LinhaAtivo> label="Custo/kg ganho" columnKey="custoPorKg" sort={sortAtivos} onSort={toggleSortAtivos} />
                   <SortableTh<LinhaAtivo> label="Valor investido" columnKey="valorCompraTotal" sort={sortAtivos} onSort={toggleSortAtivos} />
                   <SortableTh<LinhaAtivo> label="Lucro projetado" columnKey="lucroProjetado" sort={sortAtivos} onSort={toggleSortAtivos} />
@@ -510,6 +552,7 @@ export default function Comparativo() {
                     <td>{l.qtd}</td>
                     <td>{fmtNum(l.pesoMedio, 1)} kg</td>
                     <td>{fmtNum(l.gmdMedio, 2)} kg/dia</td>
+                    <td>{l.conversao != null ? `${fmtNum(l.conversao, 2)} kg/kg` : '—'}</td>
                     <td>{l.custoPorKg != null ? `${fmt(l.custoPorKg)}/kg` : '—'}</td>
                     <td>{fmt(l.valorCompraTotal)}</td>
                     <td style={{ color: l.lucroProjetado == null ? undefined : l.lucroProjetado >= 0 ? '#2e7d32' : '#b91c1c' }}>
@@ -526,6 +569,7 @@ export default function Comparativo() {
                     <td>{totalAtivos.qtd}</td>
                     <td>{fmtNum(totalAtivos.pesoMedio, 1)} kg</td>
                     <td>{fmtNum(totalAtivos.gmdMedio, 2)} kg/dia</td>
+                    <td>{totalAtivos.conversao != null ? `${fmtNum(totalAtivos.conversao, 2)} kg/kg` : '—'}</td>
                     <td>{totalAtivos.custoPorKg != null ? `${fmt(totalAtivos.custoPorKg)}/kg` : '—'}</td>
                     <td>{fmt(totalAtivos.valorCompraTotal)}</td>
                     <td style={{ color: totalAtivos.lucroProjetado == null ? undefined : totalAtivos.lucroProjetado >= 0 ? '#2e7d32' : '#b91c1c' }}>
@@ -548,6 +592,7 @@ export default function Comparativo() {
                   <SortableTh<LinhaVendido> label="Animais vendidos" columnKey="qtd" sort={sortVendidos} onSort={toggleSortVendidos} />
                   <SortableTh<LinhaVendido> label="Peso médio na venda" columnKey="pesoMedioVenda" sort={sortVendidos} onSort={toggleSortVendidos} />
                   <SortableTh<LinhaVendido> label="GMD" columnKey="gmdMedio" sort={sortVendidos} onSort={toggleSortVendidos} />
+                  <SortableTh<LinhaVendido> label="Conversão" columnKey="conversao" sort={sortVendidos} onSort={toggleSortVendidos} />
                   <SortableTh<LinhaVendido> label="Custo/kg ganho" columnKey="custoPorKg" sort={sortVendidos} onSort={toggleSortVendidos} />
                   <SortableTh<LinhaVendido> label="Lucro total" columnKey="lucroTotal" sort={sortVendidos} onSort={toggleSortVendidos} />
                   <SortableTh<LinhaVendido> label="Margem" columnKey="margemPct" sort={sortVendidos} onSort={toggleSortVendidos} />
@@ -561,6 +606,7 @@ export default function Comparativo() {
                     <td>{l.qtd}</td>
                     <td>{fmtNum(l.pesoMedioVenda, 1)} kg</td>
                     <td>{fmtNum(l.gmdMedio, 2)} kg/dia</td>
+                    <td>{l.conversao != null ? `${fmtNum(l.conversao, 2)} kg/kg` : '—'}</td>
                     <td>{l.custoPorKg != null ? `${fmt(l.custoPorKg)}/kg` : '—'}</td>
                     <td style={{ color: l.lucroTotal >= 0 ? '#2e7d32' : '#b91c1c' }}>{fmt(l.lucroTotal)}</td>
                     <td>{l.margemPct != null ? `${fmtNum(l.margemPct, 1)}%` : '—'}</td>
@@ -575,6 +621,7 @@ export default function Comparativo() {
                     <td>{totalVendidos.qtd}</td>
                     <td>{fmtNum(totalVendidos.pesoMedioVenda, 1)} kg</td>
                     <td>{fmtNum(totalVendidos.gmdMedio, 2)} kg/dia</td>
+                    <td>{totalVendidos.conversao != null ? `${fmtNum(totalVendidos.conversao, 2)} kg/kg` : '—'}</td>
                     <td>{totalVendidos.custoPorKg != null ? `${fmt(totalVendidos.custoPorKg)}/kg` : '—'}</td>
                     <td style={{ color: totalVendidos.lucroTotal >= 0 ? '#2e7d32' : '#b91c1c' }}>{fmt(totalVendidos.lucroTotal)}</td>
                     <td>{totalVendidos.margemPct != null ? `${fmtNum(totalVendidos.margemPct, 1)}%` : '—'}</td>
