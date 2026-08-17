@@ -51,6 +51,10 @@ export interface Dieta {
   nome: string
   descricao: string | null
   gmd_esperado: number
+  // GMD esperado atribuído só ao concentrado (subconjunto de gmd_esperado).
+  // GMD do volumoso = gmd_esperado - gmd_esperado_concentrado (derivado, não
+  // armazenado). null = produtor não discriminou (dieta sem essa quebra).
+  gmd_esperado_concentrado: number | null
   ciclo_recomendado: number | null
   baseada_em: string | null
   pct_consumo_pv_ms: number
@@ -70,6 +74,7 @@ export interface DietaBase {
   nome: string
   descricao: string | null
   gmd_esperado: number | null
+  gmd_esperado_concentrado: number | null
   ciclo_recomendado: number | null
   pct_consumo_pv_ms: number | null
   pct_concentrado: number | null
@@ -215,6 +220,7 @@ export function useDietas() {
     nome: string
     descricao?: string
     gmd_esperado: number
+    gmd_esperado_concentrado?: number | null
     ciclo_recomendado?: number
     baseada_em?: string
     pct_consumo_pv_ms: number
@@ -247,6 +253,7 @@ export function useDietas() {
       nome: input.nome,
       descricao: input.descricao ?? null,
       gmd_esperado: input.gmd_esperado,
+      gmd_esperado_concentrado: input.gmd_esperado_concentrado ?? null,
       ciclo_recomendado: input.ciclo_recomendado ?? null,
       baseada_em: input.baseada_em ?? null,
       pct_consumo_pv_ms: input.pct_consumo_pv_ms,
@@ -293,6 +300,7 @@ export function useDietas() {
     nome?: string
     descricao?: string
     gmd_esperado?: number
+    gmd_esperado_concentrado?: number | null
     ciclo_recomendado?: number
     pct_consumo_pv_ms: number
     pct_concentrado: number
@@ -339,6 +347,7 @@ export function useDietas() {
       nome: input.nome,
       descricao: input.descricao ?? null,
       gmd_esperado: input.gmd_esperado,
+      gmd_esperado_concentrado: input.gmd_esperado_concentrado ?? null,
       ciclo_recomendado: input.ciclo_recomendado ?? null,
       pct_consumo_pv_ms: input.pct_consumo_pv_ms,
       pct_concentrado: input.pct_concentrado,
@@ -467,6 +476,7 @@ export function useAdmin() {
     nome: string
     descricao?: string
     gmd_esperado?: number
+    gmd_esperado_concentrado?: number | null
     ciclo_recomendado?: number
     pct_consumo_pv_ms?: number
     pct_concentrado?: number
@@ -477,6 +487,7 @@ export function useAdmin() {
       nome: input.nome,
       descricao: input.descricao ?? null,
       gmd_esperado: input.gmd_esperado ?? null,
+      gmd_esperado_concentrado: input.gmd_esperado_concentrado ?? null,
       ciclo_recomendado: input.ciclo_recomendado ?? null,
       pct_consumo_pv_ms: input.pct_consumo_pv_ms ?? null,
       pct_concentrado: input.pct_concentrado ?? null,
@@ -506,6 +517,7 @@ export function useAdmin() {
     nome?: string
     descricao?: string
     gmd_esperado?: number
+    gmd_esperado_concentrado?: number | null
     ciclo_recomendado?: number
     pct_consumo_pv_ms?: number
     pct_concentrado?: number
@@ -517,6 +529,7 @@ export function useAdmin() {
       nome: input.nome,
       descricao: input.descricao,
       gmd_esperado: input.gmd_esperado,
+      gmd_esperado_concentrado: input.gmd_esperado_concentrado,
       ciclo_recomendado: input.ciclo_recomendado,
       pct_consumo_pv_ms: input.pct_consumo_pv_ms,
       pct_concentrado: input.pct_concentrado,
