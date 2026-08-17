@@ -2009,12 +2009,13 @@ function ModalResumoLote({
       for (const e of Object.values(r.porEtapa)) {
         const chave = `${e.lote_id}#${e.numero}`
         if (!etapasPorChave[chave]) {
-          etapasPorChave[chave] = { lote_id: e.lote_id, numero: e.numero, tipoCiclo: e.tipoCiclo, dias: 0, ganhoPeso: 0, consumoRacaoKg: 0, custoAlimentacao: 0, custoOperacional: 0 }
+          etapasPorChave[chave] = { lote_id: e.lote_id, numero: e.numero, tipoCiclo: e.tipoCiclo, dias: 0, ganhoPeso: 0, consumoRacaoKg: 0, consumoConcentradoKg: 0, custoAlimentacao: 0, custoOperacional: 0 }
         }
         const acc = etapasPorChave[chave]
         acc.dias = Math.max(acc.dias, e.dias)
         acc.ganhoPeso += e.ganhoPeso
         acc.consumoRacaoKg += e.consumoRacaoKg
+        acc.consumoConcentradoKg += e.consumoConcentradoKg
         acc.custoAlimentacao += e.custoAlimentacao
         acc.custoOperacional += e.custoOperacional
       }
