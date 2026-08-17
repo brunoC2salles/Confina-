@@ -410,8 +410,8 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
     <div class="pc feat reveal d1">
       <div class="pc-badge">Mais popular</div>
       <div class="pc-plan">Pro</div>
-      <div class="pc-was" id="pro-was">de <span>R$349,90</span></div>
-      <div class="pc-price" id="pro-v"><sup>R$</sup>119<span style="font-size:22px;font-weight:400">,90</span></div>
+      <div class="pc-was" id="pro-was">de <span>R$399,00</span></div>
+      <div class="pc-price" id="pro-v"><sup>R$</sup>279<span style="font-size:22px;font-weight:400">,00</span></div>
       <div class="pc-period" id="pro-p">por mês · promocional até dez/2026</div>
       <div class="pc-div"></div>
       <ul class="pc-feats">
@@ -426,8 +426,8 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
     </div>
     <div class="pc reveal d2">
       <div class="pc-plan">Master</div>
-      <div class="pc-was" id="mas-was">de <span>R$499,90</span></div>
-      <div class="pc-price" id="mas-v"><sup>R$</sup>197<span style="font-size:22px;font-weight:400">,90</span></div>
+      <div class="pc-was" id="mas-was">de <span>R$649,00</span></div>
+      <div class="pc-price" id="mas-v"><sup>R$</sup>499<span style="font-size:22px;font-weight:400">,00</span></div>
       <div class="pc-period" id="mas-p">por mês · promocional até dez/2026</div>
       <div class="pc-div"></div>
       <ul class="pc-feats">
@@ -497,12 +497,12 @@ let ann=false
 function toggleBilling(){
   ann=!ann
   document.getElementById('tog').classList.toggle('ann',ann)
-  document.getElementById('pro-v').innerHTML=ann?'<sup>R$</sup>99<span style="font-size:22px;font-weight:400">,92</span>':'<sup>R$</sup>119<span style="font-size:22px;font-weight:400">,90</span>'
-  document.getElementById('pro-p').textContent=ann?'por mês, cobrado anualmente (R$ 1.199,00/ano) · promocional até dez/2026':'por mês · promocional até dez/2026'
-  document.getElementById('pro-was').innerHTML=ann?'de <span>R$291,58</span>':'de <span>R$349,90</span>'
-  document.getElementById('mas-v').innerHTML=ann?'<sup>R$</sup>164<span style="font-size:22px;font-weight:400">,92</span>':'<sup>R$</sup>197<span style="font-size:22px;font-weight:400">,90</span>'
-  document.getElementById('mas-p').textContent=ann?'por mês, cobrado anualmente (R$ 1.979,00/ano) · promocional até dez/2026':'por mês · promocional até dez/2026'
-  document.getElementById('mas-was').innerHTML=ann?'de <span>R$416,58</span>':'de <span>R$499,90</span>'
+  document.getElementById('pro-v').innerHTML=ann?'<sup>R$</sup>258<span style="font-size:22px;font-weight:400">,25</span>':'<sup>R$</sup>279<span style="font-size:22px;font-weight:400">,00</span>'
+  document.getElementById('pro-p').textContent=ann?'por mês, cobrado anualmente (R$ 3.099,00/ano) · promocional até dez/2026':'por mês · promocional até dez/2026'
+  document.getElementById('pro-was').innerHTML=ann?'de <span>R$366,58</span>':'de <span>R$399,00</span>'
+  document.getElementById('mas-v').innerHTML=ann?'<sup>R$</sup>458<span style="font-size:22px;font-weight:400">,25</span>':'<sup>R$</sup>499<span style="font-size:22px;font-weight:400">,00</span>'
+  document.getElementById('mas-p').textContent=ann?'por mês, cobrado anualmente (R$ 5.499,00/ano) · promocional até dez/2026':'por mês · promocional até dez/2026'
+  document.getElementById('mas-was').innerHTML=ann?'de <span>R$595,75</span>':'de <span>R$649,00</span>'
   document.getElementById('pro-btn').href=ann?'/login?mode=register&plano=pro_anual':'/login?mode=register&plano=pro_mensal'
   document.getElementById('mas-btn').href=ann?'/login?mode=register&plano=master_anual':'/login?mode=register&plano=master_mensal'
 }

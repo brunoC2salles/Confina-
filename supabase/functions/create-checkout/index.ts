@@ -18,7 +18,7 @@ const corsHeaders = {
 }
 
 const PRICE_IDS_VALIDOS = new Set([
-  'price_1RGjWxE1rxRawy7ulzV0Wg5Z', // Pro mensal
+  'price_1U5WnjE1rxRawy7ufVnECliJ', // Pro mensal
   'price_1TagKmE1rxRawy7uNsKiuPup', // Pro anual
   'price_1RGjXmE1rxRawy7umoXeiOEc', // Master mensal
   'price_1TagLuE1rxRawy7ufNqiTY36', // Master anual

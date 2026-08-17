@@ -20,7 +20,7 @@ import Stripe from 'https://esm.sh/stripe@17.7.0?target=denonext'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const PRICE_PARA_PLANO: Record<string, 'pro' | 'master'> = {
-  'price_1RGjWxE1rxRawy7ulzV0Wg5Z': 'pro',    // Pro mensal
+  'price_1U5WnjE1rxRawy7ufVnECliJ': 'pro',    // Pro mensal
   'price_1TagKmE1rxRawy7uNsKiuPup': 'pro',    // Pro anual
   'price_1RGjXmE1rxRawy7umoXeiOEc': 'master', // Master mensal
   'price_1TagLuE1rxRawy7ufNqiTY36': 'master', // Master anual

@@ -9,7 +9,7 @@ export const LIMITE_LOTES_ATIVOS: Record<Plano, number> = {
 }
 
 export const PRICE_IDS = {
-  pro_mensal: 'price_1RGjWxE1rxRawy7ulzV0Wg5Z',
+  pro_mensal: 'price_1U5WnjE1rxRawy7ufVnECliJ',
   pro_anual: 'price_1TagKmE1rxRawy7uNsKiuPup',
   master_mensal: 'price_1RGjXmE1rxRawy7umoXeiOEc',
   master_anual: 'price_1TagLuE1rxRawy7ufNqiTY36',
