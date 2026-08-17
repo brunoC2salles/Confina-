@@ -96,6 +96,11 @@ export interface HistoricoCustoPonto {
 
 export interface DietaInfo {
   pct_consumo_pv_ms: number | null
+  // % do consumo total que é concentrado, vindo da composição da dieta
+  // (dietas.pct_concentrado) — usado só para quebrar consumoRacaoKg em
+  // consumoConcentradoKg (kg do consumo total que foi concentrado), pro
+  // cálculo de Conversão (consumo de concentrado / ganho de peso).
+  pct_concentrado: number | null
   historico: HistoricoCustoPonto[]
   // ─── Custo manual (opcional) ────────────────────────────────────────────────
   // Quando custoManualAtivo = true, o custo por kg de MS do dia usa
@@ -176,6 +181,11 @@ export interface ResultadoAnimalNaData {
   // registrado nele. Ou seja: custo pode ser real, consumo em kg é sempre
   // a estimativa da dieta (decisão confirmada com o produtor).
   consumoRacaoKg: number
+  // ─── Consumo de CONCENTRADO em kg de MS (subconjunto de consumoRacaoKg) ────
+  // Mesma estimativa (peso x %MS da dieta), multiplicada pelo %concentrado da
+  // dieta vigente no dia — usado no cálculo de Conversão (consumo de
+  // concentrado / ganho de peso) do Comparativo de lotes.
+  consumoConcentradoKg: number
   // ─── Quebra por etapa (ciclo individual, não só tipo pastagem/confinamento)
   // Chave = `${lote_id}#${numero_do_ciclo}` — usa lote_id no prefixo porque o
   // número do ciclo é reiniciado a cada lote (ciclo 1 do lote A não é o mesmo
@@ -192,6 +202,7 @@ export interface EtapaResultado {
   dias: number
   ganhoPeso: number
   consumoRacaoKg: number
+  consumoConcentradoKg: number
   custoAlimentacao: number
   custoOperacional: number
 }
@@ -376,7 +387,7 @@ export function calcularAnimalNaData(
       ganhoPesoPastagem: 0, ganhoPesoConfinamento: 0, ganhoPesoMisto: 0,
       custoAlimentacaoPastagem: 0, custoAlimentacaoConfinamento: 0, custoAlimentacaoMisto: 0,
       custoOperacionalPastagem: 0, custoOperacionalConfinamento: 0, custoOperacionalMisto: 0,
-      consumoRacaoKg: 0, porEtapa: {},
+      consumoRacaoKg: 0, consumoConcentradoKg: 0, porEtapa: {},
     }
   }
 
@@ -425,13 +436,14 @@ export function calcularAnimalNaData(
 
   // ─── Consumo total em kg de MS e quebra por etapa (ciclo individual) ──────
   let consumoRacaoKg = 0
+  let consumoConcentradoKg = 0
   const porEtapa: Record<string, EtapaResultado> = {}
   const obterEtapa = (loteId: string, numero: number, tipoCiclo: 'pastagem' | 'confinamento' | 'misto'): EtapaResultado => {
     const chave = `${loteId}#${numero}`
     if (!porEtapa[chave]) {
       porEtapa[chave] = {
         lote_id: loteId, numero, tipoCiclo,
-        dias: 0, ganhoPeso: 0, consumoRacaoKg: 0, custoAlimentacao: 0, custoOperacional: 0,
+        dias: 0, ganhoPeso: 0, consumoRacaoKg: 0, consumoConcentradoKg: 0, custoAlimentacao: 0, custoOperacional: 0,
       }
     }
     return porEtapa[chave]
@@ -475,6 +487,11 @@ export function calcularAnimalNaData(
       const consumoHoje = peso * (dietaInfoDia.pct_consumo_pv_ms / 100)
       consumoRacaoKg += consumoHoje
       if (etapa) etapa.consumoRacaoKg += consumoHoje
+      if (dietaInfoDia.pct_concentrado != null) {
+        const concentradoHoje = consumoHoje * (dietaInfoDia.pct_concentrado / 100)
+        consumoConcentradoKg += concentradoHoje
+        if (etapa) etapa.consumoConcentradoKg += concentradoHoje
+      }
     }
 
     // Custo real de ração lançado pelo produtor, neste dia — pode ser um
@@ -551,7 +568,7 @@ export function calcularAnimalNaData(
     ganhoPesoPastagem, ganhoPesoConfinamento, ganhoPesoMisto,
     custoAlimentacaoPastagem, custoAlimentacaoConfinamento, custoAlimentacaoMisto,
     custoOperacionalPastagem, custoOperacionalConfinamento, custoOperacionalMisto,
-    consumoRacaoKg, porEtapa,
+    consumoRacaoKg, consumoConcentradoKg, porEtapa,
   }
 }
 
