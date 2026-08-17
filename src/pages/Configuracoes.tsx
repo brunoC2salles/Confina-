@@ -170,7 +170,7 @@ export default function Configuracoes() {
   const [showDietaBase, setShowDietaBase] = useState(false)
   const [editDietaBase, setEditDietaBase] = useState<string | null>(null)
   const [fDietaBase, setFDietaBase] = useState({
-    nome: '', descricao: '', gmd_esperado: '', ciclo_recomendado: '',
+    nome: '', descricao: '', gmd_esperado: '', gmd_esperado_concentrado: '', ciclo_recomendado: '',
     pct_consumo_pv_ms: '', pct_concentrado: '60', pct_volumoso: '40',
     ingredientes: [] as IngredienteForm[],
   })
@@ -180,9 +180,19 @@ export default function Configuracoes() {
   const somaConc = fDietaBase.ingredientes.filter(i => i.tipo === 'concentrado').reduce((s, i) => s + (Number(i.pct_participacao) || 0), 0)
   const somaVol = fDietaBase.ingredientes.filter(i => i.tipo === 'volumoso').reduce((s, i) => s + (Number(i.pct_participacao) || 0), 0)
 
+  // Mesma regra de Dietas.tsx: sem concentrado não se aplica; 100%
+  // concentrado trava igual ao GMD total; misto fica livre (<= total).
+  const gmdTotalNum = Number(fDietaBase.gmd_esperado) || 0
+  const gmdConcEfetivo = pctConc <= 0
+    ? null
+    : pctVol <= 0
+      ? gmdTotalNum
+      : (fDietaBase.gmd_esperado_concentrado.trim() === '' ? null : Number(fDietaBase.gmd_esperado_concentrado) || 0)
+  const gmdVolDerivado = gmdConcEfetivo != null ? Math.max(0, gmdTotalNum - gmdConcEfetivo) : null
+
   const abrirNovoTemplate = () => {
     setEditDietaBase(null)
-    setFDietaBase({ nome: '', descricao: '', gmd_esperado: '', ciclo_recomendado: '', pct_consumo_pv_ms: '', pct_concentrado: '60', pct_volumoso: '40', ingredientes: [] })
+    setFDietaBase({ nome: '', descricao: '', gmd_esperado: '', gmd_esperado_concentrado: '', ciclo_recomendado: '', pct_consumo_pv_ms: '', pct_concentrado: '60', pct_volumoso: '40', ingredientes: [] })
     setErro(null)
     setShowDietaBase(true)
   }
@@ -193,6 +203,7 @@ export default function Configuracoes() {
       nome: db.nome,
       descricao: db.descricao ?? '',
       gmd_esperado: db.gmd_esperado != null ? String(db.gmd_esperado) : '',
+      gmd_esperado_concentrado: db.gmd_esperado_concentrado != null ? String(db.gmd_esperado_concentrado) : '',
       ciclo_recomendado: db.ciclo_recomendado != null ? String(db.ciclo_recomendado) : '',
       pct_consumo_pv_ms: db.pct_consumo_pv_ms != null ? String(db.pct_consumo_pv_ms) : '',
       pct_concentrado: db.pct_concentrado != null ? String(db.pct_concentrado) : '60',
@@ -223,6 +234,10 @@ export default function Configuracoes() {
   const validarTemplate = (): string | null => {
     if (!fDietaBase.nome.trim()) return 'Nome do template é obrigatório'
     if (Math.abs(pctConc + pctVol - 100) > 0.01) return '% concentrado + % volumoso deve somar 100'
+    if (pctConc > 0 && pctVol > 0 && fDietaBase.gmd_esperado_concentrado.trim() !== '') {
+      const gc = Number(fDietaBase.gmd_esperado_concentrado)
+      if (gc <= 0 || gc > gmdTotalNum) return 'GMD do concentrado deve ser > 0 e ≤ GMD esperado total'
+    }
     if (pctConc > 0 && Math.abs(somaConc - 100) > 0.01) return `Soma dos % do concentrado deve ser 100 (atual: ${somaConc.toFixed(2)})`
     if (pctVol > 0 && Math.abs(somaVol - 100) > 0.01) return `Soma dos % do volumoso deve ser 100 (atual: ${somaVol.toFixed(2)})`
     return null
@@ -238,6 +253,7 @@ export default function Configuracoes() {
       nome: fDietaBase.nome.trim(),
       descricao: fDietaBase.descricao || undefined,
       gmd_esperado: fDietaBase.gmd_esperado ? Number(fDietaBase.gmd_esperado) : undefined,
+      gmd_esperado_concentrado: gmdConcEfetivo,
       ciclo_recomendado: fDietaBase.ciclo_recomendado ? Number(fDietaBase.ciclo_recomendado) : undefined,
       pct_consumo_pv_ms: fDietaBase.pct_consumo_pv_ms ? Number(fDietaBase.pct_consumo_pv_ms) : undefined,
       pct_concentrado: pctConc,
@@ -405,6 +421,7 @@ export default function Configuracoes() {
                       <div style={{ fontSize: 11, color: '#9e9e9e', marginTop: 2 }}>
                         {db.ciclo_recomendado ? cicloLabel(db.ciclo_recomendado) : 'Todos os ciclos'}
                         {db.gmd_esperado ? ` · GMD ${db.gmd_esperado} kg/dia` : ''}
+                        {db.gmd_esperado_concentrado != null && db.gmd_esperado != null ? ` (conc. ${db.gmd_esperado_concentrado} · vol. ${(db.gmd_esperado - db.gmd_esperado_concentrado).toFixed(2)})` : ''}
                       </div>
                     </div>
                     <span className={`badge ${db.ativo ? 'badge-green' : 'badge-gray'}`}>{db.ativo ? 'Ativo' : 'Inativo'}</span>
@@ -480,6 +497,27 @@ export default function Configuracoes() {
             <div className="form-group"><label className="form-label">% Volumoso</label>
               <input className="form-input" type="number" step="1" value={fDietaBase.pct_volumoso} onChange={e => setFDietaBase(f => ({ ...f, pct_volumoso: e.target.value }))} /></div>
           </div>
+
+          {pctConc > 0 && (
+            <div className="form-row-2">
+              <div className="form-group">
+                <label className="form-label">GMD do concentrado (kg/dia)</label>
+                <input className="form-input" type="number" step="0.01" placeholder="Ex: 0.9"
+                  disabled={pctVol <= 0}
+                  value={pctVol <= 0 ? (fDietaBase.gmd_esperado || '0') : fDietaBase.gmd_esperado_concentrado}
+                  onChange={e => setFDietaBase(f => ({ ...f, gmd_esperado_concentrado: e.target.value }))} />
+                {pctVol <= 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 4 }}>
+                    Dieta 100% concentrado — igual ao GMD total.
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
+                <label className="form-label">GMD do volumoso (calculado)</label>
+                <input className="form-input" type="number" value={gmdVolDerivado != null ? gmdVolDerivado.toFixed(2) : ''} disabled />
+              </div>
+            </div>
+          )}
 
           {pctConc > 0 && (
             <SecaoIngredientesTemplate titulo="Ingredientes do concentrado" tipo="concentrado"
