@@ -30,6 +30,7 @@ interface FormDieta {
   nome: string
   descricao: string
   gmd_esperado: string
+  gmd_esperado_concentrado: string
   ciclo_recomendado: string
   baseada_em: string
   pct_consumo_pv_ms: string
@@ -45,7 +46,7 @@ interface FormDieta {
 const hojeStr = () => new Date().toISOString().slice(0, 10)
 
 const emptyForm = (): FormDieta => ({
-  nome: '', descricao: '', gmd_esperado: '', ciclo_recomendado: '',
+  nome: '', descricao: '', gmd_esperado: '', gmd_esperado_concentrado: '', ciclo_recomendado: '',
   baseada_em: '',
   pct_consumo_pv_ms: '2.2',
   pct_concentrado: '100',
@@ -162,6 +163,7 @@ export default function Dietas() {
       baseada_em: db.id,
       nome: f.nome || `${db.nome} (cópia)`,
       gmd_esperado: db.gmd_esperado ? String(db.gmd_esperado) : f.gmd_esperado,
+      gmd_esperado_concentrado: db.gmd_esperado_concentrado != null ? String(db.gmd_esperado_concentrado) : f.gmd_esperado_concentrado,
       ciclo_recomendado: db.ciclo_recomendado != null ? String(db.ciclo_recomendado) : f.ciclo_recomendado,
       descricao: f.descricao || db.descricao || '',
       pct_consumo_pv_ms: db.pct_consumo_pv_ms != null ? String(db.pct_consumo_pv_ms) : f.pct_consumo_pv_ms,
@@ -207,6 +209,19 @@ export default function Dietas() {
   const somaConc = somaPct(form.componentes, 'concentrado')
   const somaVol = somaPct(form.componentes, 'volumoso')
 
+  // ─── GMD do concentrado (discriminação opcional do GMD esperado) ───────────
+  // Sem concentrado na dieta (pctConc === 0): a quebra não se aplica, campo
+  // nem aparece. 100% concentrado (pctVol === 0): trava igual ao GMD total,
+  // já que não existe GMD de volumoso a separar. Caso misto: campo livre,
+  // validado <= GMD total; GMD do volumoso é sempre derivado (não editável).
+  const gmdTotalNum = Number(form.gmd_esperado) || 0
+  const gmdConcEfetivo = pctConc <= 0
+    ? null
+    : pctVol <= 0
+      ? gmdTotalNum
+      : (form.gmd_esperado_concentrado.trim() === '' ? null : Number(form.gmd_esperado_concentrado) || 0)
+  const gmdVolDerivado = gmdConcEfetivo != null ? Math.max(0, gmdTotalNum - gmdConcEfetivo) : null
+
   const custoDiaSim = useMemo(() => {
     if (custoKgMsTotal == null) return 0
     return calcularCustoDia(
@@ -224,6 +239,10 @@ export default function Dietas() {
     const pcpv = Number(form.pct_consumo_pv_ms)
     if (!pcpv || pcpv <= 0 || pcpv > 10) return '% consumo do PV em MS deve ser > 0 e ≤ 10'
     if (Math.abs(pctConc + pctVol - 100) > 0.01) return '% concentrado + % volumoso deve somar 100'
+    if (pctConc > 0 && pctVol > 0 && form.gmd_esperado_concentrado.trim() !== '') {
+      const gc = Number(form.gmd_esperado_concentrado)
+      if (gc <= 0 || gc > gmdTotalNum) return 'GMD do concentrado deve ser > 0 e ≤ GMD esperado total'
+    }
     if (pctConc > 0 && form.componentes.filter(c => c.tipo === 'concentrado').length === 0)
       return 'Adicione ingredientes ao concentrado'
     if (pctVol > 0 && form.componentes.filter(c => c.tipo === 'volumoso').length === 0)
@@ -258,6 +277,7 @@ export default function Dietas() {
       nome: form.nome.trim(),
       descricao: form.descricao || undefined,
       gmd_esperado: Number(form.gmd_esperado),
+      gmd_esperado_concentrado: gmdConcEfetivo,
       ciclo_recomendado: form.ciclo_recomendado ? Number(form.ciclo_recomendado) : undefined,
       baseada_em: form.baseada_em || undefined,
       pct_consumo_pv_ms: Number(form.pct_consumo_pv_ms),
@@ -310,6 +330,7 @@ export default function Dietas() {
       nome: d.nome,
       descricao: d.descricao ?? '',
       gmd_esperado: String(d.gmd_esperado),
+      gmd_esperado_concentrado: d.gmd_esperado_concentrado != null ? String(d.gmd_esperado_concentrado) : '',
       ciclo_recomendado: d.ciclo_recomendado != null ? String(d.ciclo_recomendado) : '',
       baseada_em: d.baseada_em ?? '',
       pct_consumo_pv_ms: String(d.pct_consumo_pv_ms),
@@ -371,6 +392,7 @@ export default function Dietas() {
                     <div style={{ fontSize: 11, color: '#9e9e9e', marginTop: 2 }}>
                       {d.ciclo_recomendado ? cicloLabel(d.ciclo_recomendado) : 'Todos os ciclos'}
                       {d.gmd_esperado ? ` · GMD est. ${d.gmd_esperado} kg/dia` : ''}
+                      {d.gmd_esperado_concentrado != null ? ` (conc. ${d.gmd_esperado_concentrado} · vol. ${(d.gmd_esperado - d.gmd_esperado_concentrado).toFixed(2)})` : ''}
                     </div>
                   </div>
                   {d.baseada_em && <span style={{ fontSize: 10, background: '#e8f5e9', color: '#2e7d32', padding: '2px 8px', borderRadius: 20, border: '1px solid #a5d6a7', flexShrink: 0 }}>Template</span>}
@@ -425,6 +447,7 @@ export default function Dietas() {
                   <div style={{ fontSize: 11, color: '#9e9e9e', marginTop: 2 }}>
                     {db.ciclo_recomendado ? cicloLabel(db.ciclo_recomendado) : 'Todos os ciclos'}
                     {db.gmd_esperado ? ` · GMD est. ${db.gmd_esperado} kg/dia` : ''}
+                    {db.gmd_esperado_concentrado != null && db.gmd_esperado != null ? ` (conc. ${db.gmd_esperado_concentrado} · vol. ${(db.gmd_esperado - db.gmd_esperado_concentrado).toFixed(2)})` : ''}
                   </div>
                 </div>
                 {db.descricao && <div style={{ fontSize: 12, color: '#737370' }}>{db.descricao}</div>}
@@ -527,6 +550,27 @@ export default function Dietas() {
             {Math.abs(pctConc + pctVol - 100) > 0.01 && (
               <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 6 }}>
                 Concentrado + Volumoso deve somar 100 (atual: {(pctConc + pctVol).toFixed(1)})
+              </div>
+            )}
+
+            {pctConc > 0 && (
+              <div className="form-row-2" style={{ marginTop: 10 }}>
+                <div className="form-group">
+                  <label className="form-label">GMD do concentrado (kg/dia)</label>
+                  <input className="form-input" type="number" step="0.01" placeholder="Ex: 0.9"
+                    disabled={pctVol <= 0}
+                    value={pctVol <= 0 ? (form.gmd_esperado || '0') : form.gmd_esperado_concentrado}
+                    onChange={e => setForm(f => ({ ...f, gmd_esperado_concentrado: e.target.value }))} />
+                  {pctVol <= 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 4 }}>
+                      Dieta 100% concentrado — igual ao GMD total, sem volumoso a separar.
+                    </div>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">GMD do volumoso (calculado)</label>
+                  <input className="form-input" type="number" value={gmdVolDerivado != null ? gmdVolDerivado.toFixed(2) : ''} disabled />
+                </div>
               </div>
             )}
           </div>
@@ -806,6 +850,11 @@ function ModalDetalhe({
         <div style={{ background: 'var(--green-bg)', borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 140 }}>
           <div style={{ fontSize: 11, color: 'var(--green)' }}>GMD esperado</div>
           <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--green-dark)' }}>{dieta.gmd_esperado} kg/dia</div>
+          {dieta.gmd_esperado_concentrado != null && (
+            <div style={{ fontSize: 11, color: 'var(--green)' }}>
+              conc. {dieta.gmd_esperado_concentrado} · vol. {(dieta.gmd_esperado - dieta.gmd_esperado_concentrado).toFixed(2)} kg/dia
+            </div>
+          )}
         </div>
         <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 140 }}>
           <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Consumo</div>
