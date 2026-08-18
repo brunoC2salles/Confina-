@@ -323,8 +323,16 @@ export function useDietas() {
     if (eAtual) return { error: eAtual.message }
     if (eHist) return { error: eHist.message }
     const custoAntigoKgMs = dietaAtual?.custo_kg_ms ?? null
-    if (historicoAberto && input.vigente_desde < historicoAberto.vigente_desde) {
-      return { error: `A data de vigência não pode ser anterior à última alteração de preço registrada (${historicoAberto.vigente_desde.split('-').reverse().join('/')})` }
+    // vigente_desde vindo do banco (dietas_historico_custo) é timestamptz —
+    // chega como string ISO completa ("2026-08-18T00:00:00+00:00"), não como
+    // data simples ("2026-08-18") como o formulário envia. Comparar as duas
+    // strings direto é incorreto (a versão "curta" sempre perde na comparação
+    // lexicográfica, mesmo sendo o mesmo dia) e quebra a formatação da
+    // mensagem de erro (que assume "yyyy-mm-dd"). Normaliza para data simples
+    // antes de comparar e formatar.
+    const historicoAbertoDataSimples = historicoAberto?.vigente_desde.slice(0, 10) ?? null
+    if (historicoAbertoDataSimples && input.vigente_desde < historicoAbertoDataSimples) {
+      return { error: `A data de vigência não pode ser anterior à última alteração de preço registrada (${historicoAbertoDataSimples.split('-').reverse().join('/')})` }
     }
 
     const componentesComRef = input.componentes.map(c => ({
