@@ -101,6 +101,12 @@ export interface DietaInfo {
   // consumoConcentradoKg (kg do consumo total que foi concentrado), pro
   // cálculo de Conversão (consumo de concentrado / ganho de peso).
   pct_concentrado: number | null
+  // GMD esperado atribuído especificamente ao concentrado (dietas.gmd_esperado_concentrado)
+  // — usado como denominador da Conversão (consumoConcentradoKg / ganho
+  // atribuído ao concentrado), em vez do ganho de peso total do ciclo.
+  // Quando null (dieta antiga, campo não preenchido), o cálculo cai no
+  // gmd_esperado TOTAL do ciclo como fallback (ver calcularAnimalNaData).
+  gmd_esperado_concentrado: number | null
   historico: HistoricoCustoPonto[]
   // ─── Custo manual (opcional) ────────────────────────────────────────────────
   // Quando custoManualAtivo = true, o custo por kg de MS do dia usa
@@ -186,6 +192,16 @@ export interface ResultadoAnimalNaData {
   // dieta vigente no dia — usado no cálculo de Conversão (consumo de
   // concentrado / ganho de peso) do Comparativo de lotes.
   consumoConcentradoKg: number
+  // ─── Ganho de peso atribuído ao concentrado (desde a entrada) ─────────────
+  // Acumulado dia a dia usando dietas.gmd_esperado_concentrado da dieta
+  // vigente naquele dia (só nos dias em que a dieta tem % de concentrado >
+  // 0) — com fallback para o gmd_esperado TOTAL do ciclo quando a dieta não
+  // tem gmd_esperado_concentrado preenchido. Usado como denominador da
+  // Conversão (consumoConcentradoKg / ganhoPesoConcentrado) no Comparativo
+  // de lotes — decisão tomada em conjunto com o produtor: o ganho atribuído
+  // ao concentrado é medido pelo GMD esperado do concentrado, não pelo
+  // ganho total do ciclo (que também inclui o volumoso/pasto).
+  ganhoPesoConcentrado: number
   // ─── Quebra por etapa (ciclo individual, não só tipo pastagem/confinamento)
   // Chave = `${lote_id}#${numero_do_ciclo}` — usa lote_id no prefixo porque o
   // número do ciclo é reiniciado a cada lote (ciclo 1 do lote A não é o mesmo
@@ -203,6 +219,9 @@ export interface EtapaResultado {
   ganhoPeso: number
   consumoRacaoKg: number
   consumoConcentradoKg: number
+  // Ganho atribuído ao concentrado nesta etapa — ver comentário em
+  // ResultadoAnimalNaData.ganhoPesoConcentrado (mesma lógica, escopada à etapa).
+  ganhoPesoConcentrado: number
   custoAlimentacao: number
   custoOperacional: number
 }
@@ -387,7 +406,7 @@ export function calcularAnimalNaData(
       ganhoPesoPastagem: 0, ganhoPesoConfinamento: 0, ganhoPesoMisto: 0,
       custoAlimentacaoPastagem: 0, custoAlimentacaoConfinamento: 0, custoAlimentacaoMisto: 0,
       custoOperacionalPastagem: 0, custoOperacionalConfinamento: 0, custoOperacionalMisto: 0,
-      consumoRacaoKg: 0, consumoConcentradoKg: 0, porEtapa: {},
+      consumoRacaoKg: 0, consumoConcentradoKg: 0, ganhoPesoConcentrado: 0, porEtapa: {},
     }
   }
 
@@ -437,13 +456,15 @@ export function calcularAnimalNaData(
   // ─── Consumo total em kg de MS e quebra por etapa (ciclo individual) ──────
   let consumoRacaoKg = 0
   let consumoConcentradoKg = 0
+  let ganhoPesoConcentrado = 0
   const porEtapa: Record<string, EtapaResultado> = {}
   const obterEtapa = (loteId: string, numero: number, tipoCiclo: 'pastagem' | 'confinamento' | 'misto'): EtapaResultado => {
     const chave = `${loteId}#${numero}`
     if (!porEtapa[chave]) {
       porEtapa[chave] = {
         lote_id: loteId, numero, tipoCiclo,
-        dias: 0, ganhoPeso: 0, consumoRacaoKg: 0, consumoConcentradoKg: 0, custoAlimentacao: 0, custoOperacional: 0,
+        dias: 0, ganhoPeso: 0, consumoRacaoKg: 0, consumoConcentradoKg: 0, ganhoPesoConcentrado: 0,
+        custoAlimentacao: 0, custoOperacional: 0,
       }
     }
     return porEtapa[chave]
@@ -491,6 +512,19 @@ export function calcularAnimalNaData(
         const concentradoHoje = consumoHoje * (dietaInfoDia.pct_concentrado / 100)
         consumoConcentradoKg += concentradoHoje
         if (etapa) etapa.consumoConcentradoKg += concentradoHoje
+
+        // Ganho atribuído ao concentrado, só nos dias em que a dieta de fato
+        // tem % de concentrado (>0) — dia de pastagem pura (0% concentrado)
+        // não contribui aqui, mesmo que o ciclo tenha gmd_esperado_concentrado
+        // preenchido por engano. Usa o GMD esperado do concentrado da dieta
+        // vigente; se não estiver preenchido (dieta antiga), cai no GMD
+        // esperado TOTAL do ciclo (mesmo `gmd` usado para o peso do dia) —
+        // fallback combinado com o produtor.
+        if (dietaInfoDia.pct_concentrado > 0) {
+          const gmdConcentradoHoje = dietaInfoDia.gmd_esperado_concentrado ?? gmd
+          ganhoPesoConcentrado += gmdConcentradoHoje
+          if (etapa) etapa.ganhoPesoConcentrado += gmdConcentradoHoje
+        }
       }
     }
 
@@ -568,7 +602,7 @@ export function calcularAnimalNaData(
     ganhoPesoPastagem, ganhoPesoConfinamento, ganhoPesoMisto,
     custoAlimentacaoPastagem, custoAlimentacaoConfinamento, custoAlimentacaoMisto,
     custoOperacionalPastagem, custoOperacionalConfinamento, custoOperacionalMisto,
-    consumoRacaoKg, consumoConcentradoKg, porEtapa,
+    consumoRacaoKg, consumoConcentradoKg, ganhoPesoConcentrado, porEtapa,
   }
 }
 

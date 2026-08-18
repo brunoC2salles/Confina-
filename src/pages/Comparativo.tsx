@@ -201,7 +201,7 @@ export default function Comparativo() {
 
     const grupos: Record<string, {
       qtd: number; pesoSoma: number; gmdSoma: number; ganhoSoma: number
-      consumoConcSoma: number
+      consumoConcSoma: number; ganhoConcentradoSoma: number
       custoAlimSoma: number; custoOpSoma: number; custoVarSoma: number
       valorCompraSoma: number; receitaLiquidaSoma: number; custoTotalSoma: number
     }> = {}
@@ -211,7 +211,7 @@ export default function Comparativo() {
       if (!r) continue
       const g = grupos[a.lote_atual_id] ??= {
         qtd: 0, pesoSoma: 0, gmdSoma: 0, ganhoSoma: 0,
-        consumoConcSoma: 0,
+        consumoConcSoma: 0, ganhoConcentradoSoma: 0,
         custoAlimSoma: 0, custoOpSoma: 0, custoVarSoma: 0,
         valorCompraSoma: 0, receitaLiquidaSoma: 0, custoTotalSoma: 0,
       }
@@ -224,6 +224,7 @@ export default function Comparativo() {
       g.gmdSoma += r.gmdMedio
       g.ganhoSoma += ganho
       g.consumoConcSoma += r.consumoConcentradoKg
+      g.ganhoConcentradoSoma += r.ganhoPesoConcentrado
       g.custoAlimSoma += r.custoAlimentacao
       g.custoOpSoma += r.custoOperacional
       g.custoVarSoma += custoVar
@@ -246,7 +247,11 @@ export default function Comparativo() {
         qtd: g.qtd,
         pesoMedio: g.qtd > 0 ? g.pesoSoma / g.qtd : 0,
         gmdMedio: g.qtd > 0 ? g.gmdSoma / g.qtd : 0,
-        conversao: g.ganhoSoma > 0 ? g.consumoConcSoma / g.ganhoSoma : null,
+        // Conversão = kg concentrado consumido / kg ganho ATRIBUÍDO ao
+        // concentrado (não o ganho total do ciclo) — decisão tomada com o
+        // produtor. consumoConcSoma > 0 exige que o lote de fato consuma
+        // concentrado (senão "—", nunca 0,00, para pastagem pura).
+        conversao: (g.consumoConcSoma > 0 && g.ganhoConcentradoSoma > 0) ? g.consumoConcSoma / g.ganhoConcentradoSoma : null,
         custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
         valorCompraTotal: g.valorCompraSoma,
         custoAcumuladoTotal: g.custoAlimSoma + g.custoOpSoma + g.custoVarSoma,
@@ -267,7 +272,7 @@ export default function Comparativo() {
 
     const grupos: Record<string, {
       qtd: number; diasSoma: number; ganhoSoma: number
-      consumoConcSoma: number
+      consumoConcSoma: number; ganhoConcentradoSoma: number
       custoAlimSoma: number; custoOpSoma: number
     }> = {}
 
@@ -277,12 +282,13 @@ export default function Comparativo() {
       const etapas = Object.values(r.porEtapa).filter(e => ciclosSelecionados.has(e.numero))
       if (etapas.length === 0) continue
 
-      const g = grupos[a.lote_atual_id] ??= { qtd: 0, diasSoma: 0, ganhoSoma: 0, consumoConcSoma: 0, custoAlimSoma: 0, custoOpSoma: 0 }
+      const g = grupos[a.lote_atual_id] ??= { qtd: 0, diasSoma: 0, ganhoSoma: 0, consumoConcSoma: 0, ganhoConcentradoSoma: 0, custoAlimSoma: 0, custoOpSoma: 0 }
       g.qtd += 1
       for (const e of etapas) {
         g.diasSoma += e.dias
         g.ganhoSoma += e.ganhoPeso
         g.consumoConcSoma += e.consumoConcentradoKg
+        g.ganhoConcentradoSoma += e.ganhoPesoConcentrado
         g.custoAlimSoma += e.custoAlimentacao
         g.custoOpSoma += e.custoOperacional
       }
@@ -294,7 +300,9 @@ export default function Comparativo() {
       diasMedio: g.qtd > 0 ? g.diasSoma / g.qtd : 0,
       ganhoMedio: g.qtd > 0 ? g.ganhoSoma / g.qtd : 0,
       gmdMedio: g.diasSoma > 0 ? g.ganhoSoma / g.diasSoma : 0,
-      conversao: g.ganhoSoma > 0 ? g.consumoConcSoma / g.ganhoSoma : null,
+      // Conversão = kg concentrado / kg ganho ATRIBUÍDO ao concentrado (ver
+      // mesma decisão na tabela de lotes ativos, acima).
+      conversao: (g.consumoConcSoma > 0 && g.ganhoConcentradoSoma > 0) ? g.consumoConcSoma / g.ganhoConcentradoSoma : null,
       custoAlimMedio: g.qtd > 0 ? g.custoAlimSoma / g.qtd : 0,
       custoOpMedio: g.qtd > 0 ? g.custoOpSoma / g.qtd : 0,
       custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
@@ -323,6 +331,7 @@ export default function Comparativo() {
     // de cada animal até o dia da própria venda dele.
     const datasUnicas = Array.from(new Set(movs.map(m => m.data).filter(Boolean)))
     const consumoConcPorAnimalData: Record<string, number> = {}
+    const ganhoConcentradoPorAnimalData: Record<string, number> = {}
     if (datasUnicas.length > 0) {
       await Promise.all(datasUnicas.map(async (data) => {
         const idsNaData = Array.from(new Set(
@@ -332,20 +341,23 @@ export default function Comparativo() {
         const resultados = await calcularEmLote(idsNaData, data)
         for (const id of idsNaData) {
           const r = resultados[id]
-          if (r) consumoConcPorAnimalData[`${id}|${data}`] = r.consumoConcentradoKg
+          if (r) {
+            consumoConcPorAnimalData[`${id}|${data}`] = r.consumoConcentradoKg
+            ganhoConcentradoPorAnimalData[`${id}|${data}`] = r.ganhoPesoConcentrado
+          }
         }
       }))
     }
 
     const grupos: Record<string, {
       qtd: number; pesoSoma: number; ganhoSoma: number; diasSoma: number
-      consumoConcSoma: number
+      consumoConcSoma: number; ganhoConcentradoSoma: number
       custoSoma: number; lucroSoma: number; receitaSoma: number
     }> = {}
 
     for (const m of movs) {
       if (!m.lote_origem_id || !m.animais || m.peso == null) continue
-      const g = grupos[m.lote_origem_id] ??= { qtd: 0, pesoSoma: 0, ganhoSoma: 0, diasSoma: 0, consumoConcSoma: 0, custoSoma: 0, lucroSoma: 0, receitaSoma: 0 }
+      const g = grupos[m.lote_origem_id] ??= { qtd: 0, pesoSoma: 0, ganhoSoma: 0, diasSoma: 0, consumoConcSoma: 0, ganhoConcentradoSoma: 0, custoSoma: 0, lucroSoma: 0, receitaSoma: 0 }
       const pesoEntrada = m.animais.peso_entrada as number
       const dataEntrada = m.animais.data_entrada as string
       const ganho = m.peso - pesoEntrada
@@ -356,6 +368,7 @@ export default function Comparativo() {
       g.ganhoSoma += ganho
       g.diasSoma += dias
       g.consumoConcSoma += consumoConcPorAnimalData[`${m.animal_id}|${m.data}`] ?? 0
+      g.ganhoConcentradoSoma += ganhoConcentradoPorAnimalData[`${m.animal_id}|${m.data}`] ?? 0
       g.custoSoma += m.custo_atribuido ?? 0
       g.lucroSoma += m.lucro ?? 0
       g.receitaSoma += m.valor ?? 0
@@ -366,7 +379,9 @@ export default function Comparativo() {
       qtd: g.qtd,
       pesoMedioVenda: g.qtd > 0 ? g.pesoSoma / g.qtd : 0,
       gmdMedio: g.diasSoma > 0 ? g.ganhoSoma / g.diasSoma : 0,
-      conversao: g.ganhoSoma > 0 ? g.consumoConcSoma / g.ganhoSoma : null,
+      // Conversão = kg concentrado / kg ganho ATRIBUÍDO ao concentrado (ver
+      // mesma decisão nas outras tabelas deste arquivo).
+      conversao: (g.consumoConcSoma > 0 && g.ganhoConcentradoSoma > 0) ? g.consumoConcSoma / g.ganhoConcentradoSoma : null,
       custoPorKg: g.ganhoSoma > 0 ? g.custoSoma / g.ganhoSoma : null,
       lucroTotal: g.lucroSoma,
       margemPct: g.receitaSoma > 0 ? (g.lucroSoma / g.receitaSoma) * 100 : null,
