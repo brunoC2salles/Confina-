@@ -15,7 +15,7 @@ import {
 } from '@/lib/custoAnimal'
 import { ordenarPorBrinco } from '@/lib/calculations'
 import { obterRendimento, obterBonus } from '@/lib/calculations'
-import { LIMITE_LOTES_ATIVOS, type Plano } from '@/hooks/useAssinatura'
+import { LIMITE_LOTES_ATIVOS, LIMITE_ANIMAIS_TOTAL, type Plano } from '@/hooks/useAssinatura'
 
 // ─── Tipos de entrada ───────────────────────────────────────────────────────────
 
@@ -134,6 +134,25 @@ export async function gerarCodigosUnicos(userId: string, prefixo: string, brinco
     existentes.add(codigo)
     return codigo
   })
+}
+
+// Limite de animais por plano — conta o total histórico já cadastrado pelo
+// usuário (inclui vendidos/abatidos/etc, não só os ativos). Checado com dado
+// fresco do banco (plano + contagem), igual ao limite de lotes ativos, pra
+// não deixar passar por corrida entre abas ou logo após um upgrade.
+export async function verificarLimiteAnimais(userId: string, quantidadeNova: number): Promise<{ error: string | null }> {
+  const { data: profileData } = await supabase
+    .from('profiles').select('plano, plano_status').eq('id', userId).single()
+  const planoEfetivo = ((profileData?.plano_status === 'ativo' ? profileData?.plano : 'free') ?? 'free') as Plano
+  const limite = LIMITE_ANIMAIS_TOTAL[planoEfetivo] ?? LIMITE_ANIMAIS_TOTAL.free
+  if (!Number.isFinite(limite)) return { error: null }
+
+  const { count } = await supabase
+    .from('animais').select('id', { count: 'exact', head: true }).eq('user_id', userId)
+  if ((count ?? 0) + quantidadeNova > limite) {
+    return { error: `Seu plano (${planoEfetivo}) permite até ${limite} animais cadastrados no total. Faça upgrade em Configurações, aba Conta, para cadastrar mais.` }
+  }
+  return { error: null }
 }
 
 // ─── Pesagem opcional lançada no momento da troca de ciclo ─────────────────────
@@ -620,6 +639,9 @@ export function useLotes() {
 
     const temPeso2 = input.linhas.some(l => l.peso2 != null)
     if (temPeso2 && !input.data_pesagem2) return { error: 'Informe a data da segunda pesagem' }
+
+    const erroLimite = await verificarLimiteAnimais(user.id, input.linhas.length)
+    if (erroLimite.error) return { error: erroLimite.error }
 
     const precoKg = input.compra.preco_kg
     const pesoTotal = input.linhas.reduce((s, l) => s + l.peso, 0)

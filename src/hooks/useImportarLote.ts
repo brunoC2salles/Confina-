@@ -2,7 +2,7 @@ import { useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import { useLotes, useVendas, gerarCodigosUnicos, type CicloInput, type RegistrarVendaInput } from './useLotes'
+import { useLotes, useVendas, gerarCodigosUnicos, verificarLimiteAnimais, type CicloInput, type RegistrarVendaInput } from './useLotes'
 import type { Dieta } from './useDietas'
 import type { TipoCiclo, CategoriaCustoOperacional } from '@/types'
 
@@ -211,6 +211,12 @@ export function useImportarLote() {
       if (errors.length > 0) {
         setImportando(false)
         return { errors }
+      }
+
+      const erroLimite = await verificarLimiteAnimais(user.id, animaisValidados.length)
+      if (erroLimite.error) {
+        setImportando(false)
+        return { error: erroLimite.error }
       }
 
       // ═══════════════════════════════════════════════════════════════════

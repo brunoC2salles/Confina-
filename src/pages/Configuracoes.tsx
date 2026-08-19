@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAdmin, type InsumoPadrao, type DietaBase } from '@/hooks/useDietas'
-import { useAssinatura, PRICE_IDS, LIMITE_LOTES_ATIVOS } from '@/hooks/useAssinatura'
+import { useAssinatura, PRICE_IDS, LIMITE_LOTES_ATIVOS, LIMITE_ANIMAIS_TOTAL } from '@/hooks/useAssinatura'
 import { supabase } from '@/lib/supabase'
 import { Modal, PageHeader } from '@/components/common/UI'
 import { fmt } from '@/lib/calculations'
@@ -306,7 +306,8 @@ export default function Configuracoes() {
           <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Plano</div>
           <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 16 }}>
             Plano atual: <strong style={{ textTransform: 'capitalize', color: 'var(--black)' }}>{planoEfetivo}</strong>
-            {' '}· Até {LIMITE_LOTES_ATIVOS[planoEfetivo] === Infinity ? 'lotes ilimitados' : `${LIMITE_LOTES_ATIVOS[planoEfetivo]} lotes ativos`}
+            {' '}· {LIMITE_LOTES_ATIVOS[planoEfetivo] === Infinity ? 'Lotes ativos ilimitados' : `Até ${LIMITE_LOTES_ATIVOS[planoEfetivo]} lotes ativos`}
+            {' '}· {LIMITE_ANIMAIS_TOTAL[planoEfetivo] === Infinity ? 'animais ilimitados' : `até ${LIMITE_ANIMAIS_TOTAL[planoEfetivo]} animais cadastrados`}
             {planoStatus !== 'ativo' && plano !== 'free' && (
               <span style={{ color: '#b91c1c' }}> — assinatura {planoStatus}, tratado como free até regularizar</span>
             )}
