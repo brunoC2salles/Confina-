@@ -4,7 +4,7 @@ import { useFaixas } from '@/hooks/useFaixas'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { PageHeader, EmptyState } from '@/components/common/UI'
-import { fmt, fmtNum, obterRendimento, obterBonus } from '@/lib/calculations'
+import { fmt, fmtNum, fmtData, obterRendimento, obterBonus } from '@/lib/calculations'
 
 type Criterio = 'rendimento' | 'ganho' | 'custo_kg' | 'lucro' | 'peso'
 const CRITERIOS: Array<{ value: Criterio; label: string }> = [
@@ -15,11 +15,25 @@ const CRITERIOS: Array<{ value: Criterio; label: string }> = [
   { value: 'rendimento', label: 'Rendimento' },
 ]
 
+// Título do PDF por critério e sentido da ordenação (aprovado com Bruno).
+const TITULOS_RANKING: Record<Criterio, { desc: string; asc: string }> = {
+  peso:       { desc: 'Ranking dos mais pesados', asc: 'Ranking dos mais leves' },
+  ganho:      { desc: 'Ranking dos que mais ganharam peso', asc: 'Ranking dos que menos ganharam peso' },
+  custo_kg:   { desc: 'Ranking dos mais caros (custo/kg)', asc: 'Ranking dos mais baratos (custo/kg)' },
+  rendimento: { desc: 'Ranking dos de maior rendimento', asc: 'Ranking dos de menor rendimento' },
+  lucro:      { desc: 'Ranking dos mais lucrativos', asc: 'Ranking dos menos lucrativos' },
+}
+
 const hojeStr = () => new Date().toISOString().split('T')[0]
+
+// Ordenação numérica natural do brinco (texto), ex: "9" antes de "10".
+const compararBrincoNatural = (a: string, b: string) =>
+  (a ?? '').localeCompare(b ?? '', 'pt-BR', { numeric: true, sensitivity: 'base' })
 
 interface LinhaAtivo {
   animal_id: string
   codigo: string
+  brinco: string
   loteId: string
   loteNome: string
   pesoEntrada: number
@@ -36,6 +50,7 @@ interface LinhaAtivo {
 interface LinhaVendido {
   animal_id: string
   codigo: string
+  brinco: string
   loteId: string | null
   loteNome: string
   data: string
@@ -58,6 +73,7 @@ export default function Ranking() {
   const [loteFiltro, setLoteFiltro] = useState('todos')
   const [criterio, setCriterio] = useState<Criterio>('ganho')
   const [ordemDesc, setOrdemDesc] = useState(true)
+  const [topN, setTopN] = useState('')
 
   const [preco, setPreco] = useState('')
   const [pctComissao, setPctComissao] = useState('2')
@@ -68,14 +84,17 @@ export default function Ranking() {
   const [loadingAtivos, setLoadingAtivos] = useState(true)
   const [loadingVendidos, setLoadingVendidos] = useState(true)
 
+  const [selecionadosAtivos, setSelecionadosAtivos] = useState<Set<string>>(new Set())
+  const [selecionadosVendidos, setSelecionadosVendidos] = useState<Set<string>>(new Set())
+
   const carregarAtivos = useCallback(async () => {
     if (!user) return
     setLoadingAtivos(true)
     const { data: animaisData } = await supabase
-      .from('animais').select('id, codigo, peso_entrada, valor_compra, lote_atual_id, data_entrada')
+      .from('animais').select('id, codigo, brinco, peso_entrada, valor_compra, lote_atual_id, data_entrada')
       .eq('user_id', user.id).eq('status', 'ativo')
 
-    const lista = (animaisData ?? []) as Array<{ id: string; codigo: string; peso_entrada: number; valor_compra: number; lote_atual_id: string; data_entrada: string }>
+    const lista = (animaisData ?? []) as Array<{ id: string; codigo: string; brinco: string; peso_entrada: number; valor_compra: number; lote_atual_id: string; data_entrada: string }>
     if (lista.length === 0) { setAtivos([]); setLoadingAtivos(false); return }
 
     const [custos, custosVarData] = await Promise.all([
@@ -96,7 +115,7 @@ export default function Ranking() {
       const rendPct = obterRendimento(pesoAtual, rendimentos)
       const custoPorKg = ganho > 0 ? custoAcumulado / ganho : null
       return {
-        animal_id: a.id, codigo: a.codigo,
+        animal_id: a.id, codigo: a.codigo, brinco: a.brinco,
         loteId: a.lote_atual_id, loteNome: lotes.find(l => l.id === a.lote_atual_id)?.nome_lote ?? '—',
         pesoEntrada: a.peso_entrada, pesoAtual, ganho,
         diasConfinamento: r?.diasConfinamento ?? 0,
@@ -113,7 +132,7 @@ export default function Ranking() {
     setLoadingVendidos(true)
     const { data: movsData } = await supabase
       .from('movimentacoes_animais')
-      .select('animal_id, data, peso, custo_atribuido, lucro, lote_origem_id, animais(codigo, peso_entrada)')
+      .select('animal_id, data, peso, custo_atribuido, lucro, lote_origem_id, animais(codigo, brinco, peso_entrada)')
       .eq('user_id', user.id).not('lucro', 'is', null)
       .in('tipo', ['saida_venda', 'saida_abate', 'saida_transferencia', 'saida_morte'])
 
@@ -133,7 +152,7 @@ export default function Ranking() {
         const rendPct = obterRendimento(m.peso, rendimentos)
         const custoPorKg = ganho > 0 && m.custo_atribuido != null ? m.custo_atribuido / ganho : null
         return {
-          animal_id: m.animal_id, codigo: m.animais.codigo,
+          animal_id: m.animal_id, codigo: m.animais.codigo, brinco: m.animais.brinco,
           loteId: m.lote_origem_id ?? null,
           loteNome: m.lote_origem_id ? (nomePorLote[m.lote_origem_id] ?? '—') : '—',
           data: m.data, pesoEntrada, pesoVenda: m.peso, ganho, rendPct,
@@ -187,8 +206,75 @@ export default function Ranking() {
     return arr
   }, [vendidosFiltrados, criterio, ordemDesc])
 
+  // Filtro "Top N": limita a lista já ordenada aos N primeiros colocados.
+  const topNNumero = useMemo(() => {
+    const n = parseInt(topN, 10)
+    return topN.trim() !== '' && !isNaN(n) && n > 0 ? n : null
+  }, [topN])
+
+  const ativosParaExibir = useMemo(
+    () => topNNumero != null ? ativosOrdenados.slice(0, topNNumero) : ativosOrdenados,
+    [ativosOrdenados, topNNumero]
+  )
+  const vendidosParaExibir = useMemo(
+    () => topNNumero != null ? vendidosOrdenados.slice(0, topNNumero) : vendidosOrdenados,
+    [vendidosOrdenados, topNNumero]
+  )
+
   const loading = tab === 'ativos' ? loadingAtivos : loadingVendidos
-  const listaVazia = tab === 'ativos' ? ativosOrdenados.length === 0 : vendidosOrdenados.length === 0
+  const listaVazia = tab === 'ativos' ? ativosParaExibir.length === 0 : vendidosParaExibir.length === 0
+
+  // ─── Seleção de animais para exportação ────────────────────────────────
+  const toggleSelecionadoAtivo = (id: string) => {
+    setSelecionadosAtivos(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+  const toggleSelecionadoVendido = (id: string) => {
+    setSelecionadosVendidos(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const todosAtivosVisiveisSelecionados = ativosParaExibir.length > 0 && ativosParaExibir.every(a => selecionadosAtivos.has(a.animal_id))
+  const todosVendidosVisiveisSelecionados = vendidosParaExibir.length > 0 && vendidosParaExibir.every(v => selecionadosVendidos.has(v.animal_id))
+
+  const toggleSelecionarTodosAtivos = () => {
+    setSelecionadosAtivos(prev => {
+      const next = new Set(prev)
+      const ids = ativosParaExibir.map(a => a.animal_id)
+      if (todosAtivosVisiveisSelecionados) ids.forEach(id => next.delete(id))
+      else ids.forEach(id => next.add(id))
+      return next
+    })
+  }
+  const toggleSelecionarTodosVendidos = () => {
+    setSelecionadosVendidos(prev => {
+      const next = new Set(prev)
+      const ids = vendidosParaExibir.map(v => v.animal_id)
+      if (todosVendidosVisiveisSelecionados) ids.forEach(id => next.delete(id))
+      else ids.forEach(id => next.add(id))
+      return next
+    })
+  }
+
+  // ─── Dados para o PDF: apenas selecionados, ordenados por brinco ──────
+  const ativosParaPdf = useMemo(
+    () => ativosOrdenados.filter(a => selecionadosAtivos.has(a.animal_id)).sort((a, b) => compararBrincoNatural(a.brinco, b.brinco)),
+    [ativosOrdenados, selecionadosAtivos]
+  )
+  const vendidosParaPdf = useMemo(
+    () => vendidosOrdenados.filter(v => selecionadosVendidos.has(v.animal_id)).sort((a, b) => compararBrincoNatural(a.brinco, b.brinco)),
+    [vendidosOrdenados, selecionadosVendidos]
+  )
+
+  const tituloPdf = TITULOS_RANKING[criterio][ordemDesc ? 'desc' : 'asc']
+  const qtdSelecionados = tab === 'ativos' ? selecionadosAtivos.size : selecionadosVendidos.size
+  const podeExportar = qtdSelecionados > 0
 
   return (
     <div className="page">
@@ -215,6 +301,20 @@ export default function Ranking() {
         </div>
         <button className="btn btn-ghost" onClick={() => setOrdemDesc(v => !v)}>
           {ordemDesc ? 'Maior primeiro' : 'Menor primeiro'}
+        </button>
+        <div className="form-group" style={{ minWidth: 140 }}>
+          <label className="form-label">Top N (opcional)</label>
+          <input
+            className="form-input" type="number" min="1" placeholder="Todos"
+            value={topN} onChange={e => setTopN(e.target.value)}
+          />
+        </div>
+        <button
+          className="btn btn-primary"
+          disabled={!podeExportar}
+          onClick={() => window.print()}
+        >
+          Exportar PDF{qtdSelecionados > 0 ? ` (${qtdSelecionados})` : ''}
         </button>
       </div>
 
@@ -254,13 +354,19 @@ export default function Ranking() {
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: 36 }}>
+                    <input type="checkbox" checked={todosAtivosVisiveisSelecionados} onChange={toggleSelecionarTodosAtivos} />
+                  </th>
                   <th>#</th><th>Código</th><th>Lote</th><th>Peso atual</th><th>Ganho de peso</th>
                   <th>Custo/kg ganho</th><th>Lucro projetado</th>
                 </tr>
               </thead>
               <tbody>
-                {ativosOrdenados.map((a, idx) => (
+                {ativosParaExibir.map((a, idx) => (
                   <tr key={a.animal_id}>
+                    <td>
+                      <input type="checkbox" checked={selecionadosAtivos.has(a.animal_id)} onChange={() => toggleSelecionadoAtivo(a.animal_id)} />
+                    </td>
                     <td>{idx + 1}</td>
                     <td><strong>{a.codigo}</strong></td>
                     <td>{a.loteNome}</td>
@@ -282,13 +388,19 @@ export default function Ranking() {
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: 36 }}>
+                    <input type="checkbox" checked={todosVendidosVisiveisSelecionados} onChange={toggleSelecionarTodosVendidos} />
+                  </th>
                   <th>#</th><th>Código</th><th>Lote de origem</th><th>Data</th><th>Peso na venda</th>
                   <th>Ganho de peso</th><th>Custo/kg ganho</th><th>Lucro</th>
                 </tr>
               </thead>
               <tbody>
-                {vendidosOrdenados.map((v, idx) => (
+                {vendidosParaExibir.map((v, idx) => (
                   <tr key={v.animal_id}>
+                    <td>
+                      <input type="checkbox" checked={selecionadosVendidos.has(v.animal_id)} onChange={() => toggleSelecionadoVendido(v.animal_id)} />
+                    </td>
                     <td>{idx + 1}</td>
                     <td><strong>{v.codigo}</strong></td>
                     <td>{v.loteNome}</td>
@@ -303,6 +415,100 @@ export default function Ranking() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* ─── Área de impressão: ranking exportado, ordenado por brinco ───── */}
+      <div className="print-area">
+        <RankingPdfImprimivel
+          titulo={tituloPdf}
+          tab={tab}
+          ativos={ativosParaPdf}
+          vendidos={vendidosParaPdf}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PDF DO RANKING — layout formal, ordenado por brinco, só aparece na impressão
+// ═══════════════════════════════════════════════════════════════════════════
+
+function RankingPdfImprimivel({
+  titulo, tab, ativos, vendidos,
+}: {
+  titulo: string
+  tab: 'ativos' | 'vendidos'
+  ativos: LinhaAtivo[]
+  vendidos: LinhaVendido[]
+}) {
+  return (
+    <div style={{ fontFamily: 'Inter, sans-serif', color: '#111', maxWidth: 700, margin: '0 auto' }}>
+      <div style={{ textAlign: 'center', marginBottom: 28 }}>
+        <img src="/logo.png" alt="Confina+" style={{ height: 56, objectFit: 'contain' }} />
+      </div>
+
+      <h1 style={{ fontSize: 18, fontWeight: 700, textAlign: 'center', marginBottom: 4 }}>{titulo}</h1>
+      <p style={{ fontSize: 12, textAlign: 'center', color: '#555', marginBottom: 28 }}>
+        Emitido em {fmtData(new Date().toISOString().split('T')[0])} · Ordenado por brinco
+      </p>
+
+      {tab === 'ativos' ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #000' }}>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Brinco</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Código</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Lote</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Peso atual</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Ganho de peso</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Custo/kg ganho</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Lucro projetado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ativos.map(a => (
+              <tr key={a.animal_id} style={{ borderBottom: '1px solid #eee' }}>
+                <td style={{ padding: '4px 6px' }}>{a.brinco}</td>
+                <td style={{ padding: '4px 6px' }}>{a.codigo}</td>
+                <td style={{ padding: '4px 6px' }}>{a.loteNome}</td>
+                <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(a.pesoAtual, 1)} kg</td>
+                <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(a.ganho, 1)} kg</td>
+                <td style={{ textAlign: 'right', padding: '4px 6px' }}>{a.custoPorKg != null ? `${fmt(a.custoPorKg)}/kg` : '—'}</td>
+                <td style={{ textAlign: 'right', padding: '4px 6px' }}>{a.lucroProjetado != null ? fmt(a.lucroProjetado) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #000' }}>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Brinco</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Código</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Lote de origem</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Data</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Peso na venda</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Ganho de peso</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Custo/kg ganho</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Lucro</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vendidos.map(v => (
+              <tr key={v.animal_id} style={{ borderBottom: '1px solid #eee' }}>
+                <td style={{ padding: '4px 6px' }}>{v.brinco}</td>
+                <td style={{ padding: '4px 6px' }}>{v.codigo}</td>
+                <td style={{ padding: '4px 6px' }}>{v.loteNome}</td>
+                <td style={{ padding: '4px 6px' }}>{v.data}</td>
+                <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(v.pesoVenda, 1)} kg</td>
+                <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(v.ganho, 1)} kg</td>
+                <td style={{ textAlign: 'right', padding: '4px 6px' }}>{v.custoPorKg != null ? `${fmt(v.custoPorKg)}/kg` : '—'}</td>
+                <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmt(v.lucro)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   )
