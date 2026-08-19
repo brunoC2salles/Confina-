@@ -142,7 +142,7 @@ h2{font-family:var(--font-d);font-size:clamp(26px,2.8vw,40px);font-weight:600;li
 .tog-track.ann .tog-thumb{transform:translateX(18px)}
 .tog-save{font-size:11px;font-weight:500;color:var(--green);background:var(--green-bg);padding:3px 10px;border-radius:20px;border:1px solid var(--green-border)}
 .price-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
-.pc{background:#fff;border:1px solid var(--border);border-radius:var(--r-xl);padding:32px 28px;transition:all .25s;position:relative}
+.pc{background:#fff;border:1px solid var(--border);border-radius:var(--r-xl);padding:32px 28px;transition:all .25s;position:relative;display:flex;flex-direction:column}
 .pc:hover:not(.feat){box-shadow:0 12px 40px rgba(0,0,0,.08);transform:translateY(-3px);border-color:var(--green-border)}
 .pc.feat{background:var(--green);border-color:var(--green);transform:scale(1.02)}
 .pc-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:#c8a84b;color:var(--black);font-size:10px;font-weight:600;padding:4px 14px;border-radius:20px;white-space:nowrap;letter-spacing:.5px;text-transform:uppercase}
@@ -164,7 +164,7 @@ h2{font-family:var(--font-d);font-size:clamp(26px,2.8vw,40px);font-weight:600;li
 .ck{width:16px;height:16px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .pc:not(.feat) .ck{background:var(--green-bg);color:var(--green)}.pc.feat .ck{background:rgba(255,255,255,.2);color:#fff}
 .ck svg{width:9px;height:9px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
-.pc-btn{width:100%;padding:12px;border-radius:var(--r-md);font-family:var(--font-b);font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .2s}
+.pc-btn{width:100%;padding:12px;border-radius:var(--r-md);font-family:var(--font-b);font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .2s;margin-top:auto}
 .pc:not(.feat) .pc-btn{background:var(--black);color:#fff}.pc:not(.feat) .pc-btn:hover{background:var(--green)}
 .pc.feat .pc-btn{background:#fff;color:var(--green-dark)}.pc.feat .pc-btn:hover{background:var(--green-bg)}
 .price-note{text-align:center;font-size:12px;color:var(--gray-400);margin-top:20px}
@@ -389,7 +389,7 @@ footer{background:var(--black);padding:44px 80px;display:flex;justify-content:sp
       <span class="tog-lbl">Mensal</span>
       <div class="tog-track" id="tog" onclick="toggleBilling()"><div class="tog-thumb"></div></div>
       <span class="tog-lbl">Anual</span>
-      <span class="tog-save">2 meses grátis</span>
+      <span class="tog-save">1 mês grátis</span>
     </div>
   </div>
   <div class="price-grid">
