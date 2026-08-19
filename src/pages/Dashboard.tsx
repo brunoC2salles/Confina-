@@ -77,7 +77,7 @@ export default function Dashboard() {
 
   const acoes = [
     { label: 'Registrar pesagem', sub: 'Atualizar peso de um animal',  rota: '/lotes' },
-    { label: 'Registrar venda',   sub: 'Venda, abate ou saída',        rota: '/lotes' },
+    { label: 'Registrar saída',   sub: 'Venda, abate, morte ou transferência', rota: '/lotes' },
     { label: 'Criar novo lote',   sub: 'Iniciar um novo confinamento', rota: '/lotes' },
     { label: 'Ver projeção',      sub: 'Dia ideal e lucro estimado',   rota: '/lotes' },
   ]

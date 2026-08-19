@@ -88,7 +88,7 @@ export default function Lotes() {
         subtitle="Gestão de lotes e rastreamento individual dos animais"
         action={
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-ghost" onClick={() => setShowVendaGlobal(true)}>Nova venda</button>
+            <button className="btn btn-ghost" onClick={() => setShowVendaGlobal(true)}>Registrar saída</button>
             <button className="btn btn-primary" onClick={() => setShowNovoLote(true)}>+ Novo lote</button>
           </div>
         } />
@@ -1187,7 +1187,7 @@ function DetalheLote({
             </button>
             <button className="btn btn-primary btn-sm" onClick={() => setShowBifurcar(true)}>Bifurcar</button>
             <button className="btn btn-primary btn-sm" onClick={() => setShowMover(true)}>Mover para outro lote</button>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowVenda(true)}>Vender</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowVenda(true)}>Registrar saída</button>
           </div>
         </div>
       ) : undefined}>
@@ -3456,7 +3456,7 @@ function ModalVenda({
   if (resultado) {
     const lucroTotal = resultado.reduce((s, r) => s + r.lucro, 0)
     return (
-      <Modal open onClose={onClose} title="Venda registrada" size="lg">
+      <Modal open onClose={onClose} title="Saída registrada" size="lg">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ background: 'var(--green-bg)', borderRadius: 8, padding: '12px 14px' }}>
             <div style={{ fontSize: 12, color: '#2e7d32' }}>Lucro total da venda</div>
@@ -3486,7 +3486,7 @@ function ModalVenda({
   }
 
   return (
-    <Modal open onClose={onClose} title="Registrar venda / saída" size="lg">
+    <Modal open onClose={onClose} title="Registrar saída" size="lg">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div className="form-row-2">
           <div className="form-group">
