@@ -84,7 +84,15 @@ export function useComprasMedicamento() {
     }))
     for (const chunk of chunkArray(linhasCusto, TAMANHO_CHUNK_INSERT)) {
       const { error: eInsert } = await supabase.from('custos_variaveis_animal').insert(chunk)
-      if (eInsert) return { error: eInsert.message }
+      if (eInsert) {
+        // Falhou no meio da inserção (ex.: mais de 500 animais, 2º lote falhou) —
+        // desfaz a compra inteira em vez de deixar o cabeçalho com uma
+        // quantidade_animais que não bate com os lançamentos realmente
+        // gravados. O CASCADE em compra_medicamento_id remove o que já tiver
+        // sido inserido nos lotes anteriores.
+        await supabase.from('compras_medicamento').delete().eq('id', compra.id)
+        return { error: `Falha ao lançar custo nos animais: ${eInsert.message}. A compra foi desfeita, tente novamente.` }
+      }
     }
 
     await fetch()
