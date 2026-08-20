@@ -1145,7 +1145,7 @@ interface ContextoCusto {
 // (sem erro). Lotes grandes (ex.: 500+ animais, 2 movimentações cada) passam
 // facilmente desse limite em movimentacoes_animais, pesagens, etc. Este
 // helper busca uma consulta em páginas de 1000 e concatena tudo.
-async function buscarTudoPaginado<T>(
+export async function buscarTudoPaginado<T>(
   montarConsulta: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
 ): Promise<T[]> {
   const TAMANHO_PAGINA = 1000
@@ -1176,7 +1176,7 @@ async function buscarTudoPaginado<T>(
 // por uma lista de IDs de animais (Ranking, Comparativo, etc.).
 const TAMANHO_CHUNK_IDS = 150
 
-function chunkArray<T>(arr: T[], tamanho: number): T[][] {
+export function chunkArray<T>(arr: T[], tamanho: number): T[][] {
   const chunks: T[][] = []
   for (let i = 0; i < arr.length; i += tamanho) chunks.push(arr.slice(i, i + tamanho))
   return chunks

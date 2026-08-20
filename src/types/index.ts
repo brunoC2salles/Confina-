@@ -209,6 +209,27 @@ export interface CustoVariavelAnimal {
   descricao: string
   valor: number
   data_lancamento: string
+  compra_medicamento_id: string | null
+  user_id: string
+  created_at: string
+}
+
+// Compra de medicamento (ou insumo similar) rateada em partes iguais entre
+// todos os animais ativos que estavam no ciclo alvo na data de aplicação —
+// rateio fixo, calculado uma vez no lançamento (ver adicionarCustoVariavel
+// em custos_variaveis_animal, um registro por animal, ligado por
+// compra_medicamento_id).
+export interface CompraMedicamento {
+  id: string
+  descricao: string
+  ciclo_alvo: number
+  data_compra: string
+  data_aplicacao: string
+  valor_total: number
+  quantidade_animais: number
+  valor_por_animal: number
+  parceiro_id: string | null
+  observacoes: string | null
   user_id: string
   created_at: string
 }
