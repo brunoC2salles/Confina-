@@ -15,6 +15,7 @@ import { fmt, fmtNum, fmtData, obterRendimento, obterBonus, ordenarPorBrinco } f
 import type {
   Lote, Animal, SaidaTipo, SaidaModo, RendimentoFaixa, BonusFaixa, TipoCiclo, Compra,
   CustoOperacionalLote, CategoriaCustoOperacional, MotivoEncerramento, CustoRacaoRealLote, TrocaDietaLoteRow,
+  CustoVariavelAnimal,
 } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { parseCsvAnimais } from '@/lib/csv'
@@ -942,7 +943,7 @@ function DetalheLote({
   const lote = todosLotes.find(l => l.id === loteId)
   const lotesAtivos = todosLotes.filter(l => l.status === 'ativo')
   const loteAtivo = lote?.status === 'ativo'
-  const { animais, loading, fetch, registrarPesagem, editarEntrada, buscarPesagens, editarPesagem, excluirPesagem } = useAnimaisDoLote(loteId)
+  const { animais, loading, fetch, registrarPesagem, editarEntrada, buscarPesagens, buscarCustosVariaveis, editarPesagem, excluirPesagem } = useAnimaisDoLote(loteId)
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
   const { custos: custosOperacionais, loading: loadingCustosOp, total: totalCustoOperacional, adicionarCusto, removerCusto } = useCustosOperacionais(loteId)
@@ -1612,6 +1613,7 @@ function DetalheLote({
             ciclosPorLote={ciclosPorLote}
             todosLotes={todosLotes}
             buscarPesagens={buscarPesagens}
+            buscarCustosVariaveis={buscarCustosVariaveis}
             editarPesagem={editarPesagem}
             excluirPesagem={excluirPesagem}
             calcularEmLote={calcularEmLote}
@@ -1729,7 +1731,7 @@ function TabelaPorEtapa({
 }
 
 function ModalDetalheAnimal({
-  animal, resultado, custoTotal, ciclosPorLote, todosLotes, buscarPesagens, editarPesagem, excluirPesagem, calcularEmLote, onAlterado, onClose,
+  animal, resultado, custoTotal, ciclosPorLote, todosLotes, buscarPesagens, buscarCustosVariaveis, editarPesagem, excluirPesagem, calcularEmLote, onAlterado, onClose,
   onEditar, onExcluir, onVerProjecao,
 }: {
   animal: Animal
@@ -1738,6 +1740,7 @@ function ModalDetalheAnimal({
   ciclosPorLote: Record<string, Array<{ numero: number; nome: string }>>
   todosLotes: Lote[]
   buscarPesagens: (animalId: string) => Promise<Pesagem[]>
+  buscarCustosVariaveis: (animalId: string) => Promise<CustoVariavelAnimal[]>
   editarPesagem: (input: { id: string; animal_id: string; peso: number; data: string }) => Promise<{ error: string | null }>
   excluirPesagem: (id: string) => Promise<{ error: string | null }>
   calcularEmLote: (animalIds: string[], dataAlvo: string) => Promise<Record<string, ResultadoAnimalNaData>>
@@ -1748,6 +1751,7 @@ function ModalDetalheAnimal({
   onVerProjecao: () => void
 }) {
   const [pesagens, setPesagens] = useState<Pesagem[] | undefined>(undefined)
+  const [custosVariaveis, setCustosVariaveis] = useState<CustoVariavelAnimal[] | undefined>(undefined)
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [pesoEdit, setPesoEdit] = useState('')
   const [dataEdit, setDataEdit] = useState('')
@@ -1760,6 +1764,11 @@ function ModalDetalheAnimal({
   }, [animal.id, buscarPesagens])
 
   useEffect(() => { setPesagens(undefined); carregarPesagens() }, [carregarPesagens])
+
+  useEffect(() => {
+    setCustosVariaveis(undefined)
+    buscarCustosVariaveis(animal.id).then(lista => setCustosVariaveis([...lista].sort((a, b) => b.data_lancamento.localeCompare(a.data_lancamento))))
+  }, [animal.id, buscarCustosVariaveis])
 
   const gmdReal = useMemo(() => {
     if (pesagens === undefined) return undefined
@@ -1901,6 +1910,44 @@ function ModalDetalheAnimal({
             <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Nenhuma etapa calculada ainda.</div>
           ) : (
             <TabelaPorEtapa etapas={etapas} ciclosPorLote={ciclosPorLote} todosLotes={todosLotes} loteAtualId={animal.lote_atual_id ?? undefined} />
+          )}
+        </div>
+
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Custos variáveis lançados neste animal</div>
+          {custosVariaveis === undefined ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Carregando…</div>
+          ) : custosVariaveis.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Nenhum custo variável lançado neste animal.</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Descrição</th>
+                    <th style={{ width: 60 }}></th>
+                    <th>Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {custosVariaveis.map(c => (
+                    <tr key={c.id}>
+                      <td>{fmtData(c.data_lancamento)}</td>
+                      <td>{c.descricao}</td>
+                      <td>
+                        {c.compra_medicamento_id && (
+                          <span style={{ background: '#e8f5e9', color: '#1b5e20', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
+                            RATEIO
+                          </span>
+                        )}
+                      </td>
+                      <td>{fmt(c.valor)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
