@@ -543,7 +543,7 @@ function AbaMedicamentos() {
       {loading
         ? <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><div className="spinner" style={{ width: 28, height: 28 }} /></div>
         : compras.length === 0
-          ? <div className="card"><EmptyState icon="◻" title="Nenhuma compra de medicamento" desc="Registre uma compra aplicada a todos os animais de um ciclo — o valor é dividido igualmente entre eles."
+          ? <div className="card"><EmptyState icon="" title="Nenhuma compra de medicamento" desc="Registre uma compra aplicada a todos os animais de um ciclo — o valor é dividido igualmente entre eles."
               action={<button className="btn btn-primary" onClick={abrirNovo}>Nova compra</button>} /></div>
           : (
             <div className="table-wrap">
