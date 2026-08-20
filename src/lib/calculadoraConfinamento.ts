@@ -58,11 +58,12 @@ const CAIXA_AGUA_VALOR_UNITARIO = 4000
 // ── Cocho de alimentação — especificação de material Confina+ ──────────
 // Fonte: planilha de material para cocho de 6 m fornecida por Bruno (ago/2026, v2).
 // O total geral informado na planilha (R$13.563,00 / R$2.393,00 por metro) não bate
-// com a soma dos 26 itens abaixo. Por decisão de Bruno, o valor cobrado pelo cocho
-// na calculadora usa a SOMA RECALCULADA dos itens (R$2.419,00/m), não o total da
-// planilha. Os itens em MATERIAIS_COCHO_REFERENCIA_6M são também exibidos como
-// detalhamento de referência para o cliente.
-const COCHO_VALOR_POR_METRO = 2419
+// com a soma dos 26 itens abaixo (R$13.543,00 / R$2.419,00 por metro). Por decisão
+// de Bruno, o valor cobrado pelo cocho na calculadora usa o VALOR INFORMADO NA
+// PLANILHA (R$2.393,00/m), não a soma recalculada dos itens. Os itens em
+// MATERIAIS_COCHO_REFERENCIA_6M são também exibidos como detalhamento de
+// referência para o cliente.
+const COCHO_VALOR_POR_METRO = 2393
 
 interface MaterialCochoReferencia {
   nome: string
@@ -81,8 +82,8 @@ const MATERIAIS_COCHO_REFERENCIA_6M: MaterialCochoReferencia[] = [
   { nome: 'Madeira machambrada lateral 3m', quantidade6m: 30, unidade: 'm²', valorUnitario: 40.00, valorPorMetro: 200.00 },
   { nome: 'Madeira machambrada Oitão 2,5m', quantidade6m: 15, unidade: 'm²', valorUnitario: 40.00, valorPorMetro: 100.00 },
   { nome: 'Telhas Aluzinco 4m', quantidade6m: 6, unidade: 'un', valorUnitario: 184.00, valorPorMetro: 185.00 },
-  { nome: 'Cantoneiras mais grossas', quantidade6m: 9, unidade: 'm', valorUnitario: 162.00, valorPorMetro: 41.00 },
-  { nome: 'Cantoneiras mais finas', quantidade6m: 12.8, unidade: 'm', valorUnitario: 76.00, valorPorMetro: 27.00 },
+  { nome: 'Cantoneiras 1/4x1/4', quantidade6m: 9, unidade: 'm', valorUnitario: 162.00, valorPorMetro: 41.00 },
+  { nome: 'Cantoneiras 3x16/1', quantidade6m: 12.8, unidade: 'm', valorUnitario: 76.00, valorPorMetro: 27.00 },
   { nome: 'Tirante 3/8', quantidade6m: 9, unidade: 'm', valorUnitario: 92.00, valorPorMetro: 23.00 },
   { nome: 'Corrente fina', quantidade6m: 3, unidade: 'm', valorUnitario: 12.00, valorPorMetro: 6.00 },
   { nome: 'Tinta', quantidade6m: 1, unidade: 'L', valorUnitario: 65.00, valorPorMetro: 11.00 },
