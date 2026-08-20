@@ -89,6 +89,8 @@ export interface ItemVendaInput {
   animal_id: string
   peso: number
   valor?: number // usado só no modo peso_proprio
+  precoKgCarcaca?: number // usado só no modo rendimento_carcaca
+  rendimentoAbatePct?: number // usado só no modo rendimento_carcaca
 }
 
 export interface RegistrarVendaInput {
@@ -1848,7 +1850,11 @@ export function useCompras(loteId: string | null) {
 
 export interface SaidaGrupoDetalhe extends SaidaGrupo {
   destino_nome: string | null
-  animais: Array<{ animal_id: string; codigo: string; peso: number | null; valor: number | null; custo_atribuido: number | null; lucro: number | null }>
+  animais: Array<{
+    animal_id: string; codigo: string; peso: number | null; valor: number | null
+    custo_atribuido: number | null; lucro: number | null
+    preco_kg_carcaca: number | null; rendimento_abate_pct: number | null
+  }>
 }
 
 export function useSaidasGrupo() {
@@ -1870,7 +1876,9 @@ export function useSaidasGrupo() {
     const { data: saida } = await supabase.from('saidas_grupo').select('*').eq('id', saidaGrupoId).single()
     if (!saida) return null
     const [{ data: movs }, destinoNome] = await Promise.all([
-      supabase.from('movimentacoes_animais').select('animal_id, peso, valor, custo_atribuido, lucro, animais(codigo)').eq('saida_grupo_id', saidaGrupoId),
+      supabase.from('movimentacoes_animais')
+        .select('animal_id, peso, valor, custo_atribuido, lucro, preco_kg_carcaca, rendimento_abate_pct, animais(codigo)')
+        .eq('saida_grupo_id', saidaGrupoId),
       saida.destino_id
         ? supabase.from('parceiros').select('nome').eq('id', saida.destino_id).single().then(r => r.data?.nome ?? null)
         : Promise.resolve(null),
@@ -1878,6 +1886,7 @@ export function useSaidasGrupo() {
     const animais = ((movs ?? []) as any[]).map(m => ({
       animal_id: m.animal_id, codigo: m.animais?.codigo ?? '—',
       peso: m.peso, valor: m.valor, custo_atribuido: m.custo_atribuido, lucro: m.lucro,
+      preco_kg_carcaca: m.preco_kg_carcaca, rendimento_abate_pct: m.rendimento_abate_pct,
     }))
     return { ...(saida as SaidaGrupo), destino_nome: destinoNome, animais }
   }
@@ -1908,6 +1917,12 @@ export function useVendas() {
     if (input.modo === 'peso_proprio' && input.itens.some(i => i.valor == null)) {
       return { error: 'Informe o valor de venda de cada animal' }
     }
+    if (input.modo === 'rendimento_carcaca' && input.itens.some(i => !i.precoKgCarcaca || i.precoKgCarcaca <= 0)) {
+      return { error: 'Informe o preço por kg de carcaça de cada animal' }
+    }
+    if (input.modo === 'rendimento_carcaca' && input.itens.some(i => !i.rendimentoAbatePct || i.rendimentoAbatePct <= 0 || i.rendimentoAbatePct > 100)) {
+      return { error: 'Informe o rendimento de abate (%) de cada animal' }
+    }
 
     const animalIds = input.itens.map(i => i.animal_id)
 
@@ -1935,6 +1950,14 @@ export function useVendas() {
     const bonus = (bonusData ?? []) as Array<{ peso_min: number; peso_max: number; bonus_por_kg: number }>
 
     const porAnimal = input.itens.map(item => {
+      // No modo rendimento_carcaca o rendimento é o real, informado pelo produtor
+      // no ato da venda (não a estimativa por faixa de peso) — e não há bônus,
+      // já que o preço já reflete o rendimento efetivo do animal.
+      if (input.modo === 'rendimento_carcaca') {
+        const rendPct = item.rendimentoAbatePct ?? 0
+        const pesoCarcaca = item.peso * (rendPct / 100)
+        return { ...item, rendPct, pesoCarcaca, valorBonus: 0 }
+      }
       const rendPct = obterRendimento(item.peso, rendimentos as any)
       const pesoCarcaca = item.peso * (rendPct / 100)
       const bonusPorKg = obterBonus(item.peso, bonus as any)
@@ -1948,6 +1971,8 @@ export function useVendas() {
     const receitaPrincipalPorAnimal: Record<string, number> = {}
     if (input.modo === 'peso_proprio') {
       for (const a of porAnimal) receitaPrincipalPorAnimal[a.animal_id] = a.valor ?? 0
+    } else if (input.modo === 'rendimento_carcaca') {
+      for (const a of porAnimal) receitaPrincipalPorAnimal[a.animal_id] = a.pesoCarcaca * (a.precoKgCarcaca ?? 0)
     } else {
       const total = input.valor_total ?? 0
       for (const a of porAnimal) {
@@ -2010,7 +2035,11 @@ export function useVendas() {
         ganhoMistoTotal += r.ganhoPesoMisto
       }
 
-      return { animal_id: item.animal_id, peso: item.peso, receitaBruta, custoTotal, lucro }
+      return {
+        animal_id: item.animal_id, peso: item.peso, receitaBruta, custoTotal, lucro,
+        precoKgCarcaca: input.modo === 'rendimento_carcaca' ? (item.precoKgCarcaca ?? null) : null,
+        rendimentoAbatePct: input.modo === 'rendimento_carcaca' ? (item.rendimentoAbatePct ?? null) : null,
+      }
     })
 
     const margemPct = receitaLiquidaTotal > 0 ? (lucroTotal / receitaLiquidaTotal) * 100 : 0
@@ -2063,6 +2092,7 @@ export function useVendas() {
       destino_tipo: input.destino_tipo ?? null, destino_id: input.destino_id ?? null,
       observacoes: input.observacoes ?? null, saida_grupo_id: saidaGrupo.id,
       custo_atribuido: l.custoTotal, lucro: l.lucro,
+      preco_kg_carcaca: l.precoKgCarcaca, rendimento_abate_pct: l.rendimentoAbatePct,
       user_id: user.id,
     }))
     const { error: eMov } = await supabase.from('movimentacoes_animais').insert(movRows)

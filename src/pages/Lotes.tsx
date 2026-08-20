@@ -3365,6 +3365,8 @@ function ModalVenda({
   const [pesos, setPesos] = useState<Record<string, string>>({})
   const [valoresIndividuais, setValoresIndividuais] = useState<Record<string, string>>({})
   const [valorTotalCarga, setValorTotalCarga] = useState('')
+  const [precosCarcaca, setPrecosCarcaca] = useState<Record<string, string>>({})
+  const [rendimentosAbate, setRendimentosAbate] = useState<Record<string, string>>({})
   const [destinoTipo, setDestinoTipo] = useState<'corretor' | 'frigorifico' | 'produtor' | ''>('')
   const [observacoes, setObservacoes] = useState('')
   const [pctComissao, setPctComissao] = useState('')
@@ -3375,11 +3377,14 @@ function ModalVenda({
   useEffect(() => {
     if (!animaisPreSelecionados) return
     const pesosIniciais: Record<string, string> = {}
+    const rendimentosIniciais: Record<string, string> = {}
     for (const a of animaisPreSelecionados) {
       const est = resultadosPreCalculados?.[a.id]?.peso ?? a.peso_entrada
       pesosIniciais[a.id] = String(Math.round(est))
+      rendimentosIniciais[a.id] = String(obterRendimento(est, rendimentos))
     }
     setPesos(pesosIniciais)
+    setRendimentosAbate(rendimentosIniciais)
   }, [animaisPreSelecionados, resultadosPreCalculados])
 
   const carregarAnimaisDoLote = async (loteId: string) => {
@@ -3398,6 +3403,9 @@ function ModalVenda({
         if (!pesos[id]) {
           const a = animaisDisponiveis.find(x => x.id === id)
           if (a) setPesos(p => ({ ...p, [id]: String(a.peso_entrada) }))
+          if (a && !rendimentosAbate[id]) {
+            setRendimentosAbate(r => ({ ...r, [id]: String(obterRendimento(a.peso_entrada, rendimentos)) }))
+          }
         }
       }
       return n
@@ -3419,6 +3427,11 @@ function ModalVenda({
       if (modo === 'peso_proprio' && (!valoresIndividuais[a.id] || Number(valoresIndividuais[a.id]) < 0)) {
         return `Informe o valor de venda de ${a.codigo}`
       }
+      if (modo === 'rendimento_carcaca') {
+        if (!precosCarcaca[a.id] || Number(precosCarcaca[a.id]) <= 0) return `Informe o preço por kg de carcaça de ${a.codigo}`
+        const rend = Number(rendimentosAbate[a.id])
+        if (!rendimentosAbate[a.id] || rend <= 0 || rend > 100) return `Informe o rendimento de abate (%) de ${a.codigo}`
+      }
     }
     if (modo === 'peso_carga' && (!valorTotalCarga || Number(valorTotalCarga) <= 0)) return 'Informe o valor total da carga'
     return null
@@ -3436,6 +3449,8 @@ function ModalVenda({
       itens: animaisSelecionadosObj.map(a => ({
         animal_id: a.id, peso: Number(pesos[a.id]),
         valor: modo === 'peso_proprio' ? Number(valoresIndividuais[a.id]) : undefined,
+        precoKgCarcaca: modo === 'rendimento_carcaca' ? Number(precosCarcaca[a.id]) : undefined,
+        rendimentoAbatePct: modo === 'rendimento_carcaca' ? Number(rendimentosAbate[a.id]) : undefined,
       })),
       valor_total: modo === 'peso_carga' ? Number(valorTotalCarga) : undefined,
       destino_tipo: destinoTipo || undefined,
@@ -3507,11 +3522,13 @@ function ModalVenda({
         <div className="form-group">
           <label className="form-label">Modo de precificação</label>
           <div style={{ display: 'flex', gap: 6 }}>
-            {(['peso_proprio', 'peso_carga'] as const).map(m => (
+            {(['peso_proprio', 'peso_carga', 'rendimento_carcaca'] as const).map(m => (
               <button key={m} type="button" onClick={() => setModo(m)}
                 style={{ flex: 1, padding: 8, borderRadius: 6, fontSize: 12, border: '1px solid var(--border)', cursor: 'pointer',
                   background: modo === m ? '#2e7d32' : '#fff', color: modo === m ? '#fff' : 'var(--gray-600)' }}>
-                {m === 'peso_proprio' ? 'Peso e valor próprios por animal' : 'Peso da carga (valor único, rateado)'}
+                {m === 'peso_proprio' ? 'Peso e valor próprios por animal'
+                  : m === 'peso_carga' ? 'Peso da carga (valor único, rateado)'
+                  : 'Rendimento de carcaça (preço/kg carcaça + rendimento)'}
               </button>
             ))}
           </div>
@@ -3536,27 +3553,57 @@ function ModalVenda({
                   <th>Código</th>
                   <th>Peso na venda (kg)</th>
                   {modo === 'peso_proprio' && <th>Valor (R$)</th>}
+                  {modo === 'rendimento_carcaca' && (
+                    <>
+                      <th>Preço/kg carcaça (R$)</th>
+                      <th>Rendimento abate (%)</th>
+                      <th>Valor (R$)</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {animaisDisponiveis.map(a => (
-                  <tr key={a.id}>
-                    <td><input type="checkbox" checked={selecionados.has(a.id)} onChange={() => toggleSelecionado(a.id)} /></td>
-                    <td><strong>{a.codigo}</strong></td>
-                    <td>
-                      <input className="form-input" type="number" step="0.1" value={pesos[a.id] ?? ''}
-                        onChange={e => setPesos(p => ({ ...p, [a.id]: e.target.value }))}
-                        disabled={!selecionados.has(a.id)} style={{ maxWidth: 110, fontSize: 13 }} />
-                    </td>
-                    {modo === 'peso_proprio' && (
+                {animaisDisponiveis.map(a => {
+                  const pesoAnimal = Number(pesos[a.id]) || 0
+                  const precoCarcacaAnimal = Number(precosCarcaca[a.id]) || 0
+                  const rendAbateAnimal = Number(rendimentosAbate[a.id]) || 0
+                  const valorCalculadoRendimento = pesoAnimal * (rendAbateAnimal / 100) * precoCarcacaAnimal
+                  return (
+                    <tr key={a.id}>
+                      <td><input type="checkbox" checked={selecionados.has(a.id)} onChange={() => toggleSelecionado(a.id)} /></td>
+                      <td><strong>{a.codigo}</strong></td>
                       <td>
-                        <input className="form-input" type="number" step="0.01" value={valoresIndividuais[a.id] ?? ''}
-                          onChange={e => setValoresIndividuais(v => ({ ...v, [a.id]: e.target.value }))}
-                          disabled={!selecionados.has(a.id)} style={{ maxWidth: 130, fontSize: 13 }} />
+                        <input className="form-input" type="number" step="0.1" value={pesos[a.id] ?? ''}
+                          onChange={e => setPesos(p => ({ ...p, [a.id]: e.target.value }))}
+                          disabled={!selecionados.has(a.id)} style={{ maxWidth: 110, fontSize: 13 }} />
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      {modo === 'peso_proprio' && (
+                        <td>
+                          <input className="form-input" type="number" step="0.01" value={valoresIndividuais[a.id] ?? ''}
+                            onChange={e => setValoresIndividuais(v => ({ ...v, [a.id]: e.target.value }))}
+                            disabled={!selecionados.has(a.id)} style={{ maxWidth: 130, fontSize: 13 }} />
+                        </td>
+                      )}
+                      {modo === 'rendimento_carcaca' && (
+                        <>
+                          <td>
+                            <input className="form-input" type="number" step="0.01" value={precosCarcaca[a.id] ?? ''}
+                              onChange={e => setPrecosCarcaca(v => ({ ...v, [a.id]: e.target.value }))}
+                              disabled={!selecionados.has(a.id)} style={{ maxWidth: 120, fontSize: 13 }} />
+                          </td>
+                          <td>
+                            <input className="form-input" type="number" step="0.01" value={rendimentosAbate[a.id] ?? ''}
+                              onChange={e => setRendimentosAbate(v => ({ ...v, [a.id]: e.target.value }))}
+                              disabled={!selecionados.has(a.id)} style={{ maxWidth: 100, fontSize: 13 }} />
+                          </td>
+                          <td style={{ fontSize: 13, color: 'var(--gray-600)' }}>
+                            {selecionados.has(a.id) ? fmt(valorCalculadoRendimento) : '—'}
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

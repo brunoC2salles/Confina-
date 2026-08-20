@@ -6,7 +6,7 @@ import { fmt, fmtNum, fmtData } from '@/lib/calculations'
 import type { SaidaGrupo, SaidaTipo, SaidaModo } from '@/types'
 
 const tipoLabel: Record<SaidaTipo, string> = { venda: 'Venda', abate: 'Abate', transferencia: 'Transferência', morte: 'Morte' }
-const modoLabel: Record<SaidaModo, string> = { peso_proprio: 'Peso próprio', peso_carga: 'Peso da carga' }
+const modoLabel: Record<SaidaModo, string> = { peso_proprio: 'Peso próprio', peso_carga: 'Peso da carga', rendimento_carcaca: 'Rendimento de carcaça' }
 const destinoTipoLabel: Record<string, string> = { frigorifico: 'Frigorífico', corretor: 'Corretor', produtor: 'Outro produtor' }
 
 const custoTotalDe = (s: SaidaGrupo) =>
@@ -111,12 +111,24 @@ export default function Vendas() {
 
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Animal</th><th>Peso</th><th>Valor</th><th>Custo</th><th>Lucro</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>Animal</th><th>Peso</th>
+                      {detalhe.modo === 'rendimento_carcaca' && <><th>Preço/kg carcaça</th><th>Rendimento abate</th></>}
+                      <th>Valor</th><th>Custo</th><th>Lucro</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {detalhe.animais.map(a => (
                       <tr key={a.animal_id}>
                         <td><strong>{a.codigo}</strong></td>
                         <td>{a.peso != null ? `${fmtNum(a.peso, 1)} kg` : '—'}</td>
+                        {detalhe.modo === 'rendimento_carcaca' && (
+                          <>
+                            <td>{a.preco_kg_carcaca != null ? fmt(a.preco_kg_carcaca) : '—'}</td>
+                            <td>{a.rendimento_abate_pct != null ? `${fmtNum(a.rendimento_abate_pct, 1)}%` : '—'}</td>
+                          </>
+                        )}
                         <td>{a.valor != null ? fmt(a.valor) : '—'}</td>
                         <td>{a.custo_atribuido != null ? fmt(a.custo_atribuido) : '—'}</td>
                         <td style={{ color: (a.lucro ?? 0) >= 0 ? '#2e7d32' : '#b91c1c' }}>{a.lucro != null ? fmt(a.lucro) : '—'}</td>
@@ -211,6 +223,12 @@ function NotaVendaImprimivel({ detalhe }: { detalhe: SaidaGrupoDetalhe }) {
           <tr style={{ borderBottom: '1px solid #000' }}>
             <th style={{ textAlign: 'left', padding: '4px 6px' }}>Código</th>
             <th style={{ textAlign: 'right', padding: '4px 6px' }}>Peso</th>
+            {detalhe.modo === 'rendimento_carcaca' && (
+              <>
+                <th style={{ textAlign: 'right', padding: '4px 6px' }}>Preço/kg carcaça</th>
+                <th style={{ textAlign: 'right', padding: '4px 6px' }}>Rendimento abate</th>
+              </>
+            )}
             <th style={{ textAlign: 'right', padding: '4px 6px' }}>Valor</th>
             <th style={{ textAlign: 'right', padding: '4px 6px' }}>Custo</th>
             <th style={{ textAlign: 'right', padding: '4px 6px' }}>Lucro</th>
@@ -221,6 +239,12 @@ function NotaVendaImprimivel({ detalhe }: { detalhe: SaidaGrupoDetalhe }) {
             <tr key={a.animal_id} style={{ borderBottom: '1px solid #eee' }}>
               <td style={{ padding: '4px 6px' }}>{a.codigo}</td>
               <td style={{ textAlign: 'right', padding: '4px 6px' }}>{a.peso != null ? `${fmtNum(a.peso, 1)} kg` : '—'}</td>
+              {detalhe.modo === 'rendimento_carcaca' && (
+                <>
+                  <td style={{ textAlign: 'right', padding: '4px 6px' }}>{a.preco_kg_carcaca != null ? fmt(a.preco_kg_carcaca) : '—'}</td>
+                  <td style={{ textAlign: 'right', padding: '4px 6px' }}>{a.rendimento_abate_pct != null ? `${fmtNum(a.rendimento_abate_pct, 1)}%` : '—'}</td>
+                </>
+              )}
               <td style={{ textAlign: 'right', padding: '4px 6px' }}>{a.valor != null ? fmt(a.valor) : '—'}</td>
               <td style={{ textAlign: 'right', padding: '4px 6px' }}>{a.custo_atribuido != null ? fmt(a.custo_atribuido) : '—'}</td>
               <td style={{ textAlign: 'right', padding: '4px 6px' }}>{a.lucro != null ? fmt(a.lucro) : '—'}</td>

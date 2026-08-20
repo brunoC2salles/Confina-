@@ -9,7 +9,7 @@ export type ComissaoTipo = 'corretor' | 'operador' | 'outro'
 export type CategoriaCustoOperacional = 'sanitario' | 'maquinario' | 'mao_de_obra' | 'medicamentos' | 'outros'
 export type MotivoEncerramento = 'venda' | 'extincao' | 'outro'
 export type SaidaTipo = 'venda' | 'abate' | 'transferencia' | 'morte'
-export type SaidaModo = 'peso_proprio' | 'peso_carga'
+export type SaidaModo = 'peso_proprio' | 'peso_carga' | 'rendimento_carcaca'
 export type TipoCiclo = 'pastagem' | 'confinamento' | 'misto'
 
 export interface Lote {
@@ -126,6 +126,9 @@ export interface Movimentacao {
   saida_grupo_id: string | null
   custo_atribuido: number | null
   lucro: number | null
+  // Preenchidos só quando a venda-mãe (saidas_grupo) tem modo = 'rendimento_carcaca'.
+  preco_kg_carcaca: number | null
+  rendimento_abate_pct: number | null
   user_id: string
   created_at: string
 }
