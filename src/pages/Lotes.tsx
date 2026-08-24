@@ -1936,7 +1936,7 @@ function ModalDetalheAnimal({
                       <td>{fmtData(c.data_lancamento)}</td>
                       <td>{c.descricao}</td>
                       <td>
-                        {c.compra_medicamento_id && (
+                        {(c.compra_medicamento_id || c.compra_outros_id) && (
                           <span style={{ background: '#e8f5e9', color: '#1b5e20', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
                             RATEIO
                           </span>
