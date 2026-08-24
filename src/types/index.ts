@@ -210,6 +210,7 @@ export interface CustoVariavelAnimal {
   valor: number
   data_lancamento: string
   compra_medicamento_id: string | null
+  compra_outros_id: string | null
   user_id: string
   created_at: string
 }
@@ -220,6 +221,26 @@ export interface CustoVariavelAnimal {
 // em custos_variaveis_animal, um registro por animal, ligado por
 // compra_medicamento_id).
 export interface CompraMedicamento {
+  id: string
+  descricao: string
+  ciclo_alvo: number
+  data_compra: string
+  data_aplicacao: string
+  valor_total: number
+  quantidade_animais: number
+  valor_por_animal: number
+  parceiro_id: string | null
+  observacoes: string | null
+  user_id: string
+  created_at: string
+}
+
+// Compra "Outros" — mesmo modelo de rateio de CompraMedicamento (partes
+// iguais entre os animais ativos do ciclo alvo na data de aplicação), usada
+// para lançamentos que não são ração nem medicamento. O produtor descreve o
+// que é a compra em `descricao`. Ligada a custos_variaveis_animal por
+// compra_outros_id.
+export interface CompraOutros {
   id: string
   descricao: string
   ciclo_alvo: number
