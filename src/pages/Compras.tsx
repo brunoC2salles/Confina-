@@ -1,6 +1,7 @@
 import { useState, Fragment } from 'react'
 import { useGruposConsumoRacao, useResumoGrupo, type GrupoConsumoComDieta } from '@/hooks/useGruposConsumoRacao'
 import { useComprasMedicamento } from '@/hooks/useComprasMedicamento'
+import { useComprasOutros } from '@/hooks/useComprasOutros'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt, fmtNum, fmtData } from '@/lib/calculations'
 
@@ -10,7 +11,7 @@ const hojeStr = () => new Date().toISOString().slice(0, 10)
 
 export default function Compras() {
   const { grupos, lotesAtivos, dietas, fornecedores, loading, criarGrupo, excluirGrupo } = useGruposConsumoRacao()
-  const [aba, setAba] = useState<'racao' | 'medicamentos'>('racao')
+  const [aba, setAba] = useState<'racao' | 'medicamentos' | 'outros'>('racao')
   const [showNovo, setShowNovo] = useState(false)
   const [grupoSelecionado, setGrupoSelecionado] = useState<GrupoConsumoComDieta | null>(null)
   const [form, setForm] = useState(formVazio)
@@ -35,16 +36,16 @@ export default function Compras() {
     <div className="page">
       <PageHeader
         title="Compras"
-        subtitle="Rações e medicamentos comprados e rateados entre os animais"
+        subtitle="Rações, medicamentos e outras compras rateadas entre os animais"
         action={aba === 'racao' ? <button className="btn btn-primary" onClick={() => setShowNovo(true)}>+ Novo grupo</button> : undefined}
       />
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {(['racao', 'medicamentos'] as const).map(a => (
+        {(['racao', 'medicamentos', 'outros'] as const).map(a => (
           <button key={a} type="button" onClick={() => setAba(a)}
             style={{ padding: '8px 16px', borderRadius: 6, fontSize: 13, border: '1px solid var(--border)', cursor: 'pointer',
               background: aba === a ? '#2e7d32' : '#fff', color: aba === a ? '#fff' : 'var(--gray-600)' }}>
-            {a === 'racao' ? 'Ração' : 'Medicamentos'}
+            {a === 'racao' ? 'Ração' : a === 'medicamentos' ? 'Medicamentos' : 'Outros'}
           </button>
         ))}
       </div>
@@ -127,6 +128,8 @@ export default function Compras() {
       )}
 
       {aba === 'medicamentos' && <AbaMedicamentos />}
+
+      {aba === 'outros' && <AbaOutros />}
     </div>
   )
 }
@@ -621,6 +624,232 @@ function AbaMedicamentos() {
             <div className="form-group">
               <label className="form-label">Descrição</label>
               <input className="form-input" placeholder="Ex: Vacinação — Vermífugo" value={form.descricao}
+                onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} required />
+            </div>
+
+            <div className="form-row-2">
+              <div className="form-group">
+                <label className="form-label">Ciclo alvo (todos os lotes)</label>
+                <select className="form-input" value={form.ciclo_alvo} onChange={e => setForm(f => ({ ...f, ciclo_alvo: e.target.value }))} required>
+                  <option value="">Selecione</option>
+                  {Object.keys(ciclos).sort((a, b) => Number(a) - Number(b)).map(n => (
+                    <option key={n} value={n}>Ciclo {n} — {ciclos[Number(n)]} animais</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Valor total (R$)</label>
+                <input className="form-input" type="number" step="0.01" value={form.valor_total}
+                  onChange={e => setForm(f => ({ ...f, valor_total: e.target.value }))} required />
+              </div>
+            </div>
+
+            {quantidadePrevista > 0 && Number(form.valor_total) > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                {quantidadePrevista} animais elegíveis agora → {fmt(valorPorAnimalPrevisto)} por animal.
+                A quantidade final é recalculada na confirmação.
+              </div>
+            )}
+
+            <div className="form-row-2">
+              <div className="form-group">
+                <label className="form-label">Data da compra</label>
+                <input className="form-input" type="date" value={form.data_compra}
+                  onChange={e => setForm(f => ({ ...f, data_compra: e.target.value }))} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Data de aplicação</label>
+                <input className="form-input" type="date" value={form.data_aplicacao}
+                  onChange={e => setForm(f => ({ ...f, data_aplicacao: e.target.value }))} required />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Fornecedor</label>
+              <select className="form-input" value={form.parceiro_id} onChange={e => setForm(f => ({ ...f, parceiro_id: e.target.value }))}>
+                <option value="">Não informado</option>
+                {fornecedores.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Observações</label>
+              <input className="form-input" placeholder="Opcional" value={form.observacoes}
+                onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))} />
+            </div>
+
+            {erro && <div style={{ fontSize: 12, color: '#b91c1c' }}>{erro}</div>}
+
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={fecharNovo}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Registrar compra'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OUTROS — mesma lógica de MEDICAMENTOS: compra única rateada por cabeça
+// entre os animais ativos de um ciclo (cruza qualquer lote), para lançamentos
+// que não são ração nem medicamento. Ver useComprasOutros.ts.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const formOutrosVazio = {
+  descricao: '', ciclo_alvo: '', data_compra: hojeStr(), data_aplicacao: hojeStr(),
+  valor_total: '', parceiro_id: '', observacoes: '',
+}
+
+function AbaOutros() {
+  const { compras, fornecedores, loading, distribuicaoPorCiclo, registrarCompra, excluirCompra, buscarDistribuicaoPorLote } = useComprasOutros()
+  const [showNovo, setShowNovo] = useState(false)
+  const [form, setForm] = useState(formOutrosVazio)
+  const [ciclos, setCiclos] = useState<Record<number, number>>({})
+  const [saving, setSaving] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const [resultado, setResultado] = useState<{ quantidade: number; valorPorAnimal: number } | null>(null)
+  const [compraExpandida, setCompraExpandida] = useState<string | null>(null)
+  const [distribuicaoLote, setDistribuicaoLote] = useState<Record<string, Array<{ lote_id: string; nome_lote: string; codigo_lote: string; quantidade: number }>>>({})
+
+  const abrirNovo = async () => {
+    setForm(formOutrosVazio)
+    setErro(null)
+    setResultado(null)
+    setShowNovo(true)
+    setCiclos(await distribuicaoPorCiclo())
+  }
+
+  const fecharNovo = () => { setShowNovo(false); setForm(formOutrosVazio); setResultado(null) }
+
+  const quantidadePrevista = form.ciclo_alvo ? (ciclos[Number(form.ciclo_alvo)] ?? 0) : 0
+  const valorPorAnimalPrevisto = quantidadePrevista > 0 && Number(form.valor_total) > 0
+    ? Number(form.valor_total) / quantidadePrevista : 0
+
+  const handleRegistrar = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setErro(null)
+    if (!form.descricao || !form.ciclo_alvo || !form.valor_total || !form.data_compra || !form.data_aplicacao) return
+    setSaving(true)
+    const res = await registrarCompra({
+      descricao: form.descricao, ciclo_alvo: Number(form.ciclo_alvo),
+      data_compra: form.data_compra, data_aplicacao: form.data_aplicacao,
+      valor_total: Number(form.valor_total), parceiro_id: form.parceiro_id || undefined,
+      observacoes: form.observacoes || undefined,
+    })
+    setSaving(false)
+    if (res.error) { setErro(res.error); return }
+    setResultado({ quantidade: res.quantidade ?? 0, valorPorAnimal: res.valorPorAnimal ?? 0 })
+  }
+
+  const toggleExpandir = async (compraId: string) => {
+    if (compraExpandida === compraId) { setCompraExpandida(null); return }
+    setCompraExpandida(compraId)
+    if (!distribuicaoLote[compraId]) {
+      const dist = await buscarDistribuicaoPorLote(compraId)
+      setDistribuicaoLote(d => ({ ...d, [compraId]: dist }))
+    }
+  }
+
+  const handleExcluir = async (compraId: string) => {
+    if (!confirm('Excluir esta compra? Os lançamentos de custo gerados por ela em cada animal também serão removidos.')) return
+    await excluirCompra(compraId)
+  }
+
+  return (
+    <div>
+      <div className="flex-between" style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: '#9e9e9e' }}>
+          Compra única rateada em partes iguais entre os animais ativos de um ciclo — cruza qualquer lote.
+          Use para lançamentos que não são ração nem medicamento (descreva o que é na descrição).
+        </div>
+        <button className="btn btn-primary" onClick={abrirNovo}>+ Nova compra</button>
+      </div>
+
+      {loading
+        ? <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><div className="spinner" style={{ width: 28, height: 28 }} /></div>
+        : compras.length === 0
+          ? <div className="card"><EmptyState icon="" title="Nenhuma compra em Outros" desc="Registre uma compra aplicada a todos os animais de um ciclo — o valor é dividido igualmente entre eles."
+              action={<button className="btn btn-primary" onClick={abrirNovo}>Nova compra</button>} /></div>
+          : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Descrição</th><th>Ciclo</th><th>Data aplicação</th>
+                    <th>Animais</th><th>Valor total</th><th>Valor/animal</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {compras.map(c => (
+                    <Fragment key={c.id}>
+                      <tr>
+                        <td><strong>{c.descricao}</strong></td>
+                        <td>{c.ciclo_alvo}</td>
+                        <td>{fmtData(c.data_aplicacao)}</td>
+                        <td>{c.quantidade_animais}</td>
+                        <td>{fmt(c.valor_total)}</td>
+                        <td>{fmt(c.valor_por_animal)}</td>
+                        <td style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => toggleExpandir(c.id)}>
+                            {compraExpandida === c.id ? 'Ocultar' : 'Ver lotes'}
+                          </button>
+                          <button className="btn btn-ghost btn-sm" style={{ color: '#b91c1c' }} onClick={() => handleExcluir(c.id)}>Excluir</button>
+                        </td>
+                      </tr>
+                      {compraExpandida === c.id && (
+                        <tr>
+                          <td colSpan={7} style={{ background: '#fafafa' }}>
+                            <div style={{ padding: 12 }}>
+                              {c.observacoes && <div style={{ fontSize: 12, color: '#9e9e9e', marginBottom: 8 }}>{c.observacoes}</div>}
+                              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Animais atingidos por lote</div>
+                              {!distribuicaoLote[c.id]
+                                ? <div style={{ fontSize: 13, color: '#9e9e9e' }}>Carregando...</div>
+                                : distribuicaoLote[c.id].length === 0
+                                  ? <div style={{ fontSize: 13, color: '#9e9e9e' }}>Nenhum animal encontrado (podem ter sido movidos ou vendidos depois).</div>
+                                  : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                      {distribuicaoLote[c.id].map(l => (
+                                        <div key={l.lote_id} className="flex-between" style={{ fontSize: 13 }}>
+                                          <span>{l.nome_lote} <span style={{ color: '#bdbdbd' }}>({l.codigo_lote})</span></span>
+                                          <span>{l.quantidade} animais</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+      }
+
+      <Modal open={showNovo} onClose={fecharNovo} title="Nova compra — Outros" size="lg">
+        {resultado ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ padding: 14, background: 'var(--green-bg)', borderRadius: 8 }}>
+              <div style={{ fontSize: 13, color: 'var(--green)' }}>Compra registrada</div>
+              <div style={{ fontSize: 15, marginTop: 4 }}>
+                {resultado.quantidade} animais · {fmt(resultado.valorPorAnimal)} por animal
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={fecharNovo}>Fechar</button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleRegistrar} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="form-group">
+              <label className="form-label">Descrição</label>
+              <input className="form-input" placeholder="Ex: Sal mineral extra — lote 3" value={form.descricao}
                 onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} required />
             </div>
 
