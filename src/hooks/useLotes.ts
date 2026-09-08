@@ -1194,6 +1194,34 @@ export async function buscarPorIds<T>(
   return resultadosPorChunk.flat()
 }
 
+// ─── Fornecedor por animal (via animais.compra_id → compras.parceiro_id) ──────
+// Usado por Ranking e Comparativo para filtrar/agrupar por fornecedor — um
+// mesmo lote pode ter animais de fornecedores diferentes, já que cada leva de
+// entrada (cada `compra`) carrega seu próprio parceiro_id (ver criarAnimais).
+// Só conta o cadastro formal (parceiro_id) — compras com apenas texto livre
+// em origem_texto, ou sem nenhum fornecedor informado, resolvem como null
+// ("Não informado" na tela), decisão tomada com o produtor.
+export async function buscarFornecedorPorAnimal(animalIds: string[]): Promise<Record<string, string | null>> {
+  if (animalIds.length === 0) return {}
+
+  const animaisData = await buscarPorIds<{ id: string; compra_id: string | null }>(animalIds, (idsChunk, from, to) =>
+    supabase.from('animais').select('id, compra_id').in('id', idsChunk).range(from, to))
+
+  const compraIds = Array.from(new Set(animaisData.map(a => a.compra_id).filter((x): x is string => !!x)))
+  const parceiroPorCompra: Record<string, string | null> = {}
+  if (compraIds.length > 0) {
+    const comprasData = await buscarPorIds<{ id: string; parceiro_id: string | null }>(compraIds, (idsChunk, from, to) =>
+      supabase.from('compras').select('id, parceiro_id').in('id', idsChunk).range(from, to))
+    for (const c of comprasData) parceiroPorCompra[c.id] = c.parceiro_id
+  }
+
+  const resultado: Record<string, string | null> = {}
+  for (const a of animaisData) {
+    resultado[a.id] = a.compra_id ? (parceiroPorCompra[a.compra_id] ?? null) : null
+  }
+  return resultado
+}
+
 // ─── Contagem histórica de animais ativos num lote, numa data qualquer ────────
 // Reconstrói os períodos de TODOS os animais que já passaram pelo lote (não só
 // os ativos hoje) a partir de movimentacoes_animais, e conta quantos estavam

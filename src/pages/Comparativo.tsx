@@ -1,18 +1,23 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { useLotes, useCustoEngine, buscarPorIds } from '@/hooks/useLotes'
+import { useLotes, useCustoEngine, buscarPorIds, buscarFornecedorPorAnimal } from '@/hooks/useLotes'
 import { useFaixas } from '@/hooks/useFaixas'
+import { useParceiros } from '@/hooks/useHooks'
 import { supabase } from '@/lib/supabase'
 import { PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt, fmtNum, obterRendimento, obterBonus } from '@/lib/calculations'
 import type { ResultadoAnimalNaData } from '@/lib/custoAnimal'
 
 const hojeStr = () => new Date().toISOString().split('T')[0]
+// Chave de agrupamento sentinela para animais sem fornecedor (parceiro_id)
+// vinculado à compra — nunca colide com um UUID real de parceiro.
+const SEM_FORNECEDOR = '__sem_fornecedor__'
 
-// ─── Linha: lotes com animais ainda ativos (peso/GMD/custo atuais, lucro é projeção) ─
+// ─── Linha: lotes (ou fornecedores, conforme agrupamento) com animais ainda
+// ativos (peso/GMD/custo atuais, lucro é projeção) ───────────────────────
 interface LinhaAtivo {
-  loteId: string
-  loteNome: string
+  grupoId: string
+  grupoNome: string
   status: string
   qtd: number
   pesoMedio: number
@@ -25,10 +30,11 @@ interface LinhaAtivo {
   margemProjetada: number | null
 }
 
-// ─── Linha: lotes com vendas já registradas (dados realizados, não projetados) ───
+// ─── Linha: lotes ou fornecedores com vendas já registradas (dados realizados,
+// não projetados) ─────────────────────────────────────────────────────────
 interface LinhaVendido {
-  loteId: string
-  loteNome: string
+  grupoId: string
+  grupoNome: string
   qtd: number
   pesoMedioVenda: number
   gmdMedio: number
@@ -54,6 +60,24 @@ interface LinhaPorCiclo {
   custoAlimMedio: number
   custoOpMedio: number
   custoPorKg: number | null
+}
+
+// ─── Dados brutos de cada venda já registrada (uma linha por animal vendido,
+// sem agregar) — a agregação por lote ou por fornecedor acontece no useMemo
+// `vendidos`, mesma lógica usada para animaisAtivosRaw/`ativos`. ───────────
+interface VendidoRaw {
+  animal_id: string
+  loteOrigemId: string
+  fornecedorId: string | null
+  data: string
+  pesoEntrada: number
+  dataEntrada: string
+  peso: number
+  consumoConcKg: number
+  ganhoConcentradoKg: number
+  custoAtribuido: number
+  lucro: number
+  valor: number
 }
 
 type SortDir = 'asc' | 'desc'
@@ -100,9 +124,25 @@ export default function Comparativo() {
   const { lotes, ciclosPorLote } = useLotes()
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
+  const { parceiros } = useParceiros()
+  // Mesmo critério usado em Lotes.tsx para o seletor de fornecedor da leva.
+  const fornecedoresDisponiveis = useMemo(() => parceiros.filter(p => p.tipo === 'fornecedor' || p.tipo === 'produtor'), [parceiros])
+  const nomeFornecedor = useCallback((id: string | null) => id ? (parceiros.find(p => p.id === id)?.nome ?? '—') : 'Não informado', [parceiros])
+
+  // ─── Agrupamento e filtro por fornecedor ────────────────────────────────
+  // "lote": comportamento original (uma linha por lote). "fornecedor": agrega
+  // cross-lote por fornecedor — útil quando um mesmo lote recebeu animais de
+  // fornecedores diferentes em levas separadas (ver criarAnimais). O filtro
+  // por fornecedor é independente do agrupamento: pode filtrar por um
+  // fornecedor e continuar vendo as linhas por lote (só os lotes que têm
+  // animal daquele fornecedor aparecem).
+  const [agruparPor, setAgruparPor] = useState<'lote' | 'fornecedor'>('lote')
+  const [fornecedorFiltro, setFornecedorFiltro] = useState('todos')
+  const passaFiltroFornecedor = useCallback((fornecedorId: string | null) =>
+    fornecedorFiltro === 'todos' || (fornecedorFiltro === 'nao_informado' ? fornecedorId == null : fornecedorId === fornecedorFiltro),
+    [fornecedorFiltro])
 
   const [tab, setTab] = useState<'ativos' | 'vendidos'>('ativos')
-  const [vendidos, setVendidos] = useState<LinhaVendido[]>([])
   const [loadingAtivos, setLoadingAtivos] = useState(true)
   const [loadingVendidos, setLoadingVendidos] = useState(true)
   const [sortAtivos, setSortAtivos] = useState<SortState<LinhaAtivo> | null>(null)
@@ -160,6 +200,7 @@ export default function Comparativo() {
   const [animaisAtivosRaw, setAnimaisAtivosRaw] = useState<Array<{ id: string; peso_entrada: number; valor_compra: number; lote_atual_id: string }>>([])
   const [resultadosAtivos, setResultadosAtivos] = useState<Record<string, ResultadoAnimalNaData>>({})
   const [custosVarAtivos, setCustosVarAtivos] = useState<Record<string, number>>({})
+  const [fornecedorPorAnimalAtivos, setFornecedorPorAnimalAtivos] = useState<Record<string, string | null>>({})
 
   // ─── Lotes com animais ativos: peso/GMD/custo são o estado atual; lucro e
   // margem só aparecem se um preço esperado for informado (projeção, igual à
@@ -173,14 +214,15 @@ export default function Comparativo() {
 
     const lista = (animaisData ?? []) as Array<{ id: string; peso_entrada: number; valor_compra: number; lote_atual_id: string }>
     if (lista.length === 0) {
-      setAnimaisAtivosRaw([]); setResultadosAtivos({}); setCustosVarAtivos({}); setLoadingAtivos(false)
+      setAnimaisAtivosRaw([]); setResultadosAtivos({}); setCustosVarAtivos({}); setFornecedorPorAnimalAtivos({}); setLoadingAtivos(false)
       return
     }
 
-    const [resultados, custosVarData] = await Promise.all([
+    const [resultados, custosVarData, fornecedorPorAnimal] = await Promise.all([
       calcularEmLote(lista.map(a => a.id), hojeStr()),
       buscarPorIds<{ animal_id: string; valor: number }>(lista.map(a => a.id), (idsChunk, from, to) =>
         supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).range(from, to)),
+      buscarFornecedorPorAnimal(lista.map(a => a.id)),
     ])
     const custosVarPorAnimal: Record<string, number> = {}
     for (const c of custosVarData) {
@@ -190,6 +232,7 @@ export default function Comparativo() {
     setAnimaisAtivosRaw(lista)
     setResultadosAtivos(resultados)
     setCustosVarAtivos(custosVarPorAnimal)
+    setFornecedorPorAnimalAtivos(fornecedorPorAnimal)
     setLoadingAtivos(false)
   }, [user, calcularEmLote])
 
@@ -209,7 +252,10 @@ export default function Comparativo() {
     for (const a of animaisAtivosRaw) {
       const r = resultadosAtivos[a.id]
       if (!r) continue
-      const g = grupos[a.lote_atual_id] ??= {
+      const fornecedorId = fornecedorPorAnimalAtivos[a.id] ?? null
+      if (!passaFiltroFornecedor(fornecedorId)) continue
+      const chave = agruparPor === 'lote' ? a.lote_atual_id : (fornecedorId ?? SEM_FORNECEDOR)
+      const g = grupos[chave] ??= {
         qtd: 0, pesoSoma: 0, gmdSoma: 0, ganhoSoma: 0,
         consumoConcSoma: 0, ganhoConcentradoSoma: 0,
         custoAlimSoma: 0, custoOpSoma: 0, custoVarSoma: 0,
@@ -240,10 +286,14 @@ export default function Comparativo() {
       }
     }
 
-    return Object.entries(grupos).map(([loteId, g]) => {
+    return Object.entries(grupos).map(([grupoId, g]) => {
       const lucroProjetado = p > 0 ? g.receitaLiquidaSoma - g.custoTotalSoma : null
+      const grupoNome = agruparPor === 'lote'
+        ? (nomePorLote[grupoId]?.nome ?? '—')
+        : (grupoId === SEM_FORNECEDOR ? 'Não informado' : nomeFornecedor(grupoId))
+      const status = agruparPor === 'lote' ? (nomePorLote[grupoId]?.status ?? '—') : '—'
       return {
-        loteId, loteNome: nomePorLote[loteId]?.nome ?? '—', status: nomePorLote[loteId]?.status ?? '—',
+        grupoId, grupoNome, status,
         qtd: g.qtd,
         pesoMedio: g.qtd > 0 ? g.pesoSoma / g.qtd : 0,
         gmdMedio: g.qtd > 0 ? g.gmdSoma / g.qtd : 0,
@@ -259,7 +309,7 @@ export default function Comparativo() {
         margemProjetada: p > 0 && g.receitaLiquidaSoma > 0 ? (lucroProjetado! / g.receitaLiquidaSoma) * 100 : null,
       }
     })
-  }, [animaisAtivosRaw, resultadosAtivos, custosVarAtivos, nomePorLote, preco, pctComissao, pctEncargo, rendimentos, bonus])
+  }, [animaisAtivosRaw, resultadosAtivos, custosVarAtivos, fornecedorPorAnimalAtivos, nomePorLote, preco, pctComissao, pctEncargo, rendimentos, bonus, agruparPor, passaFiltroFornecedor, nomeFornecedor])
 
   // ─── Tabela por ciclo: só aparece quando o produtor marca ao menos um
   // número de ciclo. Agrega, por lote, apenas os dias/ganho/custo que
@@ -277,6 +327,7 @@ export default function Comparativo() {
     }> = {}
 
     for (const a of animaisAtivosRaw) {
+      if (!passaFiltroFornecedor(fornecedorPorAnimalAtivos[a.id] ?? null)) continue
       const r = resultadosAtivos[a.id]
       if (!r) continue
       const etapas = Object.values(r.porEtapa).filter(e => ciclosSelecionados.has(e.numero))
@@ -307,7 +358,10 @@ export default function Comparativo() {
       custoOpMedio: g.qtd > 0 ? g.custoOpSoma / g.qtd : 0,
       custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
     }))
-  }, [animaisAtivosRaw, resultadosAtivos, ciclosSelecionados, nomePorLote])
+  }, [animaisAtivosRaw, resultadosAtivos, ciclosSelecionados, nomePorLote, fornecedorPorAnimalAtivos, passaFiltroFornecedor])
+
+  // ─── Dados brutos de cada venda já registrada — ver VendidoRaw no topo. ───
+  const [vendidosRaw, setVendidosRaw] = useState<VendidoRaw[]>([])
 
   // ─── Lotes com vendas registradas: dados realizados (peso na venda, custo e
   // lucro já liquidados na hora da venda), não é projeção. Um lote pode
@@ -332,50 +386,75 @@ export default function Comparativo() {
     const datasUnicas = Array.from(new Set(movs.map(m => m.data).filter(Boolean)))
     const consumoConcPorAnimalData: Record<string, number> = {}
     const ganhoConcentradoPorAnimalData: Record<string, number> = {}
-    if (datasUnicas.length > 0) {
-      await Promise.all(datasUnicas.map(async (data) => {
-        const idsNaData = Array.from(new Set(
-          movs.filter(m => m.data === data && m.animal_id).map(m => m.animal_id as string)
-        ))
-        if (idsNaData.length === 0) return
-        const resultados = await calcularEmLote(idsNaData, data)
-        for (const id of idsNaData) {
-          const r = resultados[id]
-          if (r) {
-            consumoConcPorAnimalData[`${id}|${data}`] = r.consumoConcentradoKg
-            ganhoConcentradoPorAnimalData[`${id}|${data}`] = r.ganhoPesoConcentrado
-          }
+    const consumoPromise = datasUnicas.length > 0 ? Promise.all(datasUnicas.map(async (data) => {
+      const idsNaData = Array.from(new Set(
+        movs.filter(m => m.data === data && m.animal_id).map(m => m.animal_id as string)
+      ))
+      if (idsNaData.length === 0) return
+      const resultados = await calcularEmLote(idsNaData, data)
+      for (const id of idsNaData) {
+        const r = resultados[id]
+        if (r) {
+          consumoConcPorAnimalData[`${id}|${data}`] = r.consumoConcentradoKg
+          ganhoConcentradoPorAnimalData[`${id}|${data}`] = r.ganhoPesoConcentrado
         }
-      }))
-    }
+      }
+    })) : Promise.resolve([])
 
+    const [, fornecedorPorAnimal] = await Promise.all([
+      consumoPromise,
+      buscarFornecedorPorAnimal(Array.from(new Set(movs.map(m => m.animal_id).filter(Boolean)))),
+    ])
+
+    const raw: VendidoRaw[] = movs
+      .filter(m => m.lote_origem_id && m.animais && m.peso != null)
+      .map(m => ({
+        animal_id: m.animal_id,
+        loteOrigemId: m.lote_origem_id as string,
+        fornecedorId: fornecedorPorAnimal[m.animal_id] ?? null,
+        data: m.data, pesoEntrada: m.animais.peso_entrada as number, dataEntrada: m.animais.data_entrada as string,
+        peso: m.peso,
+        consumoConcKg: consumoConcPorAnimalData[`${m.animal_id}|${m.data}`] ?? 0,
+        ganhoConcentradoKg: ganhoConcentradoPorAnimalData[`${m.animal_id}|${m.data}`] ?? 0,
+        custoAtribuido: m.custo_atribuido ?? 0, lucro: m.lucro ?? 0, valor: m.valor ?? 0,
+      }))
+    setVendidosRaw(raw)
+    setLoadingVendidos(false)
+  }, [user, calcularEmLote])
+
+  // ─── Agregação dos dados brutos por lote ou por fornecedor, com o filtro de
+  // fornecedor aplicado — reprocessa client-side, sem novo fetch, igual ao
+  // padrão de `ativos` acima. ───
+  const vendidos = useMemo<LinhaVendido[]>(() => {
     const grupos: Record<string, {
       qtd: number; pesoSoma: number; ganhoSoma: number; diasSoma: number
       consumoConcSoma: number; ganhoConcentradoSoma: number
       custoSoma: number; lucroSoma: number; receitaSoma: number
     }> = {}
 
-    for (const m of movs) {
-      if (!m.lote_origem_id || !m.animais || m.peso == null) continue
-      const g = grupos[m.lote_origem_id] ??= { qtd: 0, pesoSoma: 0, ganhoSoma: 0, diasSoma: 0, consumoConcSoma: 0, ganhoConcentradoSoma: 0, custoSoma: 0, lucroSoma: 0, receitaSoma: 0 }
-      const pesoEntrada = m.animais.peso_entrada as number
-      const dataEntrada = m.animais.data_entrada as string
-      const ganho = m.peso - pesoEntrada
-      const dias = Math.max(0, Math.floor((new Date(m.data).getTime() - new Date(dataEntrada).getTime()) / 86400000))
+    for (const v of vendidosRaw) {
+      if (!passaFiltroFornecedor(v.fornecedorId)) continue
+      const chave = agruparPor === 'lote' ? v.loteOrigemId : (v.fornecedorId ?? SEM_FORNECEDOR)
+      const g = grupos[chave] ??= { qtd: 0, pesoSoma: 0, ganhoSoma: 0, diasSoma: 0, consumoConcSoma: 0, ganhoConcentradoSoma: 0, custoSoma: 0, lucroSoma: 0, receitaSoma: 0 }
+      const ganho = v.peso - v.pesoEntrada
+      const dias = Math.max(0, Math.floor((new Date(v.data).getTime() - new Date(v.dataEntrada).getTime()) / 86400000))
 
       g.qtd += 1
-      g.pesoSoma += m.peso
+      g.pesoSoma += v.peso
       g.ganhoSoma += ganho
       g.diasSoma += dias
-      g.consumoConcSoma += consumoConcPorAnimalData[`${m.animal_id}|${m.data}`] ?? 0
-      g.ganhoConcentradoSoma += ganhoConcentradoPorAnimalData[`${m.animal_id}|${m.data}`] ?? 0
-      g.custoSoma += m.custo_atribuido ?? 0
-      g.lucroSoma += m.lucro ?? 0
-      g.receitaSoma += m.valor ?? 0
+      g.consumoConcSoma += v.consumoConcKg
+      g.ganhoConcentradoSoma += v.ganhoConcentradoKg
+      g.custoSoma += v.custoAtribuido
+      g.lucroSoma += v.lucro
+      g.receitaSoma += v.valor
     }
 
-    const linhas: LinhaVendido[] = Object.entries(grupos).map(([loteId, g]) => ({
-      loteId, loteNome: nomePorLote[loteId]?.nome ?? '—',
+    return Object.entries(grupos).map(([grupoId, g]) => ({
+      grupoId,
+      grupoNome: agruparPor === 'lote'
+        ? (nomePorLote[grupoId]?.nome ?? '—')
+        : (grupoId === SEM_FORNECEDOR ? 'Não informado' : nomeFornecedor(grupoId)),
       qtd: g.qtd,
       pesoMedioVenda: g.qtd > 0 ? g.pesoSoma / g.qtd : 0,
       gmdMedio: g.diasSoma > 0 ? g.ganhoSoma / g.diasSoma : 0,
@@ -387,9 +466,7 @@ export default function Comparativo() {
       margemPct: g.receitaSoma > 0 ? (g.lucroSoma / g.receitaSoma) * 100 : null,
       lucroPorAnimal: g.qtd > 0 ? g.lucroSoma / g.qtd : 0,
     }))
-    setVendidos(linhas)
-    setLoadingVendidos(false)
-  }, [user, nomePorLote, calcularEmLote])
+  }, [vendidosRaw, agruparPor, passaFiltroFornecedor, nomePorLote, nomeFornecedor])
 
   useEffect(() => { carregarAtivos() }, [carregarAtivos])
   useEffect(() => { carregarVendidos() }, [carregarVendidos])
@@ -448,6 +525,29 @@ export default function Comparativo() {
         <button className={`tab-btn${tab === 'ativos' ? ' active' : ''}`} onClick={() => setTab('ativos')}>Com animais ativos</button>
         <button className={`tab-btn${tab === 'vendidos' ? ' active' : ''}`} onClick={() => setTab('vendidos')}>Com vendas registradas</button>
       </div>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
+        <div className="form-group" style={{ minWidth: 220 }}>
+          <label className="form-label">Agrupar por</label>
+          <select className="form-input" value={agruparPor} onChange={e => setAgruparPor(e.target.value as 'lote' | 'fornecedor')}>
+            <option value="lote">Lote</option>
+            <option value="fornecedor">Fornecedor</option>
+          </select>
+        </div>
+        <div className="form-group" style={{ minWidth: 220 }}>
+          <label className="form-label">Filtrar por fornecedor</label>
+          <select className="form-input" value={fornecedorFiltro} onChange={e => setFornecedorFiltro(e.target.value)}>
+            <option value="todos">Todos os fornecedores</option>
+            <option value="nao_informado">Não informado</option>
+            {fornecedoresDisponiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
+        </div>
+      </div>
+      {agruparPor === 'fornecedor' && (
+        <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: -8, marginBottom: 16 }}>
+          Agrupado por fornecedor — cada linha soma animais de todos os lotes que receberam leva desse fornecedor.
+        </div>
+      )}
 
       {tab === 'ativos' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
@@ -549,7 +649,7 @@ export default function Comparativo() {
             <table>
               <thead>
                 <tr>
-                  <SortableTh<LinhaAtivo> label="Lote" columnKey="loteNome" sort={sortAtivos} onSort={toggleSortAtivos} />
+                  <SortableTh<LinhaAtivo> label={agruparPor === 'lote' ? 'Lote' : 'Fornecedor'} columnKey="grupoNome" sort={sortAtivos} onSort={toggleSortAtivos} />
                   <SortableTh<LinhaAtivo> label="Animais" columnKey="qtd" sort={sortAtivos} onSort={toggleSortAtivos} />
                   <SortableTh<LinhaAtivo> label="Peso médio" columnKey="pesoMedio" sort={sortAtivos} onSort={toggleSortAtivos} />
                   <SortableTh<LinhaAtivo> label="GMD" columnKey="gmdMedio" sort={sortAtivos} onSort={toggleSortAtivos} />
@@ -562,8 +662,8 @@ export default function Comparativo() {
               </thead>
               <tbody>
                 {ativosOrdenados.map(l => (
-                  <tr key={l.loteId}>
-                    <td><strong>{l.loteNome}</strong></td>
+                  <tr key={l.grupoId}>
+                    <td><strong>{l.grupoNome}</strong></td>
                     <td>{l.qtd}</td>
                     <td>{fmtNum(l.pesoMedio, 1)} kg</td>
                     <td>{fmtNum(l.gmdMedio, 2)} kg/dia</td>
@@ -603,7 +703,7 @@ export default function Comparativo() {
             <table>
               <thead>
                 <tr>
-                  <SortableTh<LinhaVendido> label="Lote" columnKey="loteNome" sort={sortVendidos} onSort={toggleSortVendidos} />
+                  <SortableTh<LinhaVendido> label={agruparPor === 'lote' ? 'Lote' : 'Fornecedor'} columnKey="grupoNome" sort={sortVendidos} onSort={toggleSortVendidos} />
                   <SortableTh<LinhaVendido> label="Animais vendidos" columnKey="qtd" sort={sortVendidos} onSort={toggleSortVendidos} />
                   <SortableTh<LinhaVendido> label="Peso médio na venda" columnKey="pesoMedioVenda" sort={sortVendidos} onSort={toggleSortVendidos} />
                   <SortableTh<LinhaVendido> label="GMD" columnKey="gmdMedio" sort={sortVendidos} onSort={toggleSortVendidos} />
@@ -616,8 +716,8 @@ export default function Comparativo() {
               </thead>
               <tbody>
                 {vendidosOrdenados.map(l => (
-                  <tr key={l.loteId}>
-                    <td><strong>{l.loteNome}</strong></td>
+                  <tr key={l.grupoId}>
+                    <td><strong>{l.grupoNome}</strong></td>
                     <td>{l.qtd}</td>
                     <td>{fmtNum(l.pesoMedioVenda, 1)} kg</td>
                     <td>{fmtNum(l.gmdMedio, 2)} kg/dia</td>

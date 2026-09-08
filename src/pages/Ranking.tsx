@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useLotes, useCustoEngine, buscarPorIds } from '@/hooks/useLotes'
+import { useLotes, useCustoEngine, buscarPorIds, buscarFornecedorPorAnimal } from '@/hooks/useLotes'
 import { useFaixas } from '@/hooks/useFaixas'
+import { useParceiros } from '@/hooks/useHooks'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { PageHeader, EmptyState } from '@/components/common/UI'
@@ -36,6 +37,8 @@ interface LinhaAtivo {
   brinco: string
   loteId: string
   loteNome: string
+  fornecedorId: string | null
+  fornecedorNome: string
   pesoEntrada: number
   pesoAtual: number
   ganho: number
@@ -53,6 +56,8 @@ interface LinhaVendido {
   brinco: string
   loteId: string | null
   loteNome: string
+  fornecedorId: string | null
+  fornecedorNome: string
   data: string
   pesoEntrada: number
   pesoVenda: number
@@ -68,9 +73,14 @@ export default function Ranking() {
   const { lotes } = useLotes()
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
+  const { parceiros } = useParceiros()
+  // Mesmo critério usado em Lotes.tsx para o seletor de fornecedor da leva.
+  const fornecedoresDisponiveis = useMemo(() => parceiros.filter(p => p.tipo === 'fornecedor' || p.tipo === 'produtor'), [parceiros])
+  const nomeFornecedor = useCallback((id: string | null) => id ? (parceiros.find(p => p.id === id)?.nome ?? '—') : 'Não informado', [parceiros])
 
   const [tab, setTab] = useState<'ativos' | 'vendidos'>('ativos')
   const [loteFiltro, setLoteFiltro] = useState('todos')
+  const [fornecedorFiltro, setFornecedorFiltro] = useState('todos')
   const [criterio, setCriterio] = useState<Criterio>('ganho')
   const [ordemDesc, setOrdemDesc] = useState(true)
   const [topN, setTopN] = useState('')
@@ -97,10 +107,11 @@ export default function Ranking() {
     const lista = (animaisData ?? []) as Array<{ id: string; codigo: string; brinco: string; peso_entrada: number; valor_compra: number; lote_atual_id: string; data_entrada: string }>
     if (lista.length === 0) { setAtivos([]); setLoadingAtivos(false); return }
 
-    const [custos, custosVarData] = await Promise.all([
+    const [custos, custosVarData, fornecedorPorAnimal] = await Promise.all([
       calcularEmLote(lista.map(a => a.id), hojeStr()),
       buscarPorIds<{ animal_id: string; valor: number }>(lista.map(a => a.id), (idsChunk, from, to) =>
         supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).range(from, to)),
+      buscarFornecedorPorAnimal(lista.map(a => a.id)),
     ])
     const custosVarPorAnimal: Record<string, number> = {}
     for (const c of custosVarData) {
@@ -114,9 +125,11 @@ export default function Ranking() {
       const custoAcumulado = (r?.custoAcumulado ?? 0) + (custosVarPorAnimal[a.id] ?? 0)
       const rendPct = obterRendimento(pesoAtual, rendimentos)
       const custoPorKg = ganho > 0 ? custoAcumulado / ganho : null
+      const fornecedorId = fornecedorPorAnimal[a.id] ?? null
       return {
         animal_id: a.id, codigo: a.codigo, brinco: a.brinco,
         loteId: a.lote_atual_id, loteNome: lotes.find(l => l.id === a.lote_atual_id)?.nome_lote ?? '—',
+        fornecedorId, fornecedorNome: nomeFornecedor(fornecedorId),
         pesoEntrada: a.peso_entrada, pesoAtual, ganho,
         diasConfinamento: r?.diasConfinamento ?? 0,
         rendPct, custoAcumulado, custoPorKg,
@@ -125,7 +138,7 @@ export default function Ranking() {
     })
     setAtivos(linhas)
     setLoadingAtivos(false)
-  }, [user, calcularEmLote, lotes, rendimentos])
+  }, [user, calcularEmLote, lotes, rendimentos, nomeFornecedor])
 
   const carregarVendidos = useCallback(async () => {
     if (!user) return
@@ -138,9 +151,12 @@ export default function Ranking() {
 
     const movs = (movsData ?? []) as any[]
     const loteIds = Array.from(new Set(movs.map(m => m.lote_origem_id).filter(Boolean)))
-    const { data: lotesData } = loteIds.length > 0
-      ? await supabase.from('lotes').select('id, nome_lote').in('id', loteIds)
-      : { data: [] }
+    const [{ data: lotesData }, fornecedorPorAnimal] = await Promise.all([
+      loteIds.length > 0
+        ? supabase.from('lotes').select('id, nome_lote').in('id', loteIds)
+        : Promise.resolve({ data: [] }),
+      buscarFornecedorPorAnimal(movs.map(m => m.animal_id)),
+    ])
     const nomePorLote: Record<string, string> = {}
     for (const l of (lotesData ?? []) as Array<{ id: string; nome_lote: string }>) nomePorLote[l.id] = l.nome_lote
 
@@ -151,17 +167,19 @@ export default function Ranking() {
         const ganho = m.peso - pesoEntrada
         const rendPct = obterRendimento(m.peso, rendimentos)
         const custoPorKg = ganho > 0 && m.custo_atribuido != null ? m.custo_atribuido / ganho : null
+        const fornecedorId = fornecedorPorAnimal[m.animal_id] ?? null
         return {
           animal_id: m.animal_id, codigo: m.animais.codigo, brinco: m.animais.brinco,
           loteId: m.lote_origem_id ?? null,
           loteNome: m.lote_origem_id ? (nomePorLote[m.lote_origem_id] ?? '—') : '—',
+          fornecedorId, fornecedorNome: nomeFornecedor(fornecedorId),
           data: m.data, pesoEntrada, pesoVenda: m.peso, ganho, rendPct,
           custoAtribuido: m.custo_atribuido ?? 0, custoPorKg, lucro: m.lucro ?? 0,
         }
       })
     setVendidos(linhas)
     setLoadingVendidos(false)
-  }, [user, rendimentos])
+  }, [user, rendimentos, nomeFornecedor])
 
   useEffect(() => { carregarAtivos() }, [carregarAtivos])
   useEffect(() => { carregarVendidos() }, [carregarVendidos])
@@ -181,8 +199,13 @@ export default function Ranking() {
     })
   }, [ativos, preco, pctComissao, pctEncargo, bonus])
 
-  const ativosFiltrados = loteFiltro === 'todos' ? ativosComLucro : ativosComLucro.filter(a => a.loteId === loteFiltro)
-  const vendidosFiltrados = loteFiltro === 'todos' ? vendidos : vendidos.filter(v => v.loteId === loteFiltro)
+  const passaFiltroFornecedor = (fornecedorId: string | null) =>
+    fornecedorFiltro === 'todos' || (fornecedorFiltro === 'nao_informado' ? fornecedorId == null : fornecedorId === fornecedorFiltro)
+
+  const ativosFiltrados = ativosComLucro.filter(a =>
+    (loteFiltro === 'todos' || a.loteId === loteFiltro) && passaFiltroFornecedor(a.fornecedorId))
+  const vendidosFiltrados = vendidos.filter(v =>
+    (loteFiltro === 'todos' || v.loteId === loteFiltro) && passaFiltroFornecedor(v.fornecedorId))
 
   const criteriosDisponiveis = tab === 'ativos'
     ? CRITERIOS.filter(c => c.value !== 'lucro' || preco)
@@ -294,6 +317,14 @@ export default function Ranking() {
           </select>
         </div>
         <div className="form-group" style={{ minWidth: 200 }}>
+          <label className="form-label">Filtrar por fornecedor</label>
+          <select className="form-input" value={fornecedorFiltro} onChange={e => setFornecedorFiltro(e.target.value)}>
+            <option value="todos">Todos os fornecedores</option>
+            <option value="nao_informado">Não informado</option>
+            {fornecedoresDisponiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
+        </div>
+        <div className="form-group" style={{ minWidth: 200 }}>
           <label className="form-label">Ordenar por</label>
           <select className="form-input" value={criterio} onChange={e => setCriterio(e.target.value as Criterio)}>
             {criteriosDisponiveis.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -357,7 +388,7 @@ export default function Ranking() {
                   <th style={{ width: 36 }}>
                     <input type="checkbox" checked={todosAtivosVisiveisSelecionados} onChange={toggleSelecionarTodosAtivos} />
                   </th>
-                  <th>#</th><th>Código</th><th>Lote</th><th>Peso atual</th><th>Ganho de peso</th>
+                  <th>#</th><th>Código</th><th>Lote</th><th>Fornecedor</th><th>Peso atual</th><th>Ganho de peso</th>
                   <th>Custo/kg ganho</th><th>Lucro projetado</th>
                 </tr>
               </thead>
@@ -370,6 +401,7 @@ export default function Ranking() {
                     <td>{idx + 1}</td>
                     <td><strong>{a.codigo}</strong></td>
                     <td>{a.loteNome}</td>
+                    <td>{a.fornecedorNome}</td>
                     <td>{fmtNum(a.pesoAtual, 1)} kg</td>
                     <td>{fmtNum(a.ganho, 1)} kg</td>
                     <td>{a.custoPorKg != null ? `${fmt(a.custoPorKg)}/kg` : '—'}</td>
@@ -391,7 +423,7 @@ export default function Ranking() {
                   <th style={{ width: 36 }}>
                     <input type="checkbox" checked={todosVendidosVisiveisSelecionados} onChange={toggleSelecionarTodosVendidos} />
                   </th>
-                  <th>#</th><th>Código</th><th>Lote de origem</th><th>Data</th><th>Peso na venda</th>
+                  <th>#</th><th>Código</th><th>Lote de origem</th><th>Fornecedor</th><th>Data</th><th>Peso na venda</th>
                   <th>Ganho de peso</th><th>Custo/kg ganho</th><th>Lucro</th>
                 </tr>
               </thead>
@@ -404,6 +436,7 @@ export default function Ranking() {
                     <td>{idx + 1}</td>
                     <td><strong>{v.codigo}</strong></td>
                     <td>{v.loteNome}</td>
+                    <td>{v.fornecedorNome}</td>
                     <td>{v.data}</td>
                     <td>{fmtNum(v.pesoVenda, 1)} kg</td>
                     <td>{fmtNum(v.ganho, 1)} kg</td>
@@ -460,6 +493,7 @@ function RankingPdfImprimivel({
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Brinco</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Código</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Lote</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Fornecedor</th>
               <th style={{ textAlign: 'right', padding: '4px 6px' }}>Peso atual</th>
               <th style={{ textAlign: 'right', padding: '4px 6px' }}>Ganho de peso</th>
               <th style={{ textAlign: 'right', padding: '4px 6px' }}>Custo/kg ganho</th>
@@ -472,6 +506,7 @@ function RankingPdfImprimivel({
                 <td style={{ padding: '4px 6px' }}>{a.brinco}</td>
                 <td style={{ padding: '4px 6px' }}>{a.codigo}</td>
                 <td style={{ padding: '4px 6px' }}>{a.loteNome}</td>
+                <td style={{ padding: '4px 6px' }}>{a.fornecedorNome}</td>
                 <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(a.pesoAtual, 1)} kg</td>
                 <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(a.ganho, 1)} kg</td>
                 <td style={{ textAlign: 'right', padding: '4px 6px' }}>{a.custoPorKg != null ? `${fmt(a.custoPorKg)}/kg` : '—'}</td>
@@ -487,6 +522,7 @@ function RankingPdfImprimivel({
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Brinco</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Código</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Lote de origem</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Fornecedor</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Data</th>
               <th style={{ textAlign: 'right', padding: '4px 6px' }}>Peso na venda</th>
               <th style={{ textAlign: 'right', padding: '4px 6px' }}>Ganho de peso</th>
@@ -500,6 +536,7 @@ function RankingPdfImprimivel({
                 <td style={{ padding: '4px 6px' }}>{v.brinco}</td>
                 <td style={{ padding: '4px 6px' }}>{v.codigo}</td>
                 <td style={{ padding: '4px 6px' }}>{v.loteNome}</td>
+                <td style={{ padding: '4px 6px' }}>{v.fornecedorNome}</td>
                 <td style={{ padding: '4px 6px' }}>{v.data}</td>
                 <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(v.pesoVenda, 1)} kg</td>
                 <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(v.ganho, 1)} kg</td>
