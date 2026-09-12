@@ -132,14 +132,18 @@ tr:hover td { background: var(--gray-50); }
 }
 
 /* ─── Impressão (nota de venda, relatórios) ────────────────────────────────
-   Qualquer conteúdo dentro de .print-area fica visível na impressão;
-   todo o resto do app (sidebar, botões, abas) é ocultado. */
+   .print-area fica no fluxo normal do documento (nunca position:absolute) —
+   iOS Safari (impressão via menu Compartilhar) não pagina corretamente
+   conteúdo posicionado em absolute, e sempre corta para 1 página só.
+   Em vez de visibility:hidden (que preserva o espaço em branco), escondemos
+   com display:none tudo que não for a print-area, deixando ela fluir
+   naturalmente do topo da página e paginar em quantas páginas precisar. */
 .print-area { display: none; }
 
 @media print {
-  body * { visibility: hidden; }
-  .print-area, .print-area * { visibility: visible; }
-  .print-area { display: block; position: absolute; top: 0; left: 0; width: 100%; padding: 24px; }
+  .app, .main, .page { height: auto !important; overflow: visible !important; }
+  .app > *:not(.main) { display: none !important; }
+  .page > *:not(.print-area) { display: none !important; }
+  .print-area { display: block !important; width: 100%; padding: 24px; }
   .no-print { display: none !important; }
-  .app, .main { height: auto !important; overflow: visible !important; }
 }
