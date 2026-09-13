@@ -45,6 +45,7 @@ a { color: var(--green); text-decoration: none; }
 .page { padding: 24px; max-width: 1400px; }
 .mobile-topbar { display: none; }
 .sidebar-backdrop { display: none; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
 
 /* Buttons */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--r-md); font-size: 13px; font-weight: 500; font-family: var(--font); cursor: pointer; border: none; transition: var(--t); white-space: nowrap; }
@@ -90,13 +91,24 @@ tr:hover td { background: var(--gray-50); }
 .badge-gray { background: var(--gray-100); color: var(--text-2); }
 .badge-blue { background: #dbeafe; color: var(--blue); }
 
-/* Modal */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fIn .15s ease; }
+/* Pills (filtros em chip) */
+.pill-wrap { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.pill { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--white); color: var(--text-2); font-size: 13px; font-weight: 500; cursor: pointer; transition: var(--t); }
+.pill:hover { background: var(--gray-50); }
+.pill.active { background: var(--green); border-color: var(--green); color: #fff; }
+
+/* Modal — .modal-backdrop é o nome real usado pelo componente Modal;
+   .modal-overlay fica como alias por segurança caso algo antigo ainda use. */
+.modal-overlay, .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; animation: fIn .15s ease; }
 .modal { background: var(--white); border-radius: var(--r-xl); width: 100%; max-width: 520px; max-height: 85vh; box-shadow: var(--shadow-lg); animation: mIn .18s ease; display: flex; flex-direction: column; overflow: hidden; }
+.modal-sm { max-width: 400px; }
+.modal-lg { max-width: 720px; }
+.modal-xl { max-width: 1040px; }
 .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
 .modal-header h2 { font-size: 16px; font-weight: 600; }
-.modal-body { padding: 0 24px 24px 24px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
-.modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+.modal-body { padding: 20px 24px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; }
 
 @keyframes fIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes mIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
@@ -106,9 +118,19 @@ tr:hover td { background: var(--gray-50); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-screen { display: flex; align-items: center; justify-content: center; height: 100vh; background: var(--white); }
 
-/* Empty state */
-.empty-state { text-align: center; padding: 60px 20px; color: var(--text-3); }
+/* Empty state — .empty é o nome real usado pelo componente EmptyState */
+.empty-state, .empty { text-align: center; padding: 60px 20px; color: var(--text-3); }
 .empty-state svg { margin-bottom: 16px; opacity: 0.4; }
+.empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.5; }
+.empty-title { font-size: 15px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+.empty-desc { font-size: 13px; color: var(--text-3); }
+
+/* Toasts */
+.toast-wrap { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 12px 18px; border-radius: var(--r-md); font-size: 13px; font-weight: 500; color: #fff; box-shadow: var(--shadow-lg); animation: fIn .15s ease; }
+.toast-success { background: var(--green-dark); }
+.toast-error { background: var(--red); }
+.toast-info { background: var(--blue); }
 
 /* Stat cards */
 .stat-card { background: var(--white); border-radius: var(--r-lg); border: 1px solid var(--border); padding: 18px 20px; }
@@ -123,7 +145,7 @@ tr:hover td { background: var(--gray-50); }
 
 @media (max-width: 768px) {
   .form-row-2, .form-row-3 { grid-template-columns: 1fr; }
-  .modal { max-width: 100%; margin: 0 12px; }
+  .modal, .modal-sm, .modal-lg, .modal-xl { max-width: 100%; margin: 0 12px; }
   .page { padding: 16px; }
 }
 
