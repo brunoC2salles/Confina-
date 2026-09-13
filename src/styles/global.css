@@ -137,11 +137,16 @@ tr:hover td { background: var(--gray-50); }
    conteúdo posicionado em absolute, e sempre corta para 1 página só.
    Em vez de visibility:hidden (que preserva o espaço em branco), escondemos
    com display:none tudo que não for a print-area, deixando ela fluir
-   naturalmente do topo da página e paginar em quantas páginas precisar. */
+   naturalmente do topo da página e paginar em quantas páginas precisar.
+   IMPORTANTE: .app é display:flex — motores de impressão do Chromium não
+   paginam corretamente conteúdo longo dentro de um container flex (bug
+   conhecido), cortando tudo em 1 página mesmo com overflow:visible. Por
+   isso .app também precisa virar display:block na impressão. */
 .print-area { display: none; }
 
 @media print {
   .app, .main, .page { height: auto !important; overflow: visible !important; }
+  .app { display: block !important; }
   .app > *:not(.main) { display: none !important; }
   .page > *:not(.print-area) { display: none !important; }
   .print-area { display: block !important; width: 100%; padding: 24px; }
