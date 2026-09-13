@@ -88,6 +88,22 @@ a { color: var(--green); text-decoration: none; }
 .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
+/* input[type=file]: o texto "Escolher arquivo"/"Nenhum arquivo escolhido" é
+   renderizado pelo navegador dentro do próprio input. Sem alinhamento
+   vertical explícito no pseudo-elemento do botão nativo, o texto ficava
+   descentralizado dentro da caixa de 38px. */
+input[type="file"].form-input, .field input[type="file"] { display: flex; align-items: center; padding: 0 12px 0 0; }
+input[type="file"]::file-selector-button {
+  height: 100%; margin-right: 12px; padding: 0 14px; border: none; border-right: 1px solid var(--border);
+  background: var(--gray-50); color: var(--text-1); font-family: var(--font); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: var(--t);
+}
+input[type="file"]::file-selector-button:hover { background: var(--gray-100); }
+
+/* Checkboxes — cor de destaque consistente com o resto do app (padrão do
+   navegador antes ficava cinza/azul, destoando da paleta verde). */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--green); width: 16px; height: 16px; cursor: pointer; }
+
 /* Tables */
 .table-wrap { overflow-x: auto; border-radius: var(--r-lg); border: 1px solid var(--border); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
