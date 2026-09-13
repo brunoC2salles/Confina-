@@ -54,8 +54,11 @@ a { color: var(--green); text-decoration: none; }
 .sidebar-backdrop { display: none; }
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
 
-/* Buttons */
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--r-md); font-size: 13px; font-weight: 500; font-family: var(--font); cursor: pointer; border: none; transition: var(--t); white-space: nowrap; }
+/* Buttons — height fixa (38px) para alinhar pixel-a-pixel com .form-input
+   em qualquer linha que misture os dois com align-items:flex-end. Antes,
+   diferenças de padding/font-size entre botão e input causavam
+   desalinhamento vertical sutil sempre que apareciam lado a lado. */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 16px; border-radius: var(--r-md); font-size: 13px; font-weight: 500; font-family: var(--font); cursor: pointer; border: none; transition: var(--t); white-space: nowrap; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary { background: var(--green); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--green-dark); }
@@ -65,9 +68,9 @@ a { color: var(--green); text-decoration: none; }
 .btn-ghost:hover:not(:disabled) { background: var(--gray-50); color: var(--text-1); }
 .btn-danger { background: var(--red); color: #fff; }
 .btn-danger:hover:not(:disabled) { background: #991b1b; }
-.btn-sm { padding: 6px 12px; font-size: 12px; }
-.btn-lg { padding: 10px 20px; font-size: 14px; }
-.btn-icon { padding: 8px; }
+.btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
+.btn-lg { height: 44px; padding: 0 20px; font-size: 14px; }
+.btn-icon { width: 38px; padding: 0; }
 
 /* Cards — 15+ lugares no código fazem style={{ padding: 0 }} explicitamente
    sobre .card (para tabelas/imagens sem margem), o que só faz sentido se
@@ -75,10 +78,11 @@ a { color: var(--green); text-decoration: none; }
 .card { background: var(--white); border-radius: var(--r-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 20px; }
 .card-pad { padding: 20px; }
 
-/* Forms */
+/* Forms — mesma height de 38px dos botões (ver comentário acima) */
 .field, .form-group { margin-bottom: 16px; }
 .field label, .form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 6px; }
-.field input, .field select, .field textarea, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-md); font-size: 14px; font-family: var(--font); color: var(--text-1); background: var(--white); transition: var(--t); }
+.field input, .field select, .field textarea, .form-input { width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-md); font-size: 14px; font-family: var(--font); color: var(--text-1); background: var(--white); transition: var(--t); }
+.field textarea, textarea.form-input { height: auto; min-height: 80px; padding: 8px 12px; }
 .field input:focus, .field select:focus, .field textarea:focus, .form-input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-light); }
 .field-error { color: var(--red); font-size: 12px; margin-top: 4px; }
 .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
