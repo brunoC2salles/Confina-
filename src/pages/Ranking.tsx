@@ -330,9 +330,12 @@ export default function Ranking() {
             {criteriosDisponiveis.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         </div>
-        <button className="btn btn-ghost" onClick={() => setOrdemDesc(v => !v)}>
-          {ordemDesc ? 'Maior primeiro' : 'Menor primeiro'}
-        </button>
+        <div className="form-group">
+          <label className="form-label" style={{ visibility: 'hidden' }}>Direção</label>
+          <button className="btn btn-ghost" onClick={() => setOrdemDesc(v => !v)}>
+            {ordemDesc ? 'Maior primeiro' : 'Menor primeiro'}
+          </button>
+        </div>
         <div className="form-group" style={{ minWidth: 140 }}>
           <label className="form-label">Top N (opcional)</label>
           <input
