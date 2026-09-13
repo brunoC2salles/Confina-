@@ -3,6 +3,13 @@
   src: local('Inter');
 }
 
+/* Reset essencial que nunca existiu no projeto: sem isso, todo elemento com
+   width:100% + padding + border (inputs, botões, cards) fica maior que o
+   espaço disponível, forçando quebras de layout e texto espremido dentro
+   das caixas em praticamente toda página do app. */
+*, *::before, *::after { box-sizing: border-box; }
+button, input, select, textarea { font-family: inherit; font-size: inherit; }
+
 :root {
   --green:       #2e7d32;
   --green-dark:  #1b5e20;
