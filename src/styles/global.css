@@ -69,8 +69,10 @@ a { color: var(--green); text-decoration: none; }
 .btn-lg { padding: 10px 20px; font-size: 14px; }
 .btn-icon { padding: 8px; }
 
-/* Cards */
-.card { background: var(--white); border-radius: var(--r-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+/* Cards — 15+ lugares no código fazem style={{ padding: 0 }} explicitamente
+   sobre .card (para tabelas/imagens sem margem), o que só faz sentido se
+   .card já tivesse padding por padrão. Esse padding tinha sumido do CSS. */
+.card { background: var(--white); border-radius: var(--r-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 20px; }
 .card-pad { padding: 20px; }
 
 /* Forms */
