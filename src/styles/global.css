@@ -53,6 +53,8 @@ a { color: var(--green); text-decoration: none; }
 .btn-primary:hover:not(:disabled) { background: var(--green-dark); }
 .btn-secondary { background: var(--white); color: var(--text-1); border: 1px solid var(--border); }
 .btn-secondary:hover:not(:disabled) { background: var(--gray-50); }
+.btn-ghost { background: transparent; color: var(--text-2); border: 1px solid var(--border); }
+.btn-ghost:hover:not(:disabled) { background: var(--gray-50); color: var(--text-1); }
 .btn-danger { background: var(--red); color: #fff; }
 .btn-danger:hover:not(:disabled) { background: #991b1b; }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
@@ -64,10 +66,10 @@ a { color: var(--green); text-decoration: none; }
 .card-pad { padding: 20px; }
 
 /* Forms */
-.field { margin-bottom: 16px; }
-.field label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 6px; }
-.field input, .field select, .field textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-md); font-size: 14px; font-family: var(--font); color: var(--text-1); background: var(--white); transition: var(--t); }
-.field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-light); }
+.field, .form-group { margin-bottom: 16px; }
+.field label, .form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 6px; }
+.field input, .field select, .field textarea, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-md); font-size: 14px; font-family: var(--font); color: var(--text-1); background: var(--white); transition: var(--t); }
+.field input:focus, .field select:focus, .field textarea:focus, .form-input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-light); }
 .field-error { color: var(--red); font-size: 12px; margin-top: 4px; }
 .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
