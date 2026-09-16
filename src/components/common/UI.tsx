@@ -1,20 +1,18 @@
 // ─── Modal ───────────────────────────────────────────────────────────────────
-import { ReactNode, useEffect } from 'react'
+import { ReactNode } from 'react'
 
 export function Modal({ open, onClose, title, subtitle, children, size = 'md', footer }:
   { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode; size?: 'sm'|'md'|'lg'|'xl'; footer?: ReactNode }) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    if (open) document.addEventListener('keydown', h)
-    return () => document.removeEventListener('keydown', h)
-  }, [open, onClose])
   if (!open) return null
   return (
-    <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="modal-backdrop">
       <div className={`modal${size === 'xl' ? ' modal-xl' : size === 'lg' ? ' modal-lg' : size === 'sm' ? ' modal-sm' : ''}`}>
         <div className="modal-header">
-          <h2 style={{ fontSize: '17px', fontWeight: 600 }}>{title}</h2>
-          {subtitle && <p style={{ fontSize: '13px', color: '#9e9e9e', marginTop: '4px' }}>{subtitle}</p>}
+          <div>
+            <h2 style={{ fontSize: '17px', fontWeight: 600 }}>{title}</h2>
+            {subtitle && <p style={{ fontSize: '13px', color: '#9e9e9e', marginTop: '4px' }}>{subtitle}</p>}
+          </div>
+          <button type="button" className="modal-close" aria-label="Fechar" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
           {children}

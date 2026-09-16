@@ -21,6 +21,7 @@ interface AnimalHoje {
   lote_id: string | null
   ciclo_atual: number
   fornecedor: string
+  sexo: 'M' | 'F' | null
 }
 
 interface LinhaHoje extends AnimalHoje {
@@ -63,7 +64,7 @@ export default function FazendaHoje() {
     setLoading(true)
     const { data } = await supabase
       .from('animais')
-      .select('id, codigo, brinco, peso_entrada, data_entrada, lote_atual_id, ciclo_atual, compras(origem_texto, parceiros(nome))')
+      .select('id, codigo, brinco, peso_entrada, data_entrada, lote_atual_id, ciclo_atual, sexo, compras(origem_texto, parceiros(nome))')
       .eq('user_id', user.id).eq('status', 'ativo')
 
     const lista: AnimalHoje[] = (data ?? []).map((a: any) => ({
@@ -75,6 +76,7 @@ export default function FazendaHoje() {
       lote_id: a.lote_atual_id,
       ciclo_atual: a.ciclo_atual,
       fornecedor: a.compras?.parceiros?.nome ?? a.compras?.origem_texto ?? 'Não informado',
+      sexo: a.sexo ?? null,
     }))
     setAnimais(lista)
     setLoading(false)
@@ -162,6 +164,10 @@ export default function FazendaHoje() {
   ), [linhas, filtroLote, filtroCiclo, filtroFornecedor, filtroDieta])
 
   const qtdEmEspera = useMemo(() => filtradasBase.filter(l => l.emEspera).length, [filtradasBase])
+
+  const qtdMachos = useMemo(() => filtradasBase.filter(l => l.sexo === 'M').length, [filtradasBase])
+  const qtdFemeas = useMemo(() => filtradasBase.filter(l => l.sexo === 'F').length, [filtradasBase])
+  const qtdSexoNaoInformado = filtradasBase.length - qtdMachos - qtdFemeas
 
   const filtradas = useMemo(
     () => filtradasBase.filter(l => !somenteEspera || l.emEspera),
@@ -318,6 +324,23 @@ export default function FazendaHoje() {
           <div style={{ fontSize: 22, fontWeight: 700, color: '#c99324' }}>{qtdEmEspera}</div>
         </div>
       )}
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        <div className="card" style={{ flex: '1 1 140px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Machos</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--green-dark)' }}>{qtdMachos}</div>
+        </div>
+        <div className="card" style={{ flex: '1 1 140px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Fêmeas</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--green-dark)' }}>{qtdFemeas}</div>
+        </div>
+        {qtdSexoNaoInformado > 0 && (
+          <div className="card" style={{ flex: '1 1 140px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Sexo não informado</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--gray-400)' }}>{qtdSexoNaoInformado}</div>
+          </div>
+        )}
+      </div>
 
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
         {filtradas.length} animal{filtradas.length !== 1 ? 'is' : ''} ativo{filtradas.length !== 1 ? 's' : ''} nesse filtro

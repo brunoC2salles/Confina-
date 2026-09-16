@@ -565,9 +565,11 @@ function ModalAdicionarAnimais({
   const [faixaInicio, setFaixaInicio] = useState('')
   const [faixaFim, setFaixaFim] = useState('')
   const [pesoFaixa, setPesoFaixa] = useState('')
+  const [sexoFaixa, setSexoFaixa] = useState<'' | 'M' | 'F'>('')
 
   const [brincoIndividual, setBrincoIndividual] = useState('')
   const [pesoIndividual, setPesoIndividual] = useState('')
+  const [sexoIndividual, setSexoIndividual] = useState<'' | 'M' | 'F'>('')
 
   const temPeso2 = linhas.some(l => l.peso2 != null)
 
@@ -577,7 +579,7 @@ function ModalAdicionarAnimais({
     if (!peso || peso <= 0) { setErro('Informe o peso padrão'); return }
     if (fim - ini + 1 > 2000) { setErro('Faixa muito grande (máximo 2000 de uma vez)'); return }
     const novas: LinhaAnimalInput[] = []
-    for (let n = ini; n <= fim; n++) novas.push({ brinco: String(n), peso, peso2: null })
+    for (let n = ini; n <= fim; n++) novas.push({ brinco: String(n), peso, peso2: null, sexo: sexoFaixa || null })
     setLinhas(prev => [...prev, ...novas])
     setErro(null)
   }
@@ -586,8 +588,8 @@ function ModalAdicionarAnimais({
     if (!brincoIndividual.trim()) { setErro('Informe o brinco'); return }
     const peso = Number(pesoIndividual)
     if (!peso || peso <= 0) { setErro('Peso inválido'); return }
-    setLinhas(prev => [...prev, { brinco: brincoIndividual.trim(), peso, peso2: null }])
-    setBrincoIndividual(''); setPesoIndividual(''); setErro(null)
+    setLinhas(prev => [...prev, { brinco: brincoIndividual.trim(), peso, peso2: null, sexo: sexoIndividual || null }])
+    setBrincoIndividual(''); setPesoIndividual(''); setSexoIndividual(''); setErro(null)
   }
 
   const importarCsv = (file: File) => {
@@ -607,6 +609,8 @@ function ModalAdicionarAnimais({
     setLinhas(prev => prev.map((l, i) => i === idx ? { ...l, peso } : l))
   const atualizarPeso2Linha = (idx: number, valor: string) =>
     setLinhas(prev => prev.map((l, i) => i === idx ? { ...l, peso2: valor ? Number(valor) : null } : l))
+  const atualizarSexoLinha = (idx: number, valor: string) =>
+    setLinhas(prev => prev.map((l, i) => i === idx ? { ...l, sexo: (valor || null) as 'M' | 'F' | null } : l))
 
   const pesoTotal = linhas.reduce((s, l) => s + l.peso, 0)
   const precoKgNum = Number(precoKgLeva) || 0
@@ -708,6 +712,14 @@ function ModalAdicionarAnimais({
               <label className="form-label">Peso padrão (kg)</label>
               <input className="form-input" type="number" step="0.1" value={pesoFaixa} onChange={e => setPesoFaixa(e.target.value)} placeholder="200" />
             </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Sexo (opcional)</label>
+              <select className="form-input" value={sexoFaixa} onChange={e => setSexoFaixa(e.target.value as '' | 'M' | 'F')}>
+                <option value="">—</option>
+                <option value="M">Macho</option>
+                <option value="F">Fêmea</option>
+              </select>
+            </div>
             <button className="btn btn-primary" onClick={gerarFaixa} style={{ height: 38 }}>Gerar</button>
           </div>
         )}
@@ -721,6 +733,14 @@ function ModalAdicionarAnimais({
             <div className="form-group" style={{ flex: 1 }}>
               <label className="form-label">Peso (kg)</label>
               <input className="form-input" type="number" step="0.1" value={pesoIndividual} onChange={e => setPesoIndividual(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Sexo (opcional)</label>
+              <select className="form-input" value={sexoIndividual} onChange={e => setSexoIndividual(e.target.value as '' | 'M' | 'F')}>
+                <option value="">—</option>
+                <option value="M">Macho</option>
+                <option value="F">Fêmea</option>
+              </select>
             </div>
             <button className="btn btn-primary" onClick={adicionarIndividual} style={{ height: 38 }}>Adicionar</button>
           </div>
@@ -749,7 +769,7 @@ function ModalAdicionarAnimais({
             </div>
             <div className="table-wrap" style={{ maxHeight: 260, overflowY: 'auto' }}>
               <table>
-                <thead><tr><th>Código</th><th>Brinco</th><th>Peso 1 (kg)</th><th>Peso 2 (kg)</th><th style={{ width: 40 }}></th></tr></thead>
+                <thead><tr><th>Código</th><th>Brinco</th><th>Peso 1 (kg)</th><th>Peso 2 (kg)</th><th>Sexo</th><th style={{ width: 40 }}></th></tr></thead>
                 <tbody>
                   {linhas.map((l, idx) => (
                     <tr key={idx}>
@@ -762,6 +782,14 @@ function ModalAdicionarAnimais({
                       <td>
                         <input className="form-input" type="number" step="0.1" value={l.peso2 ?? ''}
                           onChange={e => atualizarPeso2Linha(idx, e.target.value)} style={{ maxWidth: 100, fontSize: 13 }} placeholder="—" />
+                      </td>
+                      <td>
+                        <select className="form-input" value={l.sexo ?? ''}
+                          onChange={e => atualizarSexoLinha(idx, e.target.value)} style={{ maxWidth: 90, fontSize: 13 }}>
+                          <option value="">—</option>
+                          <option value="M">Macho</option>
+                          <option value="F">Fêmea</option>
+                        </select>
                       </td>
                       <td>
                         <button onClick={() => removerLinha(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 16 }}>×</button>
@@ -943,7 +971,7 @@ function DetalheLote({
   const lote = todosLotes.find(l => l.id === loteId)
   const lotesAtivos = todosLotes.filter(l => l.status === 'ativo')
   const loteAtivo = lote?.status === 'ativo'
-  const { animais, loading, fetch, registrarPesagem, editarEntrada, buscarPesagens, buscarCustosVariaveis, editarPesagem, excluirPesagem } = useAnimaisDoLote(loteId)
+  const { animais, loading, fetch, registrarPesagem, editarEntrada, editarSexo, buscarPesagens, buscarCustosVariaveis, editarPesagem, excluirPesagem } = useAnimaisDoLote(loteId)
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
   const { custos: custosOperacionais, loading: loadingCustosOp, total: totalCustoOperacional, adicionarCusto, removerCusto } = useCustosOperacionais(loteId)
@@ -1512,6 +1540,11 @@ function DetalheLote({
             if (!res.error) await recalcular()
             return res
           }}
+          onConfirmarSexo={async (sexo) => {
+            const res = await editarSexo(showEditarEntrada, sexo)
+            if (!res.error) await recalcular()
+            return res
+          }}
         />
       )}
 
@@ -1853,7 +1886,7 @@ function ModalDetalheAnimal({
 
   return (
     <Modal open onClose={onClose} title={`Detalhes — ${animal.codigo}`}
-      subtitle={`Brinco ${animal.brinco} · entrada ${fmtData(animal.data_entrada)}`} size="xl">
+      subtitle={`Brinco ${animal.brinco} · entrada ${fmtData(animal.data_entrada)} · ${animal.sexo === 'M' ? 'Macho' : animal.sexo === 'F' ? 'Fêmea' : 'Sexo não informado'}`} size="xl">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <ResumoCard label="Peso atual (est.)" valor={resultado ? `${fmtNum(resultado.peso, 1)} kg` : '—'} />
@@ -2080,6 +2113,10 @@ function ModalResumoLote({
   const pesoMedioAtual = animais.length > 0 ? totais.pesoAtual / animais.length : 0
   const custoPorKgGanho = totais.ganhoPeso > 0 ? totais.custoTotal / totais.ganhoPeso : null
 
+  const qtdMachos = animais.filter(a => a.sexo === 'M').length
+  const qtdFemeas = animais.filter(a => a.sexo === 'F').length
+  const qtdSexoNaoInformado = animais.length - qtdMachos - qtdFemeas
+
   return (
     <Modal open onClose={onClose} title={`Resumo — ${lote.nome_lote}`}
       subtitle={`${animais.length} animal(is) ativo(s)`} size="xl">
@@ -2096,6 +2133,12 @@ function ModalResumoLote({
           <ResumoCard label="Custo operacional" valor={fmt(totais.custoOperacional)} />
           <ResumoCard label="Custos variáveis" valor={fmt(totais.custosVariaveis)} />
           <ResumoCard label="Ganho de peso total" valor={`${fmtNum(totais.ganhoPeso, 1)} kg`} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <ResumoCard label="Machos" valor={String(qtdMachos)} />
+          <ResumoCard label="Fêmeas" valor={String(qtdFemeas)} />
+          {qtdSexoNaoInformado > 0 && <ResumoCard label="Sexo não informado" valor={String(qtdSexoNaoInformado)} />}
         </div>
 
         <div>
@@ -2534,18 +2577,30 @@ function ModalPesagem({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ModalEditarEntrada({
-  animal, eventoEntradaNoLote, onClose, onConfirmar, onEditarDataEvento,
+  animal, eventoEntradaNoLote, onClose, onConfirmar, onEditarDataEvento, onConfirmarSexo,
 }: {
   animal: Animal
   eventoEntradaNoLote: MovimentacaoGrupoLote | null
   onClose: () => void
   onConfirmar: (peso: number, data: string) => Promise<{ error: string | null }>
   onEditarDataEvento: (grupoEventoId: string, novaData: string) => Promise<{ error: string | null }>
+  onConfirmarSexo: (sexo: 'M' | 'F' | null) => Promise<{ error: string | null }>
 }) {
   const [peso, setPeso] = useState(String(animal.peso_entrada))
   const [data, setData] = useState(animal.data_entrada)
   const [erro, setErro] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  const [sexo, setSexo] = useState<'' | 'M' | 'F'>(animal.sexo ?? '')
+  const [erroSexo, setErroSexo] = useState<string | null>(null)
+  const [savingSexo, setSavingSexo] = useState(false)
+
+  const confirmarSexo = async () => {
+    setSavingSexo(true); setErroSexo(null)
+    const res = await onConfirmarSexo(sexo || null)
+    setSavingSexo(false)
+    if (res.error) setErroSexo(res.error)
+  }
 
   const [dataLote, setDataLote] = useState(eventoEntradaNoLote?.data ?? '')
   const [erroLote, setErroLote] = useState<string | null>(null)
@@ -2591,6 +2646,23 @@ function ModalEditarEntrada({
           <div className="modal-actions" style={{ marginTop: 0 }}>
             <button className="btn btn-primary btn-sm" onClick={confirmar} disabled={saving} style={{ marginLeft: 'auto' }}>
               {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar entrada'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="form-group" style={{ maxWidth: 160 }}>
+            <label className="form-label">Sexo</label>
+            <select className="form-input" value={sexo} onChange={e => setSexo(e.target.value as '' | 'M' | 'F')}>
+              <option value="">Não informado</option>
+              <option value="M">Macho</option>
+              <option value="F">Fêmea</option>
+            </select>
+          </div>
+          {erroSexo && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erroSexo}</div>}
+          <div className="modal-actions" style={{ marginTop: 0 }}>
+            <button className="btn btn-primary btn-sm" onClick={confirmarSexo} disabled={savingSexo} style={{ marginLeft: 'auto' }}>
+              {savingSexo ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar sexo'}
             </button>
           </div>
         </div>

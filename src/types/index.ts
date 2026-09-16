@@ -99,6 +99,7 @@ export interface Animal {
   preco_kg_compra_no_lote: number | null
   compra_id: string | null
   lote_atual_id: string | null
+  sexo: 'M' | 'F' | null
   // Ciclo vigente deste animal — normalmente igual ao ciclo_atual do lote,
   // mas pode ficar à frente quando o animal foi adiantado por um avanço de
   // ciclo parcial (só alguns animais selecionados, ver avancarCicloParcial).

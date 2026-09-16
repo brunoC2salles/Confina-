@@ -45,6 +45,7 @@ export interface LinhaAnimalInput {
   brinco: string
   peso: number
   peso2?: number | null
+  sexo?: 'M' | 'F' | null
 }
 
 // ─── Dados da compra (fornecedor + preço) desta leva específica de entrada ────
@@ -677,6 +678,7 @@ export function useLotes() {
       preco_kg_compra_no_lote: precoKg,
       compra_id: compra.id,
       lote_atual_id: input.lote_id,
+      sexo: l.sexo ?? null,
       status: 'ativo' as const,
       user_id: user.id,
     }))
@@ -969,9 +971,17 @@ export function useAnimaisDoLote(loteId: string | null) {
     return { error: null }
   }
 
+  const editarSexo = async (animalId: string, sexo: 'M' | 'F' | null) => {
+    if (!user) return { error: 'Não autenticado' }
+    const { error } = await supabase.from('animais').update({ sexo }).eq('id', animalId)
+    if (error) return { error: error.message }
+    await fetch()
+    return { error: null }
+  }
+
   return {
     animais, loading, fetch,
-    registrarPesagem, registrarPesagemLote, editarEntrada,
+    registrarPesagem, registrarPesagemLote, editarEntrada, editarSexo,
     buscarPesagens, buscarMovimentacoes, buscarCustosVariaveis, adicionarCustoVariavel,
     editarPesagem, excluirPesagem,
   }
