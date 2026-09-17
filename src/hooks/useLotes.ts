@@ -1881,7 +1881,41 @@ export function useCompras(loteId: string | null) {
 
   useEffect(() => { fetch() }, [fetch])
 
-  return { compras, loading, fetch }
+  // Edita o preço de entrada de uma leva de compra: o usuário informa o novo
+  // valor total pago, e o preço/kg + o valor_compra de cada animal daquela
+  // leva são recalculados a partir do peso_total já registrado (não editável
+  // aqui — é a soma dos peso_entrada dos animais da leva).
+  const atualizarValorTotalCompra = useCallback(async (compraId: string, novoValorTotal: number) => {
+    const compra = compras.find(c => c.id === compraId)
+    if (!compra) return { error: 'Compra não encontrada' }
+    if (!(novoValorTotal > 0)) return { error: 'Informe um valor total maior que zero' }
+    if (!(compra.peso_total > 0)) return { error: 'Esta compra não tem peso total registrado' }
+
+    const precoKgExato = novoValorTotal / compra.peso_total
+    const precoKgArredondado = Math.round(precoKgExato * 10000) / 10000
+
+    const { error: eCompra } = await supabase.from('compras')
+      .update({ valor_total: novoValorTotal, preco_kg: Math.round(precoKgExato * 100) / 100 })
+      .eq('id', compraId)
+    if (eCompra) return { error: eCompra.message }
+
+    const { data: animaisDaCompra, error: eSelect } = await supabase
+      .from('animais').select('id, peso_entrada').eq('compra_id', compraId)
+    if (eSelect) return { error: eSelect.message }
+
+    for (const a of (animaisDaCompra ?? []) as Array<{ id: string; peso_entrada: number }>) {
+      const { error: eAnimal } = await supabase.from('animais').update({
+        preco_kg_compra_no_lote: precoKgArredondado,
+        valor_compra: Math.round(a.peso_entrada * precoKgArredondado * 100) / 100,
+      }).eq('id', a.id)
+      if (eAnimal) return { error: eAnimal.message }
+    }
+
+    await fetch()
+    return { error: null }
+  }, [compras, fetch])
+
+  return { compras, loading, fetch, atualizarValorTotalCompra }
 }
 
 // ─── Hook: listagem de vendas (saidas_grupo) ───────────────────────────────────

@@ -60,7 +60,7 @@ export default function Lotes() {
   const [searchParams] = useSearchParams()
   const {
     lotes, lotesAtivos, lotesEncerrados, ciclosPorLote, resumo, distribuicaoCiclos, trocasDietaPorLote, loading,
-    criarLote, editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta,
+    criarLote, atualizarLote, editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta,
     criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
   } = useLotes()
   const { templates: dietasTemplates } = useDietas()
@@ -205,6 +205,7 @@ export default function Lotes() {
           ciclosPorLote={ciclosPorLote}
           distribuicaoCiclos={distribuicaoCiclos}
           trocasDietaPorLote={trocasDietaPorLote}
+          atualizarLote={atualizarLote}
           editarCiclo={editarCiclo}
           salvarCiclosLote={salvarCiclosLote}
           avancarCiclo={avancarCiclo}
@@ -944,7 +945,7 @@ function PainelProjecao({
 
 function DetalheLote({
   loteId, onClose, highlightAnimalId, dietasTemplates, todosLotes, ciclosPorLote, distribuicaoCiclos, trocasDietaPorLote,
-  editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
+  atualizarLote, editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
 }: {
   loteId: string
   onClose: () => void
@@ -954,6 +955,7 @@ function DetalheLote({
   ciclosPorLote: Record<string, Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null; data_fim: string | null }>>
   distribuicaoCiclos: Record<string, Record<number, number>>
   trocasDietaPorLote: Record<string, TrocaDietaLoteRow[]>
+  atualizarLote: (id: string, patch: Partial<Lote>) => Promise<{ error: string | null }>
   editarCiclo: (id: string, patch: any) => Promise<{ error: string | null }>
   avancarCiclo: (loteId: string, data?: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
   salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null }>) => Promise<{ error: string | null }>
@@ -976,7 +978,7 @@ function DetalheLote({
   const { rendimentos, bonus } = useFaixas()
   const { custos: custosOperacionais, loading: loadingCustosOp, total: totalCustoOperacional, adicionarCusto, removerCusto } = useCustosOperacionais(loteId)
   const { custos: custosRacaoReal, loading: loadingCustosRacaoReal, adicionarCustoRacaoReal, editarCustoRacaoReal, removerCustoRacaoReal } = useCustosRacaoReal(loteId)
-  const { compras, loading: loadingCompras } = useCompras(loteId)
+  const { compras, loading: loadingCompras, atualizarValorTotalCompra } = useCompras(loteId)
   const { eventos: eventosMovimentacao, loading: loadingMovimentacao, editarDataEvento } = useMovimentacoesLote(loteId)
   const { parceiros } = useParceiros()
   const nomeParceiro = (id: string | null) => id ? (parceiros.find(p => p.id === id)?.nome ?? '—') : null
@@ -1007,6 +1009,9 @@ function DetalheLote({
   const [showAvancarCiclo, setShowAvancarCiclo] = useState<'total' | 'parcial' | null>(null)
   const [showTrocarDieta, setShowTrocarDieta] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [editandoNome, setEditandoNome] = useState(false)
+  const [novoNome, setNovoNome] = useState('')
+  const [salvandoNome, setSalvandoNome] = useState(false)
 
   const ciclos = ciclosPorLote[loteId] ?? []
   const trocasDoLote = trocasDietaPorLote[loteId] ?? []
@@ -1228,6 +1233,32 @@ function DetalheLote({
             {lote.motivo_encerramento === 'venda' && (
               <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => navigate(`/vendas?lote=${lote.id}`)}>
                 Ver vendas
+              </button>
+            )}
+          </div>
+        )}
+
+        {loteAtivo && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {editandoNome ? (
+              <>
+                <input className="form-input" style={{ maxWidth: 280 }} value={novoNome}
+                  onChange={e => setNovoNome(e.target.value)} autoFocus />
+                <button className="btn btn-primary btn-sm" disabled={!novoNome.trim() || salvandoNome}
+                  onClick={async () => {
+                    setSalvandoNome(true)
+                    const res = await atualizarLote(lote.id, { nome_lote: novoNome.trim() })
+                    setSalvandoNome(false)
+                    if (res.error) setErro(res.error)
+                    else setEditandoNome(false)
+                  }}>
+                  {salvandoNome ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar'}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setEditandoNome(false)}>Cancelar</button>
+              </>
+            ) : (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setNovoNome(lote.nome_lote); setEditandoNome(true) }}>
+                Editar nome do lote
               </button>
             )}
           </div>
@@ -1597,6 +1628,11 @@ function DetalheLote({
         <ModalCompras
           lote={lote} compras={compras} loading={loadingCompras} nomeParceiro={nomeParceiro}
           onClose={() => setShowCompras(false)}
+          onEditarValorTotal={async (compraId, novoValorTotal) => {
+            const res = await atualizarValorTotalCompra(compraId, novoValorTotal)
+            if (!res.error) await fetch()
+            return res
+          }}
         />
       )}
 
@@ -3358,21 +3394,44 @@ function ModalCustoRacaoReal({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODAL: COMPRAS DO LOTE (somente leitura — cada compra nasce ao "Adicionar
-// animais"; aqui é só o histórico de fornecedor/preço por leva)
+// MODAL: COMPRAS DO LOTE (cada compra nasce ao "Adicionar animais"; aqui dá
+// pra corrigir o valor total pago por leva — preço/kg e valor_compra de cada
+// animal da leva são recalculados automaticamente)
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ModalCompras({
-  lote, compras, loading, nomeParceiro, onClose,
+  lote, compras, loading, nomeParceiro, onClose, onEditarValorTotal,
 }: {
   lote: Lote
   compras: Compra[]
   loading: boolean
   nomeParceiro: (id: string | null) => string | null
   onClose: () => void
+  onEditarValorTotal: (compraId: string, novoValorTotal: number) => Promise<{ error: string | null }>
 }) {
   const valorTotal = compras.reduce((s, c) => s + c.valor_total, 0)
   const qtdTotal = compras.reduce((s, c) => s + c.quantidade_animais, 0)
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [valorEdicao, setValorEdicao] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const abrirEdicao = (c: Compra) => {
+    setEditandoId(c.id)
+    setValorEdicao(String(c.valor_total))
+    setErro(null)
+  }
+
+  const salvarEdicao = async () => {
+    if (!editandoId) return
+    const novoValor = Number(valorEdicao)
+    if (!novoValor || novoValor <= 0) { setErro('Informe um valor total maior que zero'); return }
+    setSalvando(true)
+    const res = await onEditarValorTotal(editandoId, novoValor)
+    setSalvando(false)
+    if (res.error) setErro(res.error)
+    else setEditandoId(null)
+  }
 
   return (
     <Modal open onClose={onClose} title={`Compras — ${lote.nome_lote}`}
@@ -3385,22 +3444,41 @@ function ModalCompras({
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Data</th><th>Fornecedor</th><th>Preço/kg</th><th>Animais</th><th>Peso total</th><th>Valor total</th></tr></thead>
+              <thead><tr><th>Data</th><th>Fornecedor</th><th>Preço/kg</th><th>Animais</th><th>Peso total</th><th>Valor total</th><th></th></tr></thead>
               <tbody>
                 {compras.map(c => (
                   <tr key={c.id}>
                     <td>{fmtData(c.data)}</td>
                     <td>{nomeParceiro(c.parceiro_id) ?? c.origem_texto ?? '—'}</td>
-                    <td>{fmt(c.preco_kg)}</td>
+                    <td>{editandoId === c.id ? fmt(Number(valorEdicao) > 0 ? Number(valorEdicao) / c.peso_total : 0) : fmt(c.preco_kg)}</td>
                     <td>{c.quantidade_animais}</td>
                     <td>{fmtNum(c.peso_total, 0)} kg</td>
-                    <td>{fmt(c.valor_total)}</td>
+                    <td>
+                      {editandoId === c.id ? (
+                        <input className="form-input" type="number" step="0.01" style={{ maxWidth: 130 }}
+                          value={valorEdicao} onChange={e => setValorEdicao(e.target.value)} autoFocus />
+                      ) : fmt(c.valor_total)}
+                    </td>
+                    <td>
+                      {editandoId === c.id ? (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-primary btn-sm" disabled={salvando} onClick={salvarEdicao}>
+                            {salvando ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar'}
+                          </button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setEditandoId(null)}>Cancelar</button>
+                        </div>
+                      ) : (
+                        <button className="btn btn-ghost btn-sm" onClick={() => abrirEdicao(c)}>Editar</button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+
+        {erro && <div style={{ padding: 10, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 13 }}>{erro}</div>}
 
         <div className="flex-between" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
           <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>{qtdTotal} animal(is) · Total investido</span>
