@@ -1413,7 +1413,7 @@ function DetalheLote({
                           color: adiantado ? '#946200' : 'var(--gray-500)',
                           border: `1px solid ${adiantado ? '#c99324' : '#e0e0e0'}`,
                         }}>
-                          Ciclo {a.ciclo_atual}
+                          {a.ciclo_atual}
                         </span>
                       </td>
                       <td>{fmtNum(a.peso_entrada, 1)} kg</td>
