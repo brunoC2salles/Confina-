@@ -733,8 +733,15 @@ export function useLotes() {
     if (e1) return { error: e1.message }
 
     for (const idsChunk of chunkArray(input.animal_ids, TAMANHO_CHUNK_IDS)) {
+      // ciclo_atual sincronizado com o ciclo inicial do lote novo — sem isso,
+      // um animal bifurcado para um lote cuja numeração de ciclos não bate
+      // com a do lote de origem (ex.: lote novo criado já num ciclo avançado,
+      // ver numeroInicial em criarLoteInterno) fica com um número de ciclo
+      // que não existe em ciclos_lote do lote novo: some da dieta/ciclo em
+      // Fazenda Hoje e no motor de custo, mesmo com o lote mostrando o ciclo
+      // certo (bug real encontrado em produção, lote do Ricardo, 18/09).
       const { error: e2 } = await supabase.from('animais')
-        .update({ lote_atual_id: novoLote.id }).in('id', idsChunk)
+        .update({ lote_atual_id: novoLote.id, ciclo_atual: novoLote.ciclo_atual }).in('id', idsChunk)
       if (e2) return { error: e2.message }
     }
 
@@ -745,6 +752,16 @@ export function useLotes() {
   const moverAliquota = async (input: MoverAliquotaInput) => {
     if (!user) return { error: 'Não autenticado' }
     if (input.animal_ids.length === 0) return { error: 'Selecione ao menos um animal' }
+
+    // ciclo_atual do animal precisa ser sincronizado com o ciclo_atual do
+    // lote de destino: sem isso, um animal transferido para um lote cuja
+    // numeração de ciclos não bate com a do lote de origem fica "preso" num
+    // número de ciclo que não existe em ciclos_lote do destino — some da
+    // dieta/ciclo em Fazenda Hoje e no motor de custo, mesmo com o lote
+    // mostrando o ciclo certo (bug real encontrado em produção, lote do
+    // Ricardo, 18/09).
+    const loteDestino = lotes.find(l => l.id === input.lote_destino_id)
+    if (!loteDestino) return { error: 'Lote de destino não encontrado' }
 
     const animaisAtuais = await buscarPorIds<{ id: string; lote_atual_id: string | null }>(input.animal_ids, (idsChunk, from, to) =>
       supabase.from('animais').select('id, lote_atual_id').in('id', idsChunk).range(from, to))
@@ -761,7 +778,7 @@ export function useLotes() {
 
     for (const idsChunk of chunkArray(input.animal_ids, TAMANHO_CHUNK_IDS)) {
       const { error: e2 } = await supabase.from('animais')
-        .update({ lote_atual_id: input.lote_destino_id }).in('id', idsChunk)
+        .update({ lote_atual_id: input.lote_destino_id, ciclo_atual: loteDestino.ciclo_atual }).in('id', idsChunk)
       if (e2) return { error: e2.message }
     }
 
