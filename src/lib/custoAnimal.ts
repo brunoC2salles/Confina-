@@ -412,6 +412,48 @@ export function calcularAnimalNaData(
 
   const pesagensOrdenadas = [...pesagens].sort((a, b) => toDay(a.data) - toDay(b.data))
 
+  // ─── Suaviza o salto de uma pesagem real entre os dias desde a pesagem (ou
+  // entrada) anterior ──────────────────────────────────────────────────────
+  // Antes, a diferença entre o peso projetado e uma pesagem real inteira
+  // "caía" toda no único dia em que a pesagem foi lançada. Se esse dia
+  // coincidisse com (ou viesse logo após) uma troca de lote/ciclo, o ganho
+  // (ou o erro de projeção acumulado) do intervalo inteiro era atribuído ao
+  // ciclo vigente NAQUELE dia só — nunca ao(s) ciclo(s) anterior(es), mesmo
+  // que o animal tenha vivido a maior parte do intervalo neles. Resultado:
+  // ciclo que recebeu a pesagem ficava com ganho/GMD muito fora da realidade
+  // (pra mais ou pra menos), e o ciclo anterior nunca via a correção.
+  // Agora a diferença é dividida em partes iguais por dia ao longo de TODO o
+  // intervalo, e cada dia soma ao ciclo que estava vigente NAQUELE dia — se o
+  // intervalo atravessa uma troca de ciclo, cada ciclo fica só com os dias
+  // (e a fração de ganho) que de fato viveu. Peso corrente ainda é assinado
+  // exatamente ao valor real no dia da pesagem (evita deriva de
+  // arredondamento acumulada ao longo do intervalo suavizado).
+  const anchorPorDia = new Map<number, number>()
+  for (const p of pesagensOrdenadas) {
+    const d = toDay(p.data)
+    if (d <= diaEntrada || d >= diaAlvo) continue
+    if (!anchorPorDia.has(d)) anchorPorDia.set(d, p.peso)
+  }
+  const incrementoPorDia = new Map<number, number>()
+  let anchorDia = diaEntrada
+  let anchorPeso = animal.peso_entrada
+  const pesagemNaEntrada = pesagensOrdenadas.find(p => toDay(p.data) === diaEntrada)
+  if (pesagemNaEntrada && pesagemNaEntrada.peso !== animal.peso_entrada) {
+    // Correção lançada no próprio dia de entrada: instantânea, não há dias
+    // anteriores pra suavizar (o animal acabou de entrar).
+    incrementoPorDia.set(diaEntrada, pesagemNaEntrada.peso - animal.peso_entrada)
+    anchorPeso = pesagemNaEntrada.peso
+  }
+  for (const d of Array.from(anchorPorDia.keys()).sort((a, b) => a - b)) {
+    const diasIntervalo = d - anchorDia
+    if (diasIntervalo > 0) {
+      const ganhoPorDia = (anchorPorDia.get(d)! - anchorPeso) / diasIntervalo
+      for (let k = anchorDia; k < d; k++) incrementoPorDia.set(k, ganhoPorDia)
+    }
+    anchorDia = d
+    anchorPeso = anchorPorDia.get(d)!
+  }
+
   // ─── Dias vividos em cada lote (até diaAlvo) ───────────────────────────────
   // Usado para ratear cada lançamento de custo operacional igualmente por dia
   // ao longo de TODOS os ciclos que o animal já viveu naquele lote — não só o
@@ -471,7 +513,6 @@ export function calcularAnimalNaData(
   }
 
   for (let dia = diaEntrada; dia < diaAlvo; dia++) {
-    const pesagemHoje = pesagensOrdenadas.find(p => toDay(p.data) === dia)
     const periodo = encontrarLoteAtivo(dia, periodos)
     const ciclo = periodo ? encontrarCicloAtivoParaAnimal(periodo.lote_id, dia, ciclos, eventosCiclo) : null
     const gmd = ciclo?.gmd_esperado ?? 0
@@ -484,12 +525,14 @@ export function calcularAnimalNaData(
     if (etapa) etapa.dias++
 
     const pesoAntes = peso
-    if (pesagemHoje) {
-      peso = pesagemHoje.peso
-    } else if (dia > diaEntrada) {
-      peso += gmd
-    }
-    // dia === diaEntrada e sem pesagem real: peso permanece o peso_entrada (sem crescimento ainda)
+    // Incremento do dia: fatia suavizada de uma pesagem real futura (ver
+    // bloco de suavização acima), senão a projeção normal pelo GMD esperado
+    // do ciclo vigente (sem pesagem real nenhuma cobrindo este dia ainda).
+    const incremento = incrementoPorDia.has(dia) ? incrementoPorDia.get(dia)! : (dia > diaEntrada ? gmd : 0)
+    peso += incremento
+    // Assina exatamente o valor real quando o próximo dia é uma pesagem —
+    // evita deriva de arredondamento acumulada ao longo do intervalo suavizado.
+    if (anchorPorDia.has(dia + 1)) peso = anchorPorDia.get(dia + 1)!
     const ganhoHoje = peso - pesoAntes
     if (tipoCiclo === 'pastagem') ganhoPesoPastagem += ganhoHoje
     else if (tipoCiclo === 'misto') ganhoPesoMisto += ganhoHoje
