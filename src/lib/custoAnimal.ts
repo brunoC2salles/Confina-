@@ -381,6 +381,67 @@ function resolverCustoKgMsNoDia(dia: number, dietaInfo: DietaInfo): number | nul
   return custoVigenteNoDia(dia, dietaInfo.historico)
 }
 
+// ─── Suaviza o salto de uma pesagem real entre os dias desde a pesagem (ou
+// entrada) anterior ──────────────────────────────────────────────────────
+// Compartilhado por calcularAnimalNaData (peso, ganho por etapa e custo) e
+// projetarPesoPorDia (só peso, usado por useLotes.ts e custoRacaoGrupo.ts
+// para ratear custo operacional e custo real de ração entre os animais do
+// grupo) — a pesagem real precisa dar acurácia ao peso E aos custos sempre,
+// nos dois motores, não só num deles.
+//
+// Antes, a diferença entre o peso projetado e uma pesagem real inteira
+// "caía" toda no único dia em que a pesagem foi lançada. Se esse dia
+// coincidisse com (ou viesse logo após) uma troca de lote/ciclo, o ganho (ou
+// o erro de projeção acumulado) do intervalo inteiro era atribuído ao ciclo
+// vigente NAQUELE dia só — nunca ao(s) ciclo(s) anterior(es), mesmo que o
+// animal tenha vivido a maior parte do intervalo neles. Resultado: ciclo que
+// recebeu a pesagem ficava com ganho/GMD muito fora da realidade (pra mais
+// ou pra menos), e o ciclo anterior nunca via a correção — e, em
+// projetarPesoPorDia, o peso do grupo usado pra ratear custo (operacional e
+// ração real) também saltava de uma vez, distorcendo a fatia de cada animal
+// nos dias ao redor da pesagem de qualquer um deles.
+//
+// Agora a diferença é dividida em partes iguais por dia ao longo de TODO o
+// intervalo, e cada dia soma ao ciclo que estava vigente NAQUELE dia — se o
+// intervalo atravessa uma troca de ciclo, cada ciclo fica só com os dias (e
+// a fração de ganho) que de fato viveu. O valor retornado em anchorPorDia
+// permite ao chamador assinar o peso exatamente ao valor real no dia da
+// pesagem, evitando deriva de arredondamento acumulada ao longo do intervalo
+// suavizado.
+function construirIncrementosDiarios(
+  diaEntrada: number,
+  diaLimiteExclusivo: number,
+  pesoEntrada: number,
+  pesagensOrdenadas: PesagemPonto[],
+): { incrementoPorDia: Map<number, number>; anchorPorDia: Map<number, number> } {
+  const anchorPorDia = new Map<number, number>()
+  for (const p of pesagensOrdenadas) {
+    const d = toDay(p.data)
+    if (d <= diaEntrada || d >= diaLimiteExclusivo) continue
+    if (!anchorPorDia.has(d)) anchorPorDia.set(d, p.peso)
+  }
+  const incrementoPorDia = new Map<number, number>()
+  let anchorDia = diaEntrada
+  let anchorPeso = pesoEntrada
+  const pesagemNaEntrada = pesagensOrdenadas.find(p => toDay(p.data) === diaEntrada)
+  if (pesagemNaEntrada && pesagemNaEntrada.peso !== pesoEntrada) {
+    // Correção lançada no próprio dia de entrada: instantânea, não há dias
+    // anteriores pra suavizar (o animal acabou de entrar).
+    incrementoPorDia.set(diaEntrada, pesagemNaEntrada.peso - pesoEntrada)
+    anchorPeso = pesagemNaEntrada.peso
+  }
+  for (const d of Array.from(anchorPorDia.keys()).sort((a, b) => a - b)) {
+    const diasIntervalo = d - anchorDia
+    if (diasIntervalo > 0) {
+      const ganhoPorDia = (anchorPorDia.get(d)! - anchorPeso) / diasIntervalo
+      for (let k = anchorDia; k < d; k++) incrementoPorDia.set(k, ganhoPorDia)
+    }
+    anchorDia = d
+    anchorPeso = anchorPorDia.get(d)!
+  }
+  return { incrementoPorDia, anchorPorDia }
+}
+
 // ─── Cálculo principal ──────────────────────────────────────────────────────────
 
 export function calcularAnimalNaData(
@@ -412,52 +473,16 @@ export function calcularAnimalNaData(
 
   const pesagensOrdenadas = [...pesagens].sort((a, b) => toDay(a.data) - toDay(b.data))
 
-  // ─── Suaviza o salto de uma pesagem real entre os dias desde a pesagem (ou
-  // entrada) anterior ──────────────────────────────────────────────────────
-  // Antes, a diferença entre o peso projetado e uma pesagem real inteira
-  // "caía" toda no único dia em que a pesagem foi lançada. Se esse dia
-  // coincidisse com (ou viesse logo após) uma troca de lote/ciclo, o ganho
-  // (ou o erro de projeção acumulado) do intervalo inteiro era atribuído ao
-  // ciclo vigente NAQUELE dia só — nunca ao(s) ciclo(s) anterior(es), mesmo
-  // que o animal tenha vivido a maior parte do intervalo neles. Resultado:
-  // ciclo que recebeu a pesagem ficava com ganho/GMD muito fora da realidade
-  // (pra mais ou pra menos), e o ciclo anterior nunca via a correção.
-  // Agora a diferença é dividida em partes iguais por dia ao longo de TODO o
-  // intervalo, e cada dia soma ao ciclo que estava vigente NAQUELE dia — se o
-  // intervalo atravessa uma troca de ciclo, cada ciclo fica só com os dias
-  // (e a fração de ganho) que de fato viveu. Peso corrente ainda é assinado
-  // exatamente ao valor real no dia da pesagem (evita deriva de
-  // arredondamento acumulada ao longo do intervalo suavizado).
-  const anchorPorDia = new Map<number, number>()
-  for (const p of pesagensOrdenadas) {
-    const d = toDay(p.data)
-    if (d <= diaEntrada || d >= diaAlvo) continue
-    if (!anchorPorDia.has(d)) anchorPorDia.set(d, p.peso)
-  }
-  const incrementoPorDia = new Map<number, number>()
-  let anchorDia = diaEntrada
-  let anchorPeso = animal.peso_entrada
-  const pesagemNaEntrada = pesagensOrdenadas.find(p => toDay(p.data) === diaEntrada)
-  if (pesagemNaEntrada && pesagemNaEntrada.peso !== animal.peso_entrada) {
-    // Correção lançada no próprio dia de entrada: instantânea, não há dias
-    // anteriores pra suavizar (o animal acabou de entrar).
-    incrementoPorDia.set(diaEntrada, pesagemNaEntrada.peso - animal.peso_entrada)
-    anchorPeso = pesagemNaEntrada.peso
-  }
-  for (const d of Array.from(anchorPorDia.keys()).sort((a, b) => a - b)) {
-    const diasIntervalo = d - anchorDia
-    if (diasIntervalo > 0) {
-      const ganhoPorDia = (anchorPorDia.get(d)! - anchorPeso) / diasIntervalo
-      for (let k = anchorDia; k < d; k++) incrementoPorDia.set(k, ganhoPorDia)
-    }
-    anchorDia = d
-    anchorPeso = anchorPorDia.get(d)!
-  }
+  // ─── Suaviza o salto de uma pesagem real (ver comentário completo em
+  // construirIncrementosDiarios, compartilhado com projetarPesoPorDia) ──────
+  const { incrementoPorDia, anchorPorDia } = construirIncrementosDiarios(
+    diaEntrada, diaAlvo, animal.peso_entrada, pesagensOrdenadas,
+  )
 
   // ─── Dias vividos em cada lote (até diaAlvo) ───────────────────────────────
   // Usado para ratear cada lançamento de custo operacional igualmente por dia
   // ao longo de TODOS os ciclos que o animal já viveu naquele lote — não só o
-  // ciclo vigente no dia exato do lançamento. Ex.: lançamento feito no dia 5
+  // ciclo vigente na data exata do lançamento. Ex.: lançamento feito no dia 5
   // (ciclo 1) mas o animal já está no dia 90 (ciclo 3): o valor é dividido
   // pelos 90 dias e absorvido proporcionalmente por todos os ciclos já
   // vividos até agora, inclusive os anteriores à data do próprio lançamento.
@@ -686,10 +711,13 @@ export function calcularGmdRealUltimoIntervalo(
 }
 
 // ─── Projeção de peso dia a dia, num intervalo (sem custo) ────────────────────
-// Usado por useLotes.ts para somar o peso total do lote em cada dia, quando
-// existe custo real de ração a ratear proporcionalmente ao peso. Mesma lógica
-// de acumulação incremental (peso += gmd, reiniciado por pesagem real) do
-// laço principal de calcularAnimalNaData, mas sem custo — só o peso mesmo.
+// Usado por useLotes.ts e custoRacaoGrupo.ts para somar o peso total do
+// lote/grupo em cada dia, quando existe custo operacional ou custo real de
+// ração a ratear proporcionalmente ao peso. Mesma suavização de pesagem real
+// (construirIncrementosDiarios) usada pelo laço principal de
+// calcularAnimalNaData, unificada aqui — o peso usado pra ratear custo entre
+// os animais do grupo precisa da mesma acurácia que o peso individual, sem
+// os saltos que uma pesagem causava antes no dia exato em que foi lançada.
 // Roda desde a entrada do animal (pra manter a base correta), mas só retorna
 // os dias dentro de [diaInicial, diaFinalExclusivo).
 export function projetarPesoPorDia(
@@ -706,19 +734,19 @@ export function projetarPesoPorDia(
   if (diaFinalExclusivo <= diaEntrada) return resultado
 
   const pesagensOrdenadas = [...pesagens].sort((a, b) => toDay(a.data) - toDay(b.data))
+  const { incrementoPorDia, anchorPorDia } = construirIncrementosDiarios(
+    diaEntrada, diaFinalExclusivo, animal.peso_entrada, pesagensOrdenadas,
+  )
   let peso = animal.peso_entrada
 
   for (let dia = diaEntrada; dia < diaFinalExclusivo; dia++) {
-    const pesagemHoje = pesagensOrdenadas.find(p => toDay(p.data) === dia)
     const periodo = encontrarLoteAtivo(dia, periodos)
     const ciclo = periodo ? encontrarCicloAtivoParaAnimal(periodo.lote_id, dia, ciclos, eventosCiclo) : null
     const gmd = ciclo?.gmd_esperado ?? 0
 
-    if (pesagemHoje) {
-      peso = pesagemHoje.peso
-    } else if (dia > diaEntrada) {
-      peso += gmd
-    }
+    const incremento = incrementoPorDia.has(dia) ? incrementoPorDia.get(dia)! : (dia > diaEntrada ? gmd : 0)
+    peso += incremento
+    if (anchorPorDia.has(dia + 1)) peso = anchorPorDia.get(dia + 1)!
     if (dia >= diaInicial) resultado[dia] = peso
   }
   return resultado
