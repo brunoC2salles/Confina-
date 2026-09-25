@@ -21,6 +21,7 @@ import Relatorios from '@/pages/Relatorios'
 import Configuracoes from '@/pages/Configuracoes'
 import CalculadoraConfinamento from '@/pages/CalculadoraConfinamento'
 import Consultoria from '@/pages/Consultoria'
+import Tutorial from '@/pages/Tutorial'
 
 export default function App() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="parceiros"    element={<Parceiros />} />
             <Route path="relatorios"   element={<Relatorios />} />
             <Route path="config"       element={<Configuracoes />} />
+            <Route path="tutorial"     element={<Tutorial />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -21,6 +21,7 @@ const NAV_GESTAO = [
   { to: '/parceiros',  label: 'Parceiros',    end: false },
   { to: '/relatorios', label: 'Relatórios',   end: false },
   { to: '/config',     label: 'Configurações', end: false },
+  { to: '/tutorial',   label: 'Tutorial',      end: false },
 ]
 
 interface SidebarProps {

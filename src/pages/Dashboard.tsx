@@ -12,11 +12,15 @@ const cicloLabel = (n: number) =>
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { lotesAtivos, resumo, distribuicaoCiclos, loading: loadLotes } = useLotes()
+  const { lotes, lotesAtivos, resumo, distribuicaoCiclos, loading: loadLotes } = useLotes()
   const nome = user?.user_metadata?.nome?.split(' ')[0] || 'produtor'
 
   const [searchParams, setSearchParams] = useSearchParams()
   const upgrade = searchParams.get('upgrade')
+
+  // Convite para o tutorial: aparece enquanto o usuário não tiver nenhum lote.
+  const [conviteTutorial, setConviteTutorial] = useState(true)
+  const mostrarConviteTutorial = conviteTutorial && !loadLotes && lotes.length === 0 && !upgrade
 
   const [metricas, setMetricas] = useState({
     totalAnimais: 0, pesoMedioGeral: 0,
@@ -96,6 +100,19 @@ export default function Dashboard() {
 
   return (
     <div className="page">
+      {mostrarConviteTutorial && (
+        <Modal open onClose={() => setConviteTutorial(false)} title="Bem-vindo(a) à plataforma"
+          subtitle="Veja o passo a passo para começar do jeito certo">
+          <div style={{ padding: '4px 0 16px', fontSize: 14, color: 'var(--gray-500)', lineHeight: 1.6 }}>
+            O tutorial mostra, com animações, como cadastrar ingredientes, criar dietas e lotes, adicionar animais,
+            lançar pesagens e analisar os resultados. Leva poucos minutos e fica disponível no menu lateral.
+          </div>
+          <div className="modal-actions">
+            <button className="btn btn-ghost" onClick={() => setConviteTutorial(false)}>Agora não</button>
+            <button className="btn btn-primary" onClick={() => navigate('/tutorial')}>Ver tutorial</button>
+          </div>
+        </Modal>
+      )}
       {upgrade === 'sucesso' && (
         <Modal open onClose={() => setSearchParams(p => { p.delete('upgrade'); return p })} title="Assinatura confirmada!">
           <div style={{ padding: '4px 0 16px', fontSize: 14, color: 'var(--gray-500)' }}>
