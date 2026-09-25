@@ -62,7 +62,9 @@ export function Mockup({ pagina, rota, passos, children }: {
 }) {
   const reduzido = usePrefereMenosMovimento()
   const [passo, setPasso] = useState(0)
-  const [pausado, setPausado] = useState(false)
+  // A animação começa parada: só roda depois que o usuário clica no play.
+  const [iniciado, setIniciado] = useState(false)
+  const [pausado, setPausado] = useState(true)
   const [visivel, setVisivel] = useState(false)
   const [escala, setEscala] = useState(1)
   const [compacto, setCompacto] = useState(false)
@@ -97,7 +99,7 @@ export function Mockup({ pagina, rota, passos, children }: {
 
   useEffect(() => { if (reduzido) setPasso(passos.length - 1) }, [reduzido, passos.length])
 
-  const rodando = visivel && !pausado && !reduzido
+  const rodando = visivel && iniciado && !pausado && !reduzido
 
   useEffect(() => {
     if (!rodando) return
@@ -130,8 +132,13 @@ export function Mockup({ pagina, rota, passos, children }: {
     return () => { window.clearTimeout(a); window.clearTimeout(b) }
   }, [passo, passos, rodando])
 
-  const irPara = (i: number) => { setPasso(i); setPausado(true) }
-  const reiniciar = () => { setPasso(0); setPausado(false) }
+  const irPara = (i: number) => { setIniciado(true); setPasso(i); setPausado(true) }
+  const reiniciar = () => { setIniciado(true); setPasso(0); setPausado(false) }
+  const tocar = () => { setIniciado(true); setPasso(0); setPausado(false) }
+  const alternarPausa = () => {
+    if (!iniciado) { tocar(); return }
+    setPausado(v => !v)
+  }
 
   return (
     <CtxMovimento.Provider value={{ reduzido }}>
@@ -158,12 +165,20 @@ export function Mockup({ pagina, rota, passos, children }: {
               </div>
             )}
           </div>
+          {!iniciado && !reduzido && (
+            <button type="button" className="tt-play" onClick={tocar} aria-label="Ver a animação">
+              <span className="tt-play-circulo">
+                <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M7 4.5v13l11-6.5z" fill="currentColor" /></svg>
+              </span>
+              <span className="tt-play-texto">Clique para ver a animação</span>
+            </button>
+          )}
         </div>
 
         <div className="tt-roteiro">
           <div className="tt-controles">
             {!reduzido && (
-              <button type="button" className="tt-ctrl" onClick={() => setPausado(v => !v)}>
+              <button type="button" className="tt-ctrl" onClick={alternarPausa}>
                 {pausado ? (
                   <><svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.5v9l7-4.5z" fill="currentColor" /></svg>Reproduzir</>
                 ) : (
@@ -176,6 +191,7 @@ export function Mockup({ pagina, rota, passos, children }: {
               Reiniciar
             </button>
           </div>
+          <div className="tt-dica-passos">Clique em um passo para vê-lo</div>
           <ol className="tt-passos">
             {passos.map((p, i) => i === 0 ? null : (
               <li key={i} className={i === passo ? 'atual' : i < passo ? 'feito' : ''}>

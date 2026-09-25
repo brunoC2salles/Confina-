@@ -1,30 +1,27 @@
 /* src/pages/tutorial.css
-   Tutorial de uso. Identidade: Inter (corpo), Syne (títulos), verde #2e7d32,
-   verde-escuro #1b5e20, dourado #c99a2e. Sem emojis, sem setas. */
+   Tutorial de uso. Segue o visual do app: fundo cinza-claro, cartões brancos,
+   texto preto/cinza, verde só em ações e destaques. Sem emojis, sem setas. */
 
 .tut-page { max-width: 1320px; }
 
-/* ─── Hero ─────────────────────────────────────────────────────────────── */
-.tut-hero {
-  background: #1b5e20;
-  background-image: radial-gradient(circle at 88% 12%, rgba(201,154,46,0.22), transparent 42%), linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
-  border-radius: 16px;
-  padding: 36px 36px 28px;
-  color: #fff;
-  margin-bottom: 20px;
-}
-.tut-hero-kicker { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #e6c46f; }
-.tut-hero-titulo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 40px; line-height: 1.05; margin: 8px 0 12px; letter-spacing: -0.01em; }
-.tut-hero-texto { font-size: 15px; line-height: 1.6; color: rgba(255,255,255,0.86); max-width: 720px; }
-.tut-trilha { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(98px, 1fr)); gap: 8px; margin-top: 26px; padding: 0; }
+/* ─── Cabeçalho ────────────────────────────────────────────────────────── */
+.tut-cab { margin-bottom: 16px; }
+.tut-cab h1 { font-size: 22px; font-weight: 600; }
+.tut-cab p { font-size: 13px; color: #9e9e9e; margin-top: 3px; }
+.tut-hero { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: var(--shadow-sm); }
+.tut-aviso { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); margin-bottom: 14px; }
+.tut-aviso strong { color: var(--text-1); font-weight: 600; }
+.tut-aviso-play { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--green); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.tut-aviso-play svg { margin-left: 2px; }
+.tut-trilha { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; }
+.tut-trilha li { flex: 1 1 auto; }
 .tut-trilha button {
-  width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
-  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); border-radius: 10px;
-  padding: 12px 10px; color: #fff; cursor: pointer; font-family: inherit; text-align: left; transition: background .15s, border-color .15s;
+  width: 100%; display: flex; align-items: center; gap: 8px; background: var(--gray-50); border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 10px; color: var(--text-1); cursor: pointer; font-family: inherit; text-align: left; transition: border-color .15s, background .15s;
 }
-.tut-trilha button:hover { background: rgba(255,255,255,0.16); border-color: rgba(230,196,111,0.7); }
-.tut-trilha-n { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; color: #e6c46f; line-height: 1; }
-.tut-trilha-t { font-size: 12px; font-weight: 500; }
+.tut-trilha button:hover { border-color: #a5d6a7; background: #fff; }
+.tut-trilha-n { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: #fff; border: 1px solid var(--border); color: var(--text-2); }
+.tut-trilha-t { font-size: 12.5px; font-weight: 500; white-space: nowrap; }
 
 /* ─── Navegação ────────────────────────────────────────────────────────── */
 .tut-chips { display: none; }
@@ -46,22 +43,22 @@
 
 /* ─── Seções ───────────────────────────────────────────────────────────── */
 .tut-secoes { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
-.tut-secao { background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 26px; scroll-margin-top: 16px; }
-.tut-secao-cab { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
-.tut-secao-n { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 38px; line-height: 0.9; color: #c99a2e; flex-shrink: 0; }
+.tut-secao { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 24px; scroll-margin-top: 16px; box-shadow: var(--shadow-sm); }
+.tut-secao-cab { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 20px; }
+.tut-secao-n { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; background: var(--gray-100); color: var(--text-2); }
 .tut-secao-info { flex: 1; min-width: 0; }
-.tut-secao-info h2 { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 24px; line-height: 1.1; color: #1c1917; margin: 2px 0 6px; }
+.tut-secao-info h2 { font-size: 18px; font-weight: 600; line-height: 1.3; color: var(--text-1); margin: 4px 0 6px; }
 .tut-secao-info p { font-size: 14px; line-height: 1.6; color: var(--text-2); max-width: 760px; }
 .tut-ir { flex-shrink: 0; }
 .tut-mock { margin-bottom: 18px; }
-.tut-mock-titulo { font-size: 12px; font-weight: 600; color: #1b5e20; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.tut-mock-titulo { font-size: 13px; font-weight: 600; color: var(--text-1); margin-bottom: 8px; }
 .tut-dicas { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.tut-dicas li { display: flex; gap: 10px; padding: 12px 14px; background: #fafaf9; border: 1px solid #f0efed; border-radius: 10px; font-size: 13px; line-height: 1.55; color: var(--text-2); }
+.tut-dicas li { display: flex; gap: 10px; padding: 12px 14px; background: var(--gray-50); border: 1px solid #f0efed; border-radius: 8px; font-size: 13px; line-height: 1.55; color: var(--text-2); }
 .tut-dicas li:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.tut-dicas svg { flex-shrink: 0; color: #2e7d32; margin-top: 3px; }
-.tut-fim { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px; border-radius: 16px; background: #e8f5e9; border: 1px solid #c8e6c9; }
-.tut-fim h2 { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 22px; color: #1b5e20; }
-.tut-fim p { font-size: 14px; color: #2e7d32; margin-top: 4px; }
+.tut-dicas svg { flex-shrink: 0; color: var(--gray-400); margin-top: 3px; }
+.tut-fim { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 24px; border-radius: 12px; background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+.tut-fim h2 { font-size: 16px; font-weight: 600; color: var(--text-1); }
+.tut-fim p { font-size: 13px; color: var(--text-2); margin-top: 3px; }
 
 /* ─── Player (palco + roteiro) ─────────────────────────────────────────── */
 .tt-player { display: grid; grid-template-columns: minmax(0, 1fr) 224px; gap: 16px; align-items: start; }
@@ -69,11 +66,11 @@
 .tt-janela {
   position: absolute; top: 0; left: 0; transform-origin: top left; background: #f5f5f4;
   border: 1px solid #e7e5e4; border-radius: 12px; overflow: hidden; font-size: 12px; color: #1c1917;
-  box-shadow: 0 10px 30px rgba(27,94,32,0.10); user-select: none; pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06); user-select: none; pointer-events: none;
 }
 .tt-barra { height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; background: #fff; border-bottom: 1px solid #efeeec; }
 .tt-barra-url { font-size: 10.5px; color: #78716c; background: #f5f5f4; border-radius: 20px; padding: 3px 12px; }
-.tt-barra-tag { font-size: 9.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #a07a22; }
+.tt-barra-tag { font-size: 9.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #a8a29e; }
 .tt-app { display: flex; height: calc(100% - 30px); }
 .tt-nav { width: 120px; flex-shrink: 0; background: #fff; border-right: 1px solid #efeeec; padding: 10px 6px; display: flex; flex-direction: column; gap: 1px; }
 .tt-nav-item { font-size: 10.5px; color: #78716c; padding: 5px 8px; border-radius: 6px; }
@@ -81,6 +78,21 @@
 .tt-conteudo { position: relative; flex: 1; min-width: 0; padding: 14px 16px; overflow: hidden; }
 
 .tt-roteiro { display: flex; flex-direction: column; gap: 10px; }
+.tt-dica-passos { font-size: 11.5px; color: var(--gray-400); padding: 0 8px; }
+.tt-play {
+  position: absolute; inset: 0; z-index: 40; border: none; padding: 0; cursor: pointer; font-family: inherit;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  background: rgba(255,255,255,0.55); border-radius: 12px; transition: background .2s;
+}
+.tt-play:hover { background: rgba(255,255,255,0.35); }
+.tt-play-circulo {
+  width: 64px; height: 64px; border-radius: 50%; background: var(--green); color: #fff;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,0.18); transition: transform .2s, background .2s;
+}
+.tt-play-circulo svg { margin-left: 3px; }
+.tt-play:hover .tt-play-circulo { transform: scale(1.06); background: var(--green-dark); }
+.tt-play:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.tt-play-texto { font-size: 13px; font-weight: 600; color: var(--text-1); background: #fff; border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; box-shadow: var(--shadow-sm); }
 .tt-controles { display: flex; gap: 6px; }
 .tt-ctrl {
   display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 8px;
@@ -99,7 +111,7 @@
   flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
   font-size: 10.5px; font-weight: 600; border: 1px solid #d6d3d1; color: #a8a29e; background: #fff; transition: all .2s;
 }
-.tt-passos li.feito .tt-passo-n { background: #c8e6c9; border-color: #c8e6c9; color: #1b5e20; }
+.tt-passos li.feito .tt-passo-n { background: var(--gray-100); border-color: var(--gray-200); color: var(--text-2); }
 .tt-passos li.atual .tt-passo-n { background: #2e7d32; border-color: #2e7d32; color: #fff; }
 
 /* ─── Cursor ───────────────────────────────────────────────────────────── */
@@ -220,7 +232,7 @@
 .tt-sucesso-titulo { font-size: 11.5px; font-weight: 600; color: #1b5e20; }
 
 .tt-planilha { position: absolute; inset: 22px 30px; background: #fff; border-radius: 10px; border: 1px solid #d6d3d1; box-shadow: 0 16px 40px rgba(0,0,0,0.18); z-index: 10; display: flex; flex-direction: column; overflow: hidden; animation: tt-modal .3s ease-out; }
-.tt-planilha-nome { padding: 8px 12px; font-size: 11px; font-weight: 600; background: #1b5e20; color: #fff; }
+.tt-planilha-nome { padding: 8px 12px; font-size: 11px; font-weight: 600; background: #fafafa; color: #1c1917; border-bottom: 1px solid #efeeec; }
 .tt-planilha-grade { flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 5px; }
 .tt-planilha-lin { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
 .tt-planilha-lin span { height: 18px; border-radius: 3px; background: #f5f5f4; }
@@ -234,17 +246,19 @@
 .tt-chip.on { border-color: #2e7d32; background: #e8f5e9; color: #1b5e20; }
 
 .tt-folha { position: absolute; top: 18px; right: 22px; bottom: 18px; width: 320px; background: #fff; border-radius: 6px; box-shadow: 0 18px 45px rgba(0,0,0,0.25); padding: 16px; z-index: 10; display: flex; flex-direction: column; gap: 8px; animation: tt-folha .45s cubic-bezier(.2,.9,.3,1.1); }
-.tt-folha-titulo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 14px; color: #1b5e20; border-bottom: 2px solid #c99a2e; padding-bottom: 6px; }
+.tt-folha-titulo { font-weight: 600; font-size: 13px; color: #1c1917; border-bottom: 1px solid #1c1917; padding-bottom: 6px; }
 @keyframes tt-folha { from { opacity: 0; transform: translateY(24px) rotate(1.5deg); } to { opacity: 1; transform: none; } }
 
 .tt-usos { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; animation: tt-entra .4s ease-out; }
-.tt-uso { background: #fff; border: 1px solid #a5d6a7; border-radius: 10px; padding: 10px 12px; box-shadow: 0 8px 22px rgba(27,94,32,0.12); display: flex; flex-direction: column; gap: 6px; }
-.tt-uso-onde { font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a07a22; }
+.tt-uso { background: #fff; border: 1px solid #e7e5e4; border-radius: 10px; padding: 10px 12px; box-shadow: 0 8px 22px rgba(0,0,0,0.08); display: flex; flex-direction: column; gap: 6px; }
+.tt-uso-onde { font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #78716c; }
 
 /* ─── Responsivo ───────────────────────────────────────────────────────── */
 @media (max-width: 1180px) {
   .tut-corpo { grid-template-columns: minmax(0, 1fr); }
   .tut-indice { display: none; }
+  .tut-trilha { display: none; }
+  .tut-aviso { margin-bottom: 0; }
   .tut-chips {
     display: flex; gap: 6px; overflow-x: auto; position: sticky; top: 0; z-index: 5; padding: 10px 0; margin-bottom: 8px;
     background: var(--gray-100); scrollbar-width: none;
@@ -254,7 +268,7 @@
     flex-shrink: 0; height: 32px; padding: 0 12px; border-radius: 20px; border: 1px solid var(--border); background: #fff;
     font-family: inherit; font-size: 12px; font-weight: 500; color: var(--text-2); cursor: pointer; white-space: nowrap;
   }
-  .tut-chips button.ativa { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+  .tut-chips button.ativa { background: #e8f5e9; border-color: #a5d6a7; color: #1b5e20; }
   .tut-secao { scroll-margin-top: 60px; }
 }
 @media (max-width: 960px) {
@@ -263,15 +277,12 @@
   .tut-dicas { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
-  .tut-hero { padding: 24px 20px 20px; }
-  .tut-hero-titulo { font-size: 30px; }
-  .tut-hero-texto { font-size: 14px; }
   .tut-trilha { display: none; }
+  .tut-aviso { margin-bottom: 0; align-items: flex-start; }
   .tut-secao { padding: 18px 16px; }
   .tut-secao-cab { flex-wrap: wrap; gap: 12px; }
-  .tut-secao-n { font-size: 30px; }
-  .tut-secao-info { flex-basis: calc(100% - 60px); }
-  .tut-secao-info h2 { font-size: 20px; }
+  .tut-secao-info { flex-basis: calc(100% - 50px); }
+  .tut-secao-info h2 { font-size: 17px; }
   .tut-ir { width: 100%; }
   .tt-passos { grid-template-columns: 1fr; }
   .tut-fim { flex-direction: column; align-items: flex-start; }

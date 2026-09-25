@@ -164,13 +164,18 @@ export default function Tutorial() {
 
   return (
     <div className="page tut-page">
-      <header className="tut-hero">
-        <div className="tut-hero-kicker">Tutorial de uso</div>
-        <h1 className="tut-hero-titulo">Comece do jeito certo</h1>
-        <p className="tut-hero-texto">
-          Nove passos, na ordem em que a plataforma funciona melhor. Cada etapa mostra, em animação, como a tela é usada.
-          Clique em qualquer passo da animação para vê-lo com calma.
-        </p>
+      <header className="tut-cab">
+        <h1>Tutorial de uso</h1>
+        <p>Nove passos, na ordem em que a plataforma funciona melhor.</p>
+      </header>
+
+      <div className="tut-hero">
+        <div className="tut-aviso">
+          <span className="tut-aviso-play" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3.5 1.8v8.4l6.6-4.2z" fill="currentColor" /></svg>
+          </span>
+          <span>Cada etapa tem uma animação da tela. <strong>Clique no play</strong> para assistir e clique nos passos ao lado para ver cada um com calma.</span>
+        </div>
         <ol className="tut-trilha">
           {SECOES.map((s, i) => (
             <li key={s.id}>
@@ -181,7 +186,7 @@ export default function Tutorial() {
             </li>
           ))}
         </ol>
-      </header>
+      </div>
 
       <nav className="tut-chips" aria-label="Etapas do tutorial">
         {SECOES.map((s, i) => (
@@ -209,7 +214,7 @@ export default function Tutorial() {
           {SECOES.map((s, i) => (
             <section key={s.id} id={`tut-${s.id}`} className="tut-secao">
               <div className="tut-secao-cab">
-                <span className="tut-secao-n">{String(i + 1).padStart(2, '0')}</span>
+                <span className="tut-secao-n">{i + 1}</span>
                 <div className="tut-secao-info">
                   <h2>{s.titulo}</h2>
                   <p>{s.resumo}</p>
