@@ -2,10 +2,12 @@
 // Cada mockup é uma sequência de "passos". O passo atual controla o que aparece
 // na tela simulada; o cursor se move até o elemento marcado com data-alvo do
 // passo e, se o passo tiver clique, mostra o efeito de clique ao chegar.
-// A animação só roda quando o mockup está visível na tela. Com
-// prefers-reduced-motion, o mockup fica parado no último passo, sem cursor.
+// A animação começa parada e só roda depois do clique no play (ação do próprio
+// usuário), pausando sozinha quando o mockup sai da tela. Por ser iniciada pelo
+// usuário, ela roda mesmo com "reduzir movimento" ativo no sistema (no Windows,
+// "Efeitos de animação" desligado), que antes escondia o play por completo.
 
-import { createContext, ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 export interface Passo {
   legenda: string
@@ -18,27 +20,11 @@ const LARGURA = 680
 const LARGURA_COMPACTA = 560 // sem a barra lateral simulada, para telas estreitas
 const ALTURA = 470
 
-const CtxMovimento = createContext<{ reduzido: boolean }>({ reduzido: false })
-
-function usePrefereMenosMovimento() {
-  const [reduzido, setReduzido] = useState(false)
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const atualizar = () => setReduzido(mq.matches)
-    atualizar()
-    mq.addEventListener('change', atualizar)
-    return () => mq.removeEventListener('change', atualizar)
-  }, [])
-  return reduzido
-}
-
 // Texto sendo digitado dentro de um campo simulado.
 export function Digita({ texto, ativo, velocidade = 55 }: { texto: string; ativo: boolean; velocidade?: number }) {
-  const { reduzido } = useContext(CtxMovimento)
   const [n, setN] = useState(0)
   useEffect(() => {
     if (!ativo) { setN(0); return }
-    if (reduzido) { setN(texto.length); return }
     setN(0)
     let i = 0
     const id = window.setInterval(() => {
@@ -47,7 +33,7 @@ export function Digita({ texto, ativo, velocidade = 55 }: { texto: string; ativo
       if (i >= texto.length) window.clearInterval(id)
     }, velocidade)
     return () => window.clearInterval(id)
-  }, [ativo, texto, velocidade, reduzido])
+  }, [ativo, texto, velocidade])
   const digitando = ativo && n < texto.length
   return <>{texto.slice(0, n)}{digitando && <span className="tt-caret" />}</>
 }
@@ -60,7 +46,6 @@ export function Mockup({ pagina, rota, passos, children }: {
   passos: Passo[]
   children: (p: number) => ReactNode
 }) {
-  const reduzido = usePrefereMenosMovimento()
   const [passo, setPasso] = useState(0)
   // A animação começa parada: só roda depois que o usuário clica no play.
   const [iniciado, setIniciado] = useState(false)
@@ -97,9 +82,7 @@ export function Mockup({ pagina, rota, passos, children }: {
     return () => io.disconnect()
   }, [])
 
-  useEffect(() => { if (reduzido) setPasso(passos.length - 1) }, [reduzido, passos.length])
-
-  const rodando = visivel && iniciado && !pausado && !reduzido
+  const rodando = visivel && iniciado && !pausado
 
   useEffect(() => {
     if (!rodando) return
@@ -141,7 +124,7 @@ export function Mockup({ pagina, rota, passos, children }: {
   }
 
   return (
-    <CtxMovimento.Provider value={{ reduzido }}>
+    <>
       <div className="tt-player">
         <div className="tt-palco" ref={externoRef} style={{ height: ALTURA * escala }}>
           <div className="tt-janela" ref={internoRef}
@@ -157,7 +140,7 @@ export function Mockup({ pagina, rota, passos, children }: {
               </div>}
               <div className="tt-conteudo">{children(passo)}</div>
             </div>
-            {!reduzido && (
+            {iniciado && (
               <div className={`tt-cursor${clicando ? ' clicando' : ''}`}
                 style={{ transform: `translate(${cursor.x}px, ${cursor.y}px)` }}>
                 <svg width="18" height="22" viewBox="0 0 18 22"><path d="M1 1 L1 17 L5.5 13 L8.5 20 L11.5 18.7 L8.6 12 L14.5 12 Z" fill="#1c1917" stroke="#fff" strokeWidth="1.4" strokeLinejoin="round" /></svg>
@@ -165,7 +148,7 @@ export function Mockup({ pagina, rota, passos, children }: {
               </div>
             )}
           </div>
-          {!iniciado && !reduzido && (
+          {!iniciado && (
             <button type="button" className="tt-play" onClick={tocar} aria-label="Ver a animação">
               <span className="tt-play-circulo">
                 <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M7 4.5v13l11-6.5z" fill="currentColor" /></svg>
@@ -177,15 +160,13 @@ export function Mockup({ pagina, rota, passos, children }: {
 
         <div className="tt-roteiro">
           <div className="tt-controles">
-            {!reduzido && (
-              <button type="button" className="tt-ctrl" onClick={alternarPausa}>
-                {pausado ? (
-                  <><svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.5v9l7-4.5z" fill="currentColor" /></svg>Reproduzir</>
-                ) : (
-                  <><svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="1.5" width="2.5" height="9" fill="currentColor" /><rect x="7" y="1.5" width="2.5" height="9" fill="currentColor" /></svg>Pausar</>
-                )}
-              </button>
-            )}
+            <button type="button" className="tt-ctrl" onClick={alternarPausa}>
+              {pausado ? (
+                <><svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.5v9l7-4.5z" fill="currentColor" /></svg>Reproduzir</>
+              ) : (
+                <><svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="1.5" width="2.5" height="9" fill="currentColor" /><rect x="7" y="1.5" width="2.5" height="9" fill="currentColor" /></svg>Pausar</>
+              )}
+            </button>
             <button type="button" className="tt-ctrl" onClick={reiniciar}>
               <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 2a4 4 0 1 1-3.6 2.3" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M1.5 1.5v3.2h3.2" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
               Reiniciar
@@ -204,6 +185,6 @@ export function Mockup({ pagina, rota, passos, children }: {
           </ol>
         </div>
       </div>
-    </CtxMovimento.Provider>
+    </>
   )
 }

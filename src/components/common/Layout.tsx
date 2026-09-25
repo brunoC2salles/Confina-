@@ -71,10 +71,6 @@ export function Sidebar({ isOpen, onNavigate, recolhido, onAlternarRecolhido }: 
       <div className="sidebar-topo" style={{ borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <img className="sidebar-logo" src="/logo.png" alt="Confina+" style={{ objectFit: 'contain' }} />
       </div>
-      <button type="button" className="sidebar-alternar" onClick={onAlternarRecolhido}
-        aria-label={recolhido ? 'Expandir menu' : 'Recolher menu'} title={recolhido ? 'Expandir menu' : 'Recolher menu'}>
-        <IconePainel />
-      </button>
       <nav className="sidebar-nav" style={{ flex: 1, overflowY: 'auto' }}>
         <div className="sidebar-grupo" style={{ fontSize: '10px', color: '#bdbdbd', padding: '8px 12px 4px', letterSpacing: '0.6px', textTransform: 'uppercase' }}>Principal</div>
         {NAV_PRINCIPAL.map(n => (
@@ -93,6 +89,10 @@ export function Sidebar({ isOpen, onNavigate, recolhido, onAlternarRecolhido }: 
         ))}
       </nav>
       <div className="sidebar-rodape" style={{ borderTop: '1px solid #f0f0f0' }}>
+        <button type="button" className="sidebar-alternar" onClick={onAlternarRecolhido}
+          aria-label={recolhido ? 'Expandir menu' : 'Recolher menu'} title={recolhido ? 'Expandir menu' : undefined}>
+          <IconePainel /><span className="sidebar-rotulo">Recolher menu</span>
+        </button>
         <div className="sidebar-usuario" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}
           title={recolhido ? `${user?.user_metadata?.nome || user?.email || ''} · ${roleLabel}` : undefined}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#e8f5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#2e7d32', flexShrink: 0 }}>{initials}</div>
