@@ -284,13 +284,16 @@ export function useDietas() {
       if (e2) return { error: e2.message }
     }
 
-    // Abre a primeira versão do histórico de custo — a dieta só pode ter sido
-    // usada em ciclos a partir de agora (não existia antes), então não há
-    // período anterior pra cobrir.
-    await supabase.from('dietas_historico_custo').insert({
-      dieta_id: dieta.id, custo_kg_ms, vigente_desde: new Date().toISOString().slice(0, 10),
-      vigente_ate: null, user_id: user.id,
-    })
+    // Abre a primeira versão do histórico de custo. Lotes e ciclos podem ser
+    // cadastrados com datas retroativas usando uma dieta recém-criada, então
+    // grava também uma versão retroativa com o mesmo preço cobrindo tudo antes
+    // de hoje (mesmo padrão do backfill em atualizarDieta) — sem ela, os dias
+    // anteriores à criação da dieta ficam sem custo de alimentação calculado.
+    const hoje = new Date().toISOString().slice(0, 10)
+    await supabase.from('dietas_historico_custo').insert([
+      { dieta_id: dieta.id, custo_kg_ms, vigente_desde: '1970-01-01', vigente_ate: hoje, user_id: user.id },
+      { dieta_id: dieta.id, custo_kg_ms, vigente_desde: hoje, vigente_ate: null, user_id: user.id },
+    ])
 
     await fetchDietas()
     return { error: null, dieta }
