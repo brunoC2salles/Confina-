@@ -12,6 +12,10 @@ import {
   type PeriodoCustoGrupo, type CompraGrupoInfo, type SaldoGrupo, type RankingLoteCompra,
   type AnimalConsumoInput,
 } from '@/lib/custoRacaoGrupo'
+import { calcularPctMsDieta } from '@/lib/custoIngrediente'
+import { carregarComposicaoDietas, kgMsDaCompraGrupo } from '@/lib/componentesDieta'
+import { inicioCoberturaPorLote } from '@/lib/fornecimentoRacao'
+import { carregarFornecimentosDosLotes, carregarFornecimentosDosGrupos, type FornecimentoCompleto } from '@/lib/fornecimentosDb'
 import type {
   GrupoConsumoRacao, GrupoConsumoLoteRow, CompraRacaoGrupo, GrupoConsumoPeriodo,
 } from '@/types'
@@ -48,6 +52,17 @@ export function useGruposConsumoRacao() {
     setDietas(dietasData ?? [])
     setFornecedores(parceirosData ?? [])
     setLoading(false)
+
+    // Migração única da conversão para kg de MS: compras de dieta pronta
+    // registradas antes do campo pct_ms existir tinham a quantidade usada
+    // como se fosse MS. Para cada grupo com compra sem pct_ms, grava a % MS
+    // usada (calculada pela dieta, ou 100% se não der pra calcular) e refaz
+    // a cadeia de custo médio do grupo já em kg de MS.
+    const { data: legado } = await supabase.from('compras_racao_grupo').select('grupo_id').eq('user_id', user.id).is('pct_ms', null)
+    const gruposLegado = Array.from(new Set(((legado ?? []) as Array<{ grupo_id: string }>).map(c => c.grupo_id)))
+    for (const grupoId of gruposLegado) {
+      await migrarGrupoParaMs(grupoId, user.id)
+    }
   }, [user])
 
   useEffect(() => { fetch() }, [fetch])
@@ -99,6 +114,9 @@ interface DadosConsumoGrupo {
   lotesInfo: Record<string, { nome_lote: string; codigo_lote: string }>
   pct: number | null
   dietaId: string | null
+  // % MS da dieta do grupo calculada pelos componentes (null = não dá pra
+  // calcular) — usada para converter compras sem pct_ms em kg de MS.
+  pctMsDieta: number | null
   // R$/kg teórico confirmado manualmente (ver confirmarSaldoAtual, abaixo) —
   // null = usa o custo médio calculado normalmente a partir da quantidade
   // real comprada.
@@ -118,6 +136,24 @@ interface DadosConsumoGrupo {
 // criada ou editada, pra saber o consumo teórico ATUALIZADO antes de
 // recalcular a cadeia de períodos de custo médio (ver recomputarPeriodos,
 // dentro de useResumoGrupo).
+// Soma ao consumo do grupo o que foi fornecido (mistura pronta) a partir do
+// estoque dele: kg de MS de cada fornecimento, na parte de cada lote, no dia
+// do fornecimento (a baixa de estoque acontece quando a ração é fornecida).
+function adicionarFornecidoAoConsumo(
+  consumo: Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>>,
+  fornecimentos: FornecimentoCompleto[],
+): void {
+  for (const f of fornecimentos) {
+    if (f.modo !== 'mistura_pronta') continue
+    const kgMs = f.kg_total * ((f.pct_ms ?? 100) / 100)
+    const dia = toDay(f.data)
+    for (const l of f.lotes) {
+      const bucket = ((consumo[l.lote_id] ??= {})[dia] ??= { pesoTotalKg: 0, qtdAtiva: 0, consumoKg: 0 })
+      bucket.consumoKg += kgMs * l.fracao
+    }
+  }
+}
+
 async function carregarDadosConsumoGrupo(grupoId: string): Promise<DadosConsumoGrupo> {
   const [{ data: grupoData }, { data: membrosData }, { data: comprasData }, { data: periodosData }] = await Promise.all([
     supabase.from('grupos_consumo_racao').select('dieta_id, custo_confirmado_kg').eq('id', grupoId).single(),
@@ -135,13 +171,28 @@ async function carregarDadosConsumoGrupo(grupoId: string): Promise<DadosConsumoG
   const loteIds = Array.from(new Set(membrosArr.map(m => m.lote_id)))
 
   let pct: number | null = null
+  let pctMsDieta: number | null = null
   if (dietaId) {
-    const { data: dietaData } = await supabase.from('dietas').select('pct_consumo_pv_ms').eq('id', dietaId).single()
-    pct = dietaData?.pct_consumo_pv_ms ?? null
+    const composicoes = await carregarComposicaoDietas([dietaId])
+    const composicao = composicoes[dietaId]
+    pct = composicao?.pct_consumo_pv_ms ?? null
+    pctMsDieta = composicao ? calcularPctMsDieta(composicao) : null
   }
 
+  // Fornecimentos de mistura pronta que baixaram deste grupo (realizado) e
+  // fornecimentos dos lotes membros (a partir do primeiro de cada lote, o
+  // teórico deixa de contar para ele).
+  const [fornecimentosDoGrupo, fornecimentosDosMembros] = await Promise.all([
+    carregarFornecimentosDosGrupos([grupoId]),
+    carregarFornecimentosDosLotes(loteIds),
+  ])
+  const inicioCobertura = inicioCoberturaPorLote(fornecimentosDosMembros)
+
   if (loteIds.length === 0) {
-    return { membrosArr, comprasArr, periodosArr, lotesInfo: {}, pct, dietaId, custoConfirmadoKg, consumoTeoricoPorLote: {}, algumAnimalNaDietaHoje: false }
+    const consumoSoFornecido: Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>> = {}
+    adicionarFornecidoAoConsumo(consumoSoFornecido, fornecimentoDoGrupoFiltrado(fornecimentosDoGrupo))
+    const lotesInfoFornecidos = await carregarNomesLotes(Object.keys(consumoSoFornecido))
+    return { membrosArr, comprasArr, periodosArr, lotesInfo: lotesInfoFornecidos, pct, dietaId, pctMsDieta, custoConfirmadoKg, consumoTeoricoPorLote: consumoSoFornecido, algumAnimalNaDietaHoje: false }
   }
 
   const [{ data: lotesData }, { data: ciclosData }, { data: trocasDietaData }, movsOrigem, movsDestino] = await Promise.all([
@@ -250,12 +301,125 @@ async function carregarDadosConsumoGrupo(grupoId: string): Promise<DadosConsumoG
     const diaInicial = comprasArr.length > 0 ? Math.min(...comprasArr.map(c => toDay(c.data_inicio_uso))) : null
     if (diaInicial !== null) {
       consumoTeoricoPorLote = calcularConsumoTeoricoPorLotePorDia(
-        loteIds, animaisPorLote, ciclos, pct, dietaId, trocasDieta, diaInicial, hojeDia + 1, limiteFimPorLote,
+        loteIds, animaisPorLote, ciclos, pct, dietaId, trocasDieta, diaInicial, hojeDia + 1, limiteFimPorLote, inicioCobertura,
       )
     }
   }
 
-  return { membrosArr, comprasArr, periodosArr, lotesInfo, pct, dietaId, custoConfirmadoKg, consumoTeoricoPorLote, algumAnimalNaDietaHoje }
+  adicionarFornecidoAoConsumo(consumoTeoricoPorLote, fornecimentoDoGrupoFiltrado(fornecimentosDoGrupo))
+  // Lote que recebeu fornecimento deste grupo sem ser membro dele: busca o
+  // nome para a lista de consumo por compra.
+  const lotesFaltando = Object.keys(consumoTeoricoPorLote).filter(id => !lotesInfo[id])
+  if (lotesFaltando.length > 0) Object.assign(lotesInfo, await carregarNomesLotes(lotesFaltando))
+
+  return { membrosArr, comprasArr, periodosArr, lotesInfo, pct, dietaId, pctMsDieta, custoConfirmadoKg, consumoTeoricoPorLote, algumAnimalNaDietaHoje }
+}
+
+function fornecimentoDoGrupoFiltrado(lista: FornecimentoCompleto[]): FornecimentoCompleto[] {
+  const hoje = new Date().toISOString().slice(0, 10)
+  return lista.filter(f => f.data <= hoje)
+}
+
+async function carregarNomesLotes(ids: string[]): Promise<Record<string, { nome_lote: string; codigo_lote: string }>> {
+  const resultado: Record<string, { nome_lote: string; codigo_lote: string }> = {}
+  if (ids.length === 0) return resultado
+  const { data } = await supabase.from('lotes').select('id, nome_lote, codigo_lote').in('id', ids)
+  for (const l of (data ?? []) as Array<{ id: string; nome_lote: string; codigo_lote: string }>) resultado[l.id] = { nome_lote: l.nome_lote, codigo_lote: l.codigo_lote }
+  return resultado
+}
+
+// ─── Recalcula toda a cadeia de períodos de custo médio do grupo ─────────
+// Cada período herda o saldo (kg e R$) do período imediatamente anterior —
+// por isso, mudar o valor de QUALQUER compra da cadeia (não só a mais
+// recente) pode alterar todos os períodos seguintes a ela. Em vez de tentar
+// atualizar só o período afetado (frágil e fácil de deixar algo desatualizado),
+// refaz a cadeia inteira do zero a partir das compras atuais (ordenadas por
+// data_inicio_uso) e do consumo teórico já calculado. Quantidades sempre em
+// kg de MS (o consumo teórico é peso x %MS), convertidas pela % MS de cada
+// compra (ver kgMsDaCompraGrupo).
+async function recomputarPeriodosGrupo(
+  grupoId: string,
+  userId: string,
+  comprasParaUsar: CompraRacaoGrupo[],
+  consumoParaUsar: Record<string, Record<number, { consumoKg: number }>>,
+  pctMsDieta: number | null,
+): Promise<{ error: string | null }> {
+  const ordenadas = [...comprasParaUsar].sort((a, b) => a.data_inicio_uso.localeCompare(b.data_inicio_uso))
+
+  let compradoAcumulado = 0
+  let custoMedioAnterior = 0
+  const novosPeriodos: Array<{ compra_id: string; vigente_desde: string; vigente_ate: string | null; saldo_kg_inicio: number; custo_medio_kg: number }> = []
+
+  for (let i = 0; i < ordenadas.length; i++) {
+    const c = ordenadas[i]
+    const diaUso = toDay(c.data_inicio_uso)
+    const kgMs = kgMsDaCompraGrupo(c.quantidade_kg, c.pct_ms, pctMsDieta)
+
+    let consumidoAte = 0
+    for (const porDia of Object.values(consumoParaUsar)) {
+      for (const [diaStr, info] of Object.entries(porDia)) {
+        if (Number(diaStr) < diaUso) consumidoAte += info.consumoKg
+      }
+    }
+
+    const saldoKgAntes = compradoAcumulado - consumidoAte
+    const saldoValorAntes = saldoKgAntes * custoMedioAnterior
+    const { saldoKgInicio, custoMedioKg } = calcularNovoPeriodo(saldoKgAntes, saldoValorAntes, kgMs, c.valor_total)
+
+    novosPeriodos.push({
+      compra_id: c.id,
+      vigente_desde: c.data_inicio_uso,
+      vigente_ate: i < ordenadas.length - 1 ? ordenadas[i + 1].data_inicio_uso : null,
+      saldo_kg_inicio: saldoKgInicio,
+      custo_medio_kg: custoMedioKg,
+    })
+
+    compradoAcumulado += kgMs
+    custoMedioAnterior = custoMedioKg
+  }
+
+  const { error: eDel } = await supabase.from('grupos_consumo_periodos').delete().eq('grupo_id', grupoId)
+  if (eDel) return { error: eDel.message }
+
+  if (novosPeriodos.length > 0) {
+    const { error: eIns } = await supabase.from('grupos_consumo_periodos').insert(
+      novosPeriodos.map(p => ({ grupo_id: grupoId, user_id: userId, ...p })),
+    )
+    if (eIns) return { error: eIns.message }
+  }
+
+  return { error: null }
+}
+
+// Refaz a cadeia de custo médio de um grupo a partir do estado atual
+// (compras, consumo teórico e fornecimentos). Usado depois de registrar ou
+// excluir um fornecimento de ração, que muda o consumo do grupo.
+export async function recomputarGrupoCompleto(grupoId: string, userId: string): Promise<{ error: string | null }> {
+  const dados = await carregarDadosConsumoGrupo(grupoId)
+  return recomputarPeriodosGrupo(grupoId, userId, dados.comprasArr, dados.consumoTeoricoPorLote, dados.pctMsDieta)
+}
+
+// Migração única (ver useGruposConsumoRacao): grava a % MS usada nas compras
+// antigas do grupo e refaz os períodos em kg de MS.
+async function migrarGrupoParaMs(grupoId: string, userId: string): Promise<void> {
+  const dados = await carregarDadosConsumoGrupo(grupoId)
+  const pctUsado = dados.pctMsDieta ?? 100
+  const legado = dados.comprasArr.filter(c => c.pct_ms == null)
+  if (legado.length === 0) return
+  const { error } = await supabase.from('compras_racao_grupo').update({ pct_ms: pctUsado })
+    .in('id', legado.map(c => c.id))
+  if (error) return
+  const comprasAtualizadas = dados.comprasArr.map(c => (c.pct_ms == null ? { ...c, pct_ms: pctUsado } : c))
+  // Custo confirmado manualmente também era por kg sem conversão: refaz em
+  // R$ por kg de MS, com a mesma regra de confirmarSaldoAtual.
+  if (dados.custoConfirmadoKg != null) {
+    const totalPago = comprasAtualizadas.reduce((s, c) => s + c.valor_total, 0)
+    const totalKgMs = comprasAtualizadas.reduce((s, c) => s + kgMsDaCompraGrupo(c.quantidade_kg, c.pct_ms, dados.pctMsDieta), 0)
+    if (totalKgMs > 0) {
+      await supabase.from('grupos_consumo_racao').update({ custo_confirmado_kg: totalPago / totalKgMs }).eq('id', grupoId)
+    }
+  }
+  await recomputarPeriodosGrupo(grupoId, userId, comprasAtualizadas, dados.consumoTeoricoPorLote, dados.pctMsDieta)
 }
 
 export function useResumoGrupo(grupoId: string | null) {
@@ -268,6 +432,7 @@ export function useResumoGrupo(grupoId: string | null) {
   const [consumoTeoricoPorLote, setConsumoTeoricoPorLote] =
     useState<Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>>>({})
   const [pctConsumoPvMs, setPctConsumoPvMs] = useState<number | null>(null)
+  const [pctMsDieta, setPctMsDieta] = useState<number | null>(null)
   // Ver DadosConsumoGrupo.algumAnimalNaDietaHoje. Começa true (postura
   // conservadora): antes de carregar, prefere não sugerir "ok" indevidamente.
   const [algumAnimalNaDietaHoje, setAlgumAnimalNaDietaHoje] = useState(true)
@@ -287,16 +452,17 @@ export function useResumoGrupo(grupoId: string | null) {
     setPeriodos(dados.periodosArr)
     setLotesInfo(dados.lotesInfo)
     setPctConsumoPvMs(dados.pct)
+    setPctMsDieta(dados.pctMsDieta)
     setConsumoTeoricoPorLote(dados.consumoTeoricoPorLote)
     setAlgumAnimalNaDietaHoje(dados.algumAnimalNaDietaHoje)
     setCustoConfirmadoKg(dados.custoConfirmadoKg)
 
     if (dados.membrosArr.length === 0) {
-      setSaldo({ totalCompradoKg: dados.comprasArr.reduce((s, c) => s + c.quantidade_kg, 0), totalConsumidoTeoricoKg: 0, saldoKg: 0, custoMedioKgVigente: null })
+      setSaldo({ totalCompradoKg: dados.comprasArr.reduce((s, c) => s + kgMsDaCompraGrupo(c.quantidade_kg, c.pct_ms, dados.pctMsDieta), 0), totalConsumidoTeoricoKg: 0, saldoKg: 0, custoMedioKgVigente: null })
     } else if (dados.pct != null && dados.dietaId) {
       const hojeDia = toDay(new Date().toISOString().slice(0, 10))
       const comprasInfo: CompraGrupoInfo[] = dados.comprasArr.map(c => ({
-        id: c.id, quantidade_kg: c.quantidade_kg, valor_total: c.valor_total,
+        id: c.id, quantidade_kg: kgMsDaCompraGrupo(c.quantidade_kg, c.pct_ms, dados.pctMsDieta), valor_total: c.valor_total,
         data_compra: c.data_compra, data_inicio_uso: c.data_inicio_uso,
       }))
       const periodosInfo: PeriodoCustoGrupo[] = dados.periodosArr.map(p => ({
@@ -323,62 +489,13 @@ export function useResumoGrupo(grupoId: string | null) {
 
   useEffect(() => { fetch() }, [fetch])
 
-  // ─── Recalcula toda a cadeia de períodos de custo médio do grupo ─────────
-  // Cada período herda o saldo (kg e R$) do período imediatamente anterior —
-  // por isso, mudar o valor de QUALQUER compra da cadeia (não só a mais
-  // recente) pode alterar todos os períodos seguintes a ela. Em vez de tentar
-  // atualizar só o período afetado (frágil e fácil de deixar algo desatualizado),
-  // refaz a cadeia inteira do zero a partir das compras atuais (ordenadas por
-  // data_inicio_uso) e do consumo teórico já calculado.
   const recomputarPeriodos = async (
     comprasParaUsar: CompraRacaoGrupo[],
     consumoParaUsar: Record<string, Record<number, { consumoKg: number }>>,
+    pctMsDietaParaUsar: number | null,
   ): Promise<{ error: string | null }> => {
     if (!user || !grupoId) return { error: 'Não autenticado' }
-    const ordenadas = [...comprasParaUsar].sort((a, b) => a.data_inicio_uso.localeCompare(b.data_inicio_uso))
-
-    let compradoAcumulado = 0
-    let custoMedioAnterior = 0
-    const novosPeriodos: Array<{ compra_id: string; vigente_desde: string; vigente_ate: string | null; saldo_kg_inicio: number; custo_medio_kg: number }> = []
-
-    for (let i = 0; i < ordenadas.length; i++) {
-      const c = ordenadas[i]
-      const diaUso = toDay(c.data_inicio_uso)
-
-      let consumidoAte = 0
-      for (const porDia of Object.values(consumoParaUsar)) {
-        for (const [diaStr, info] of Object.entries(porDia)) {
-          if (Number(diaStr) < diaUso) consumidoAte += info.consumoKg
-        }
-      }
-
-      const saldoKgAntes = compradoAcumulado - consumidoAte
-      const saldoValorAntes = saldoKgAntes * custoMedioAnterior
-      const { saldoKgInicio, custoMedioKg } = calcularNovoPeriodo(saldoKgAntes, saldoValorAntes, c.quantidade_kg, c.valor_total)
-
-      novosPeriodos.push({
-        compra_id: c.id,
-        vigente_desde: c.data_inicio_uso,
-        vigente_ate: i < ordenadas.length - 1 ? ordenadas[i + 1].data_inicio_uso : null,
-        saldo_kg_inicio: saldoKgInicio,
-        custo_medio_kg: custoMedioKg,
-      })
-
-      compradoAcumulado += c.quantidade_kg
-      custoMedioAnterior = custoMedioKg
-    }
-
-    const { error: eDel } = await supabase.from('grupos_consumo_periodos').delete().eq('grupo_id', grupoId)
-    if (eDel) return { error: eDel.message }
-
-    if (novosPeriodos.length > 0) {
-      const { error: eIns } = await supabase.from('grupos_consumo_periodos').insert(
-        novosPeriodos.map(p => ({ grupo_id: grupoId, user_id: (user as { id: string }).id, ...p })),
-      )
-      if (eIns) return { error: eIns.message }
-    }
-
-    return { error: null }
+    return recomputarPeriodosGrupo(grupoId, user.id, comprasParaUsar, consumoParaUsar, pctMsDietaParaUsar)
   }
 
   // Registra uma nova compra e recalcula a cadeia inteira de períodos a
@@ -387,13 +504,15 @@ export function useResumoGrupo(grupoId: string | null) {
   // antiga (registro retroativo).
   const registrarCompra = async (input: {
     quantidade_kg: number; valor_total: number; data_compra: string; data_inicio_uso: string
+    pct_ms: number
     parceiro_id?: string | null; observacoes?: string
   }) => {
     if (!user || !grupoId) return { error: 'Não autenticado' }
+    if (!(input.pct_ms > 0 && input.pct_ms <= 100)) return { error: 'Informe a % de matéria seca (entre 0 e 100)' }
 
     const { data: novaCompra, error: e1 } = await supabase.from('compras_racao_grupo').insert({
       grupo_id: grupoId, quantidade_kg: input.quantidade_kg, valor_total: input.valor_total,
-      data_compra: input.data_compra, data_inicio_uso: input.data_inicio_uso,
+      data_compra: input.data_compra, data_inicio_uso: input.data_inicio_uso, pct_ms: input.pct_ms,
       parceiro_id: input.parceiro_id ?? null, observacoes: input.observacoes ?? null, user_id: user.id,
     }).select().single()
     if (e1 || !novaCompra) return { error: e1?.message ?? 'Erro ao registrar compra' }
@@ -404,7 +523,7 @@ export function useResumoGrupo(grupoId: string | null) {
     await supabase.from('grupos_consumo_racao').update({ custo_confirmado_kg: null }).eq('id', grupoId)
 
     const dados = await carregarDadosConsumoGrupo(grupoId)
-    const { error: eRecalc } = await recomputarPeriodos(dados.comprasArr, dados.consumoTeoricoPorLote)
+    const { error: eRecalc } = await recomputarPeriodos(dados.comprasArr, dados.consumoTeoricoPorLote, dados.pctMsDieta)
     if (eRecalc) return { error: eRecalc }
 
     await fetch()
@@ -415,19 +534,20 @@ export function useResumoGrupo(grupoId: string | null) {
   // lista, a qualquer momento — e recalcula a cadeia inteira de períodos
   // depois, já que um ajuste numa compra do meio da cadeia muda o saldo
   // herdado por todas as compras seguintes a ela.
-  const editarCompra = async (compraId: string, input: { quantidade_kg: number; valor_total: number }) => {
+  const editarCompra = async (compraId: string, input: { quantidade_kg: number; valor_total: number; pct_ms: number }) => {
     if (!user || !grupoId) return { error: 'Não autenticado' }
     if (!input.quantidade_kg || input.quantidade_kg <= 0) return { error: 'Informe uma quantidade válida' }
     if (!input.valor_total || input.valor_total <= 0) return { error: 'Informe um valor válido' }
+    if (!(input.pct_ms > 0 && input.pct_ms <= 100)) return { error: 'Informe a % de matéria seca (entre 0 e 100)' }
 
     const { error: eUpd } = await supabase.from('compras_racao_grupo')
-      .update({ quantidade_kg: input.quantidade_kg, valor_total: input.valor_total }).eq('id', compraId)
+      .update({ quantidade_kg: input.quantidade_kg, valor_total: input.valor_total, pct_ms: input.pct_ms }).eq('id', compraId)
     if (eUpd) return { error: eUpd.message }
 
     await supabase.from('grupos_consumo_racao').update({ custo_confirmado_kg: null }).eq('id', grupoId)
 
     const dados = await carregarDadosConsumoGrupo(grupoId)
-    const { error: eRecalc } = await recomputarPeriodos(dados.comprasArr, dados.consumoTeoricoPorLote)
+    const { error: eRecalc } = await recomputarPeriodos(dados.comprasArr, dados.consumoTeoricoPorLote, dados.pctMsDieta)
     if (eRecalc) return { error: eRecalc }
 
     await fetch()
@@ -501,7 +621,7 @@ export function useResumoGrupo(grupoId: string | null) {
   const mostrarAlertaSaldo = !!saldo && saldo.saldoKg < 0 && algumAnimalNaDietaHoje && custoConfirmadoKg == null
 
   return {
-    membros, compras, periodos, lotesInfo, saldo, loading, pctConsumoPvMs, mostrarAlertaSaldo, custoConfirmadoKg,
+    membros, compras, periodos, lotesInfo, saldo, loading, pctConsumoPvMs, pctMsDieta, mostrarAlertaSaldo, custoConfirmadoKg,
     registrarCompra, editarCompra, confirmarSaldoAtual, limparConfirmacaoSaldo, adicionarLote, encerrarParticipacao, rankingPorCompra, refetch: fetch,
   }
 }

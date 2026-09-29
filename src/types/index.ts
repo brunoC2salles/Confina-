@@ -267,26 +267,6 @@ export interface CustoOperacionalLote {
   created_at: string
 }
 
-// ─── Custo real de ração do lote ───────────────────────────────────────────
-// Recalibra o custo de alimentação estimado pelo motor (dieta x %MS x custo/kg)
-// com o valor real gasto pelo produtor. Vale a partir de data_inicio até o
-// próximo lançamento (ou até hoje, se for o mais recente) — mesma ideia de
-// uma pesagem reiniciar a base do peso, mas para o custo de ração.
-export interface CustoRacaoRealLote {
-  id: string
-  lote_id: string
-  data_inicio: string
-  valor_total: number
-  // null = vale pro lote inteiro (comportamento original). Um número = vale
-  // só para os animais que estavam naquele ciclo em cada dia — importante
-  // com avanço de ciclo parcial, onde animais do mesmo lote podem estar em
-  // ciclos diferentes e ter comido dietas diferentes.
-  ciclo_numero: number | null
-  observacoes: string | null
-  user_id: string
-  created_at: string
-}
-
 export interface DietaHistoricoCusto {
   id: string
   dieta_id: string
@@ -347,7 +327,7 @@ export interface GrupoConsumoLoteRow {
   created_at: string
 }
 
-// Compra de ração vinculada ao grupo. data_inicio_uso é quando a leva
+// Compra de ração (dieta pronta) vinculada ao grupo. data_inicio_uso é quando a leva
 // comprada começa a ser consumida (pode ser diferente de data_compra) — é
 // essa data que fecha o período de custo médio anterior e abre um novo.
 export interface CompraRacaoGrupo {
@@ -358,6 +338,10 @@ export interface CompraRacaoGrupo {
   valor_total: number
   data_compra: string
   data_inicio_uso: string
+  // % de matéria seca da ração comprada — converte quantidade_kg (matéria
+  // natural) em kg de MS, a base do consumo teórico. Null só em compras
+  // antigas ainda não migradas (ver migrarGrupoParaMs).
+  pct_ms: number | null
   observacoes: string | null
   user_id: string
   created_at: string
@@ -432,4 +416,25 @@ export interface ResultadoVendaAnimal {
   margem_pct: number
   dias_confinamento: number
   gmd_medio: number
+}
+
+// ─── Compras de ingredientes (ração feita na fazenda) ─────────────────────
+// Entrada de estoque de um ingrediente: compra, produção própria (com custo
+// de produção informado) ou ajuste de inventário (quantidade_kg = saldo
+// contado na data, valor_total = 0). Quantidades em kg de matéria natural.
+// O custo médio ponderado de cada ingrediente fica em
+// compras_ingrediente_periodos (ver src/lib/custoIngrediente.ts).
+export interface CompraIngrediente {
+  id: string
+  origem_ingrediente: 'insumo_padrao' | 'ingrediente_produtor'
+  insumo_id: string | null
+  ingrediente_produtor_id: string | null
+  tipo: 'compra' | 'producao_propria' | 'ajuste'
+  data: string
+  quantidade_kg: number
+  valor_total: number
+  parceiro_id: string | null
+  observacoes: string | null
+  user_id: string
+  created_at: string
 }

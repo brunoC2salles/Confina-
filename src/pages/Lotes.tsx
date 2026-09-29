@@ -1,7 +1,7 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
-  useLotes, useAnimaisDoLote, useCustoEngine, useVendas, useCustosOperacionais, useCustosRacaoReal, useCompras,
+  useLotes, useAnimaisDoLote, useCustoEngine, useVendas, useCustosOperacionais, useCompras,
   useMovimentacoesLote, buscarPorIds,
   type CriarLoteInput, type CicloInput, type LinhaAnimalInput, type CompraInput, type CriarAnimaisInput,
   type MovimentacaoGrupoLote, type PesagemNaTroca, type CustoOperacionalComQtd,
@@ -14,7 +14,7 @@ import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt, fmtNum, fmtData, obterRendimento, obterBonus, ordenarPorBrinco } from '@/lib/calculations'
 import type {
   Lote, Animal, SaidaTipo, SaidaModo, RendimentoFaixa, BonusFaixa, TipoCiclo, Compra,
-  CustoOperacionalLote, CategoriaCustoOperacional, MotivoEncerramento, CustoRacaoRealLote, TrocaDietaLoteRow,
+  CustoOperacionalLote, CategoriaCustoOperacional, MotivoEncerramento, TrocaDietaLoteRow,
   CustoVariavelAnimal,
 } from '@/types'
 import { supabase } from '@/lib/supabase'
@@ -977,7 +977,6 @@ function DetalheLote({
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
   const { custos: custosOperacionais, loading: loadingCustosOp, total: totalCustoOperacional, adicionarCusto, removerCusto } = useCustosOperacionais(loteId)
-  const { custos: custosRacaoReal, loading: loadingCustosRacaoReal, adicionarCustoRacaoReal, editarCustoRacaoReal, removerCustoRacaoReal } = useCustosRacaoReal(loteId)
   const { compras, loading: loadingCompras, atualizarValorTotalCompra } = useCompras(loteId)
   const { eventos: eventosMovimentacao, loading: loadingMovimentacao, editarDataEvento } = useMovimentacoesLote(loteId)
   const { parceiros } = useParceiros()
@@ -1002,7 +1001,6 @@ function DetalheLote({
   const [showProjecao, setShowProjecao] = useState(false)
   const [showEncerrar, setShowEncerrar] = useState(false)
   const [showCustoOperacional, setShowCustoOperacional] = useState(false)
-  const [showCustoRacaoReal, setShowCustoRacaoReal] = useState(false)
   const [showCompras, setShowCompras] = useState(false)
   const [showEditarCiclos, setShowEditarCiclos] = useState(false)
   const [showDuplicados, setShowDuplicados] = useState(false)
@@ -1290,9 +1288,6 @@ function DetalheLote({
               <button className="btn btn-ghost btn-sm" onClick={() => setShowCustoOperacional(true)}>
                 Custos operacionais
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowCustoRacaoReal(true)}>
-                Custo real de ração
-              </button>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowCompras(true)}>
                 Compras
               </button>
@@ -1317,12 +1312,6 @@ function DetalheLote({
         {!loteAtivo && custosOperacionais.length > 0 && (
           <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setShowCustoOperacional(true)}>
             Ver custos operacionais ({fmt(totalCustoOperacional)})
-          </button>
-        )}
-
-        {!loteAtivo && custosRacaoReal.length > 0 && (
-          <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setShowCustoRacaoReal(true)}>
-            Ver custo real de ração ({custosRacaoReal.length} lançamento{custosRacaoReal.length !== 1 ? 's' : ''})
           </button>
         )}
 
@@ -1610,17 +1599,6 @@ function DetalheLote({
           onClose={() => setShowCustoOperacional(false)}
           onAdicionar={async input => { const res = await adicionarCusto(input); if (!res.error) await recalcular(); return res }}
           onRemover={async id => { await removerCusto(id); await recalcular() }}
-        />
-      )}
-
-      {showCustoRacaoReal && (
-        <ModalCustoRacaoReal
-          lote={lote} loteAtivo={loteAtivo} ciclos={ciclos}
-          custos={custosRacaoReal} loading={loadingCustosRacaoReal}
-          onClose={() => setShowCustoRacaoReal(false)}
-          onAdicionar={async input => { const res = await adicionarCustoRacaoReal(input); if (!res.error) await recalcular(); return res }}
-          onEditar={async (id, input) => { const res = await editarCustoRacaoReal(id, input); if (!res.error) await recalcular(); return res }}
-          onRemover={async id => { await removerCustoRacaoReal(id); await recalcular() }}
         />
       )}
 
@@ -3231,159 +3209,6 @@ function ModalCustosOperacionais({
           <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>Total lançado</span>
           <strong>{fmt(total)}</strong>
         </div>
-
-        <div className="modal-actions">
-          <button className="btn btn-primary" onClick={onClose}>Fechar</button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MODAL: CUSTO REAL DE RAÇÃO (recalibração)
-// Cada lançamento vale desde a data informada até o próximo lançamento (ou
-// até hoje, se for o mais recente), substituindo o custo de alimentação
-// estimado do motor nesse intervalo. Diferente do custo operacional, aqui dá
-// pra editar um lançamento já feito, não só excluir.
-// ═══════════════════════════════════════════════════════════════════════════
-
-function ModalCustoRacaoReal({
-  lote, loteAtivo, ciclos, custos, loading, onClose, onAdicionar, onEditar, onRemover,
-}: {
-  lote: Lote
-  loteAtivo: boolean
-  ciclos: Array<{ numero: number; nome: string }>
-  custos: CustoRacaoRealLote[]
-  loading: boolean
-  onClose: () => void
-  onAdicionar: (input: { data_inicio: string; valor_total: number; ciclo_numero?: number | null; observacoes?: string }) => Promise<{ error: string | null }>
-  onEditar: (id: string, input: { data_inicio: string; valor_total: number; ciclo_numero?: number | null; observacoes?: string }) => Promise<{ error: string | null }>
-  onRemover: (id: string) => Promise<void>
-}) {
-  const [editandoId, setEditandoId] = useState<string | null>(null)
-  const [dataInicio, setDataInicio] = useState(hojeStr())
-  const [valorTotal, setValorTotal] = useState('')
-  const [cicloNumero, setCicloNumero] = useState<string>('') // '' = lote inteiro
-  const [observacoes, setObservacoes] = useState('')
-  const [erro, setErro] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  const limparFormulario = () => {
-    setEditandoId(null); setDataInicio(hojeStr()); setValorTotal(''); setCicloNumero(''); setObservacoes(''); setErro(null)
-  }
-
-  const iniciarEdicao = (c: CustoRacaoRealLote) => {
-    setEditandoId(c.id); setDataInicio(c.data_inicio); setValorTotal(String(c.valor_total))
-    setCicloNumero(c.ciclo_numero != null ? String(c.ciclo_numero) : '')
-    setObservacoes(c.observacoes ?? ''); setErro(null)
-  }
-
-  const salvar = async () => {
-    const v = Number(valorTotal)
-    if (!v || v <= 0) { setErro('Informe um valor válido'); return }
-    setSaving(true); setErro(null)
-    const input = {
-      data_inicio: dataInicio, valor_total: v,
-      ciclo_numero: cicloNumero === '' ? null : Number(cicloNumero),
-      observacoes: observacoes || undefined,
-    }
-    const res = editandoId ? await onEditar(editandoId, input) : await onAdicionar(input)
-    setSaving(false)
-    if (res.error) { setErro(res.error); return }
-    limparFormulario()
-  }
-
-  const rotuloEscopo = (n: number | null) => {
-    if (n == null) return 'Lote inteiro'
-    const c = ciclos.find(c => c.numero === n)
-    return c ? `Ciclo ${n} — ${c.nome}` : `Ciclo ${n}`
-  }
-
-  return (
-    <Modal open onClose={onClose} title={`Custo real de ração — ${lote.nome_lote}`}
-      subtitle="Substitui o custo de alimentação estimado a partir da data informada, até o próximo lançamento do mesmo escopo" size="lg">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {loteAtivo && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600 }}>{editandoId ? 'Editando lançamento' : 'Novo lançamento'}</div>
-            <div className="form-row-2">
-              <div className="form-group">
-                <label className="form-label">A partir de</label>
-                <input className="form-input" type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Valor total gasto (R$)</label>
-                <input className="form-input" type="number" step="0.01" value={valorTotal} onChange={e => setValorTotal(e.target.value)} />
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Aplicar a</label>
-              <select className="form-input" value={cicloNumero} onChange={e => setCicloNumero(e.target.value)}>
-                <option value="">Todo o lote</option>
-                {ciclos.map(c => (
-                  <option key={c.numero} value={c.numero}>Ciclo {c.numero} — {c.nome}</option>
-                ))}
-              </select>
-              <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 4 }}>
-                Escolher um ciclo divide o valor só entre os animais que estiveram naquele ciclo em cada dia —
-                útil quando parte do lote já avançou de ciclo e comeu uma dieta diferente do resto.
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Observações (opcional)</label>
-              <input className="form-input" value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Ex: Nota fiscal da cooperativa" />
-            </div>
-            {erro && <div style={{ padding: 8, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 12 }}>{erro}</div>}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              {editandoId && (
-                <button className="btn btn-ghost btn-sm" onClick={limparFormulario} disabled={saving}>Cancelar edição</button>
-              )}
-              <button className="btn btn-primary btn-sm" onClick={salvar} disabled={saving}>
-                {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : (editandoId ? 'Salvar alteração' : '+ Lançar custo real')}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><div className="spinner" style={{ width: 24, height: 24 }} /></div>
-        ) : custos.length === 0 ? (
-          <div style={{ padding: 20, textAlign: 'center', color: 'var(--gray-500)', fontSize: 13 }}>Nenhum custo real de ração lançado ainda. O motor está usando a estimativa por dieta.</div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>A partir de</th><th>Aplicado a</th><th>Valor total</th><th>Observações</th>{loteAtivo && <th></th>}</tr></thead>
-              <tbody>
-                {custos.map(c => (
-                  <tr key={c.id}>
-                    <td>{fmtData(c.data_inicio)}</td>
-                    <td>
-                      <span style={{
-                        fontSize: 11, padding: '2px 8px', borderRadius: 20,
-                        background: c.ciclo_numero != null ? '#fdf3dc' : 'var(--gray-50)',
-                        color: c.ciclo_numero != null ? '#946200' : 'var(--gray-500)',
-                        border: `1px solid ${c.ciclo_numero != null ? '#c99324' : '#e0e0e0'}`,
-                      }}>
-                        {rotuloEscopo(c.ciclo_numero)}
-                      </span>
-                    </td>
-                    <td>{fmt(c.valor_total)}</td>
-                    <td>{c.observacoes || '—'}</td>
-                    {loteAtivo && (
-                      <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn btn-ghost btn-sm" onClick={() => iniciarEdicao(c)}>Editar</button>
-                          <button onClick={() => onRemover(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 16 }}>×</button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
 
         <div className="modal-actions">
           <button className="btn btn-primary" onClick={onClose}>Fechar</button>

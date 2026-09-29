@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import './tutorial.css'
 import {
   MockIngredientes, MockDietas, MockLotes, MockAnimais, MockCsv,
-  MockImportarLote, MockPesagens, MockComparativo, MockRanking, MockParceiros,
+  MockImportarLote, MockPesagens, MockCompras, MockFornecimento, MockComparativo, MockRanking, MockParceiros,
 } from '@/components/tutorial/Mockups'
 
 interface Secao {
@@ -97,6 +97,23 @@ const SECOES: Secao[] = [
     mockups: [{ el: <MockPesagens /> }],
   },
   {
+    id: 'compras', titulo: 'Ração e compras', curto: 'Compras',
+    rota: '/compras', rotaLabel: 'Abrir Compras',
+    resumo: 'Na aba Ração de Compras fica tudo da alimentação: as compras (dieta pronta ou ingredientes da ração feita na fazenda), o estoque, o fornecimento de ração aos lotes e o planejado x realizado. Medicamentos e Outros têm abas próprias.',
+    dicas: [
+      'Ingrediente: informe se foi comprado ou produzido na fazenda (com o custo de produção). A quantidade é em kg de matéria natural, como foi pesada.',
+      'Registre o fornecimento de ração: escolha a dieta, informe o total e os ingredientes vêm pela composição. A divisão entre os lotes é automática, pelo consumo previsto de cada um.',
+      'Cada fornecimento vale do dia dele até o próximo do mesmo lote. Nesses dias, custo, consumo e relação concentrado:volumoso do lote passam a ser os realizados, e o estoque baixa pelo que foi fornecido.',
+      'Use "Repetir último fornecimento" para lançar o dia a dia com um clique e ajustar só o que mudou.',
+      'O estoque de cada ingrediente é o que entrou menos o consumo. "Ajustar inventário" corrige o saldo com a contagem física. O custo médio do estoque vira o preço do ingrediente nas dietas a partir de cada entrada.',
+      'Dieta pronta: crie um grupo com os lotes que dividem a mesma ração e informe a % de matéria seca em cada compra.',
+    ],
+    mockups: [
+      { titulo: 'Registrar a compra de um ingrediente', el: <MockCompras /> },
+      { titulo: 'Registrar o fornecimento de ração', el: <MockFornecimento /> },
+    ],
+  },
+  {
     id: 'comparativo', titulo: 'Análise no Comparativo', curto: 'Comparativo',
     rota: '/comparativo', rotaLabel: 'Abrir Comparativo',
     resumo: 'O Comparativo coloca lotes lado a lado: peso médio, GMD, conversão, custo por kg ganho, lucro e margem. Use-o para descobrir qual estratégia, dieta ou origem está dando mais resultado.',
@@ -166,7 +183,7 @@ export default function Tutorial() {
     <div className="page tut-page">
       <header className="tut-cab">
         <h1>Tutorial de uso</h1>
-        <p>Nove passos, na ordem em que a plataforma funciona melhor.</p>
+        <p>Dez passos, na ordem em que a plataforma funciona melhor.</p>
       </header>
 
       <div className="tut-hero">

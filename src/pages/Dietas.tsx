@@ -1,11 +1,34 @@
 import { useState, useMemo, useCallback } from 'react'
 import {
-  useDietas, calcularCustoKgMsLado, calcularCustoDia,
-  type ComponenteDieta, type DietaBase, type IngredienteDisponivel,
+  useDietas, calcularCustoKgMsLado, calcularCustoDia, getPctMsEfetivo,
+  type ComponenteDieta, type DietaBase, type IngredienteDisponivel, type Dieta,
 } from '@/hooks/useDietas'
+import { usePrecosEstoqueHoje } from '@/hooks/useComprasIngrediente'
+import { chaveIngrediente, calcularCustoKgMsComPrecos } from '@/lib/custoIngrediente'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt } from '@/lib/calculations'
 import { Link } from 'react-router-dom'
+
+// Custo por kg de MS da dieta com o custo médio atual do estoque dos
+// ingredientes (ração feita na fazenda, ver Compras). Null quando nenhum
+// componente tem estoque, quando a dieta usa custo manual ou quando falta
+// % MS em algum componente. É o valor que o motor de custo usa a partir das
+// entradas — o custo cadastrado da dieta não é alterado.
+function custoComEstoque(d: Dieta, precos: Record<string, number>): number | null {
+  if (d.custo_manual_ativo) return null
+  const componentes = (d.componentes ?? []).map(c => ({
+    tipo: c.tipo,
+    chave: chaveIngrediente(c.origem_ingrediente, c.insumo_id, c.ingrediente_produtor_id),
+    pct_participacao: c.pct_participacao,
+    pct_ms: getPctMsEfetivo(c),
+    preco_kg: c.preco_kg,
+  }))
+  if (!componentes.some(c => c.chave != null && precos[c.chave] != null)) return null
+  return calcularCustoKgMsComPrecos({
+    pct_consumo_pv_ms: d.pct_consumo_pv_ms, pct_concentrado: d.pct_concentrado, pct_volumoso: d.pct_volumoso,
+    custo_manual_ativo: d.custo_manual_ativo, componentes,
+  }, precos)
+}
 
 const cicloLabel = (n: number) =>
   ({ 1: 'Adaptação', 2: 'Crescimento', 3: 'Engorda', 4: 'Acabamento' }[n] ?? `Ciclo ${n}`)
@@ -68,6 +91,7 @@ export default function Dietas() {
     dietas, dietasBase, ingredientesDisponiveis, loading,
     criarDieta, atualizarDieta, excluirDieta,
   } = useDietas()
+  const precosEstoque = usePrecosEstoqueHoje()
 
   const [showNova, setShowNova] = useState(false)
   const [showEditar, setShowEditar] = useState<string | null>(null)
@@ -412,6 +436,15 @@ export default function Dietas() {
                     )}
                   </div>
                 )}
+                {(() => {
+                  const custoEstoque = custoComEstoque(d, precosEstoque)
+                  return custoEstoque != null && (
+                    <div style={{ fontSize: 12, color: '#2e7d32', marginTop: -6 }}>
+                      Com estoque: <strong>{fmt(custoEstoque)}/kg MS</strong>
+                      <span style={{ color: 'var(--gray-400)', fontWeight: 400 }}> · custo médio atual dos ingredientes</span>
+                    </div>
+                  )
+                })()}
                 {(d.componentes?.length ?? 0) > 0 && (
                   <div style={{ fontSize: 12, color: '#9e9e9e' }}>
                     {d.componentes!.length} ingrediente{d.componentes!.length !== 1 ? 's' : ''}
@@ -424,7 +457,11 @@ export default function Dietas() {
                   <button className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center' }}
                     onClick={() => abrirEdicao(d.id)}>Editar</button>
                   <button className="btn btn-ghost btn-sm" style={{ color: '#b91c1c' }}
-                    onClick={() => { if (window.confirm(`Excluir "${d.nome}"?`)) excluirDieta(d.id) }}>Excluir</button>
+                    onClick={async () => {
+                      if (!window.confirm(`Excluir "${d.nome}"?`)) return
+                      const { error } = await excluirDieta(d.id)
+                      if (error) alert('Não foi possível excluir a dieta. Ela pode estar em uso em fornecimentos de ração registrados.')
+                    }}>Excluir</button>
                 </div>
               </div>
             ))}
@@ -694,7 +731,7 @@ export default function Dietas() {
         subtitle={dietaDetalhe?.ciclo_recomendado ? cicloLabel(dietaDetalhe.ciclo_recomendado) : 'Todos os ciclos'}>
         {dietaDetalhe && (
           <ModalDetalhe dieta={dietaDetalhe} simPeso={simPeso} simQtd={simQtd}
-            setSimPeso={setSimPeso} setSimQtd={setSimQtd} />
+            setSimPeso={setSimPeso} setSimQtd={setSimQtd} precosEstoque={precosEstoque} />
         )}
       </Modal>
 
@@ -829,9 +866,10 @@ function SecaoIngredientes({
 // ─── Sub-componente: modal detalhe ────────────────────────────────────────────
 
 function ModalDetalhe({
-  dieta, simPeso, simQtd, setSimPeso, setSimQtd,
+  dieta, simPeso, simQtd, setSimPeso, setSimQtd, precosEstoque,
 }: {
   dieta: import('@/hooks/useDietas').Dieta
+  precosEstoque: Record<string, number>
   simPeso: string; simQtd: string
   setSimPeso: (v: string) => void; setSimQtd: (v: string) => void
 }) {
@@ -841,6 +879,7 @@ function ModalDetalhe({
       Number(simPeso) || 0, Number(simQtd) || 0
     ), [dieta.pct_consumo_pv_ms, dieta.custo_kg_ms, simPeso, simQtd])
 
+  const custoEstoque = custoComEstoque(dieta, precosEstoque)
   const conc = (dieta.componentes ?? []).filter(c => c.tipo === 'concentrado')
   const vol = (dieta.componentes ?? []).filter(c => c.tipo === 'volumoso')
 
@@ -871,6 +910,13 @@ function ModalDetalhe({
             {dieta.custo_vigente_desde && (
               <div style={{ fontSize: 11, color: 'var(--green)' }}>válido desde {dieta.custo_vigente_desde.split('-').reverse().join('/')}</div>
             )}
+          </div>
+        )}
+        {custoEstoque != null && (
+          <div style={{ background: 'var(--green-bg)', borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 140 }}>
+            <div style={{ fontSize: 11, color: 'var(--green)' }}>Custo/kg MS com estoque</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--green-dark)' }}>{fmt(custoEstoque)}</div>
+            <div style={{ fontSize: 11, color: 'var(--green)' }}>custo médio atual dos ingredientes</div>
           </div>
         )}
       </div>

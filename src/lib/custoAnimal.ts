@@ -14,11 +14,11 @@
 //    (todos os ciclos, não só o vigente na data exata do lançamento) — um
 //    ciclo mais longo absorve proporcionalmente mais, mas nenhum ciclo já
 //    vivido fica de fora, mesmo os anteriores à data do lançamento
-//  - custo real de ração lançado pelo produtor no lote (recalibração): quando
-//    existe, SUBSTITUI o custo de alimentação estimado por dieta a partir da
-//    data do lançamento até o próximo lançamento (ou até hoje), rateado por
-//    dia entre os animais ativos naquele dia (mesmo princípio do rateio
-//    histórico acima, resolvido antes de chegar aqui)
+//  - custo real de ração do lote (fornecimento de ração registrado, ou o
+//    custo de um grupo de consumo de dieta pronta): quando existe para o
+//    dia, SUBSTITUI o custo de alimentação estimado por dieta, rateado entre
+//    os animais ativos naquele dia pelo peso (resolvido antes de chegar aqui,
+//    em useLotes.ts)
 //
 // O cálculo é feito dia a dia (não há acumulação em background), conforme
 // decisão de manter o custo histórico correto mesmo se o preço de uma dieta
@@ -129,12 +129,12 @@ export interface CustoOperacionalInfo {
 }
 
 // ─── Custo real de ração (recalibração) ────────────────────────────────────
-// Já vem pré-resolvido por dia (rateio histórico feito em useLotes.ts, mesmo
-// espírito do custo operacional, mas proporcional ao peso — animal mais
-// pesado consome mais, então absorve mais do custo real do dia):
-//  - valorTotalDia: quanto o grupo (lote inteiro, ou só o ciclo, se escopado)
-//    gastou de ração real naquele dia (valor_total do lançamento dividido
-//    pelos dias do intervalo de vigência)
+// Já vem pré-resolvido por dia em useLotes.ts, a partir de duas fontes: o
+// fornecimento de ração registrado (ver fornecimentoRacao.ts), que tem
+// prioridade, e os grupos de consumo (compra de dieta pronta rateada pelo
+// consumo teórico). Rateio proporcional ao peso — animal mais pesado consome
+// mais, então absorve mais do custo real do dia:
+//  - valorTotalDia: quanto o lote gastou de ração real naquele dia
 //  - pesoTotalDia: soma do peso projetado dos animais do grupo naquele dia
 //  - qtdAtivaDia: fallback para rateio igual por cabeça, usado só se
 //    pesoTotalDia vier zerado (situação anômala, não deveria ocorrer em uso normal)
@@ -151,6 +151,12 @@ export interface CustoRacaoRealDiaInfo {
   pesoTotalDia: number
   qtdAtivaDia: number
   cicloNumero: number | null
+  // Consumo realizado do lote no dia, em kg de MS (total e só concentrado).
+  // Preenchido só pelo fornecimento de ração: quando presente, substitui o
+  // consumo estimado pela dieta (peso x %MS) no consumo e na Conversão,
+  // rateado entre os animais pelo peso, como o valor.
+  kgMsDia?: number
+  kgMsConcentradoDia?: number
 }
 export type CustoRacaoRealPorDia = Record<number, CustoRacaoRealDiaInfo[]> // dia (toDay) -> lançamentos vigentes naquele dia
 
@@ -181,11 +187,11 @@ export interface ResultadoAnimalNaData {
   custoOperacionalConfinamento: number
   custoOperacionalMisto: number
   // ─── Consumo de ração em kg de MS (desde a entrada) ────────────────────────
-  // Sempre estimado por peso x %MS da dieta vigente no dia, independente de
-  // aquele dia ter custo real de ração lançado ou não — o custo real
-  // (custos_racao_real_lote) só substitui o valor em R$, não existe kg
-  // registrado nele. Ou seja: custo pode ser real, consumo em kg é sempre
-  // a estimativa da dieta (decisão confirmada com o produtor).
+  // Nos dias cobertos por fornecimento de ração registrado, é o consumo
+  // realizado (kg de MS fornecidos ao lote, rateados pelo peso). Nos demais,
+  // estimado por peso x %MS da dieta vigente no dia (o custo de grupo de
+  // consumo de dieta pronta não traz kg, então nesses dias o consumo segue
+  // estimado).
   consumoRacaoKg: number
   // ─── Consumo de CONCENTRADO em kg de MS (subconjunto de consumoRacaoKg) ────
   // Mesma estimativa (peso x %MS da dieta), multiplicada pelo %concentrado da
@@ -564,15 +570,40 @@ export function calcularAnimalNaData(
     else ganhoPesoConfinamento += ganhoHoje
     if (etapa) etapa.ganhoPeso += ganhoHoje
 
-    // Consumo em kg de MS do dia: sempre estimado por peso x %MS da dieta
-    // vigente, mesmo em dias cobertos por um lançamento de custo real de
-    // ração (esse lançamento só substitui o valor em R$, não existe kg
-    // registrado nele) — consumo em kg e custo em R$ são medidos separado.
     const dietaIdDia = periodo && ciclo
       ? resolverDietaIdNoDia(periodo.lote_id, ciclo.numero, dia, ciclo.dieta_id, trocasDieta)
       : (ciclo?.dieta_id ?? null)
     const dietaInfoDia = dietaIdDia ? dietas[dietaIdDia] : undefined
-    if (dietaInfoDia?.pct_consumo_pv_ms != null) {
+
+    // Custo real de ração do dia (fornecimento registrado ou grupo de
+    // consumo), resolvido antes do consumo porque o fornecimento também traz
+    // o consumo realizado em kg de MS.
+    const entradasRacaoRealHoje = periodo ? (custosRacaoRealPorLote[periodo.lote_id]?.[dia] ?? []) : []
+    const infoRacaoRealHoje =
+      entradasRacaoRealHoje.find(e => e.cicloNumero === (ciclo?.numero ?? null))
+      ?? entradasRacaoRealHoje.find(e => e.cicloNumero === null)
+    const parteDoAnimalNoDia = infoRacaoRealHoje
+      ? (infoRacaoRealHoje.pesoTotalDia > 0 ? peso / infoRacaoRealHoje.pesoTotalDia : 1 / Math.max(infoRacaoRealHoje.qtdAtivaDia, 1))
+      : 0
+
+    // Consumo em kg de MS do dia: o realizado do fornecimento de ração
+    // quando o dia está coberto por um (parte do animal pelo peso); senão,
+    // estimado por peso x %MS da dieta vigente. Custo de grupo de consumo não
+    // traz kg realizado — nesses dias o consumo continua estimado.
+    if (infoRacaoRealHoje?.kgMsDia != null) {
+      const consumoHoje = infoRacaoRealHoje.kgMsDia * parteDoAnimalNoDia
+      const concentradoHoje = (infoRacaoRealHoje.kgMsConcentradoDia ?? 0) * parteDoAnimalNoDia
+      consumoRacaoKg += consumoHoje
+      consumoConcentradoKg += concentradoHoje
+      if (etapa) { etapa.consumoRacaoKg += consumoHoje; etapa.consumoConcentradoKg += concentradoHoje }
+      // Ganho atribuído ao concentrado: mesma regra do estimado abaixo, mas
+      // condicionada ao concentrado realmente fornecido no dia.
+      if (concentradoHoje > 0) {
+        const gmdConcentradoHoje = dietaInfoDia?.gmd_esperado_concentrado ?? gmd
+        ganhoPesoConcentrado += gmdConcentradoHoje
+        if (etapa) etapa.ganhoPesoConcentrado += gmdConcentradoHoje
+      }
+    } else if (dietaInfoDia?.pct_consumo_pv_ms != null) {
       const consumoHoje = peso * (dietaInfoDia.pct_consumo_pv_ms / 100)
       consumoRacaoKg += consumoHoje
       if (etapa) etapa.consumoRacaoKg += consumoHoje
@@ -596,24 +627,15 @@ export function calcularAnimalNaData(
       }
     }
 
-    // Custo real de ração lançado pelo produtor, neste dia — pode ser um
-    // lançamento pro lote inteiro (cicloNumero null) ou escopado a um ciclo
-    // específico. Quando os dois existem pro mesmo dia, o mais específico
-    // (o do ciclo em que este animal está) vence. Substitui o cálculo
+    // Custo real de ração do dia (resolvido acima). Substitui o cálculo
     // estimado por dieta (%MS x custo/kg) — não soma aos dois. O valor do
     // dia é dividido proporcionalmente ao peso deste animal sobre o peso
-    // total do grupo naquele dia (animal mais pesado consome mais, então
+    // total do lote naquele dia (animal mais pesado consome mais, então
     // absorve mais do custo real) — cai no rateio igual por cabeça só se o
-    // peso total do dia vier zerado (caso anômalo). Fora do período coberto
-    // por um lançamento real, cai no cálculo estimado normal.
-    const entradasRacaoRealHoje = periodo ? (custosRacaoRealPorLote[periodo.lote_id]?.[dia] ?? []) : []
-    const infoRacaoRealHoje =
-      entradasRacaoRealHoje.find(e => e.cicloNumero === (ciclo?.numero ?? null))
-      ?? entradasRacaoRealHoje.find(e => e.cicloNumero === null)
+    // peso total do dia vier zerado (caso anômalo). Fora do período coberto,
+    // cai no cálculo estimado normal.
     if (infoRacaoRealHoje != null) {
-      const custoHoje = infoRacaoRealHoje.pesoTotalDia > 0
-        ? infoRacaoRealHoje.valorTotalDia * (peso / infoRacaoRealHoje.pesoTotalDia)
-        : infoRacaoRealHoje.valorTotalDia / Math.max(infoRacaoRealHoje.qtdAtivaDia, 1)
+      const custoHoje = infoRacaoRealHoje.valorTotalDia * parteDoAnimalNoDia
       custoAlimentacao += custoHoje
       if (tipoCiclo === 'pastagem') custoAlimentacaoPastagem += custoHoje
       else if (tipoCiclo === 'misto') custoAlimentacaoMisto += custoHoje

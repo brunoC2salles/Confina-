@@ -83,6 +83,9 @@ export function periodoVigenteNoDia(dia: number, periodos: PeriodoCustoGrupo[]):
 // contar nesse grupo, mesmo que a dieta ainda bata — corresponde a
 // "Encerrar participação" na UI (grupos_consumo_lotes.data_fim). Ausente ou
 // null para um lote = sem corte (participação em aberto).
+//
+// inicioCoberturaPorLote (opcional): dia a partir do qual o lote tem
+// fornecimento de ração registrado — dali em diante o teórico não conta.
 export function calcularConsumoTeoricoPorLotePorDia(
   loteIds: string[],
   animaisPorLote: Record<string, AnimalConsumoInput[]>,
@@ -93,6 +96,7 @@ export function calcularConsumoTeoricoPorLotePorDia(
   diaInicial: number,
   diaFinalExclusivo: number,
   limiteFimPorLote: Record<string, number | null> = {},
+  inicioCoberturaPorLote: Record<string, number> = {},
 ): Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>> {
   const resultado: Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>> = {}
 
@@ -100,6 +104,9 @@ export function calcularConsumoTeoricoPorLotePorDia(
     const animais = animaisPorLote[loteId] ?? []
     const porDia: Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }> = {}
     const limiteFim = limiteFimPorLote[loteId] ?? null
+    // A partir do primeiro fornecimento de ração registrado para o lote, o
+    // realizado substitui o teórico (ver fornecimentoRacao.ts).
+    const inicioCobertura = inicioCoberturaPorLote[loteId]
 
     for (const a of animais) {
       const pesoPorDia = projetarPesoPorDia(
@@ -108,6 +115,7 @@ export function calcularConsumoTeoricoPorLotePorDia(
       for (const [diaStr, peso] of Object.entries(pesoPorDia)) {
         const dia = Number(diaStr)
         if (limiteFim !== null && dia > limiteFim) continue
+        if (inicioCobertura !== undefined && dia >= inicioCobertura) continue
         const periodo = encontrarLoteAtivo(dia, a.periodos)
         if (!periodo || periodo.lote_id !== loteId) continue
         const dietaDoAnimalNoDia = dietaVigenteDoAnimalNoDia(loteId, dia, ciclos, a.eventosCiclo, trocasDieta)

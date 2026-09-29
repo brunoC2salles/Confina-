@@ -38,7 +38,7 @@ export function Digita({ texto, ativo, velocidade = 55 }: { texto: string; ativo
   return <>{texto.slice(0, n)}{digitando && <span className="tt-caret" />}</>
 }
 
-const NAV_MINI = ['Dashboard', 'Lotes', 'Pesagens', 'Ranking', 'Comparativo', 'Importar', 'Dietas', 'Ingredientes', 'Parceiros']
+const NAV_MINI = ['Dashboard', 'Lotes', 'Pesagens', 'Ranking', 'Comparativo', 'Importar', 'Dietas', 'Ingredientes', 'Compras', 'Parceiros']
 
 export function Mockup({ pagina, rota, passos, children }: {
   pagina: string
