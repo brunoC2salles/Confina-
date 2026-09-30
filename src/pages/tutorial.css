@@ -253,6 +253,25 @@
 .tt-uso { background: #fff; border: 1px solid #e7e5e4; border-radius: 10px; padding: 10px 12px; box-shadow: 0 8px 22px rgba(0,0,0,0.08); display: flex; flex-direction: column; gap: 6px; }
 .tt-uso-onde { font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #78716c; }
 
+
+/* Compras: botões de aba em pílula, seções, rádios, métricas */
+.tt-pilulas { display: flex; gap: 5px; margin-bottom: 10px; }
+.tt-pilulas span { padding: 4px 11px; border-radius: 5px; font-size: 10.5px; border: 1px solid #e7e5e4; background: #fff; color: #57534e; }
+.tt-pilulas span.on { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+.tt-secao-titulo { font-size: 11.5px; font-weight: 600; margin-bottom: 2px; }
+.tt-radio { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #c9c5c1; background: #fff; flex-shrink: 0; position: relative; transition: border-color .2s; }
+.tt-radio.on { border-color: #2e7d32; }
+.tt-radio.on::after { content: ''; position: absolute; inset: 2px; border-radius: 50%; background: #2e7d32; }
+.tt-radio-item { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; white-space: nowrap; }
+.tt-opcao { display: flex; gap: 8px; align-items: flex-start; font-size: 11px; }
+.tt-opcao .tt-radio { margin-top: 2px; }
+.tt-metricas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tt-metrica { border: 1px solid #e7e5e4; border-radius: 8px; padding: 7px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; animation: tt-entra .35s ease-out; }
+.tt-tabela.compacta { font-size: 10px; }
+.tt-tabela.compacta th, .tt-tabela.compacta td { padding: 5px 5px; }
+.tt-tabela.compacta .tt-btn.sm { height: 21px; padding: 0 6px; font-size: 9.5px; }
+.tt-tabela.compacta .tt-tabela th, .tt-tabela.compacta .tt-tabela td { padding: 3px 5px; }
+
 /* ─── Responsivo ───────────────────────────────────────────────────────── */
 @media (max-width: 1180px) {
   .tut-corpo { grid-template-columns: minmax(0, 1fr); }

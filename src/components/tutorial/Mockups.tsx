@@ -783,61 +783,109 @@ export function MockParceiros() {
   )
 }
 
-// ─── Compras ─────────────────────────────────────────────────────────────────
+// ─── 10. Compras ─────────────────────────────────────────────────────────────
+// Cabeçalho, botões e abas iguais aos da página Compras (aba Ração).
 
-const P_COMPRAS: Passo[] = [
+type AlvoCab = 'grupo' | 'compra' | 'repetir' | 'forn'
+
+function CabCompras({ ativo }: { ativo?: AlvoCab }) {
+  return (
+    <>
+      <Cab titulo="Compras" sub="Ração (compras, estoque e fornecimento), medicamentos e outras compras rateadas entre os animais" />
+      <div className="tt-linha" style={{ gap: 5, marginBottom: 8, flexWrap: 'wrap' }}>
+        <Btn sm ghost alvo="grupo" ativo={ativo === 'grupo'}>+ Novo grupo</Btn>
+        <Btn sm ghost alvo="compra" ativo={ativo === 'compra'}>+ Registrar compra</Btn>
+        <Btn sm ghost alvo="repetir" ativo={ativo === 'repetir'}>Repetir último fornecimento</Btn>
+        <Btn sm alvo="forn" ativo={ativo === 'forn'}>+ Registrar fornecimento</Btn>
+      </div>
+      <div className="tt-pilulas"><span className="on">Ração</span><span>Medicamentos</span><span>Outros</span></div>
+    </>
+  )
+}
+
+function Secao({ titulo, texto }: { titulo: string; texto?: string }) {
+  return (
+    <>
+      <div className="tt-secao-titulo">{titulo}</div>
+      {texto && <div className="tt-mini" style={{ marginBottom: 6 }}>{texto}</div>}
+    </>
+  )
+}
+
+function Radio({ on, alvo, children }: { on: boolean; alvo?: string; children: ReactNode }) {
+  return (
+    <span data-alvo={alvo} className="tt-radio-item">
+      <span className={`tt-radio${on ? ' on' : ''}`} />{children}
+    </span>
+  )
+}
+
+// Modal "Registrar compra": escolha entre dieta pronta e ingrediente.
+function ModalTipoCompra({ ingrediente, alvoIng, alvoDieta, grupo, alvoGrupo, focoGrupo, alvoCont, contAtivo }: {
+  ingrediente: boolean; alvoIng?: string; alvoDieta?: string; grupo?: string; alvoGrupo?: string; focoGrupo?: boolean; alvoCont?: string; contAtivo?: boolean
+}) {
+  return (
+    <Modal titulo="Registrar compra" largura={410}>
+      <div className="tt-label">O que foi comprado?</div>
+      <div className="tt-opcao" data-alvo={alvoDieta}>
+        <span className={`tt-radio${!ingrediente ? ' on' : ''}`} />
+        <div><strong>Dieta pronta</strong><div className="tt-mini">Ração comprada pronta para um grupo de consumo.</div></div>
+      </div>
+      <div className="tt-opcao" data-alvo={alvoIng}>
+        <span className={`tt-radio${ingrediente ? ' on' : ''}`} />
+        <div><strong>Ingrediente</strong><div className="tt-mini">Ingrediente comprado ou produzido na fazenda para a ração feita em casa.</div></div>
+      </div>
+      {!ingrediente && <Sel label="Grupo de consumo" alvo={alvoGrupo} foco={focoGrupo} valor={grupo} />}
+      <div className="tt-acoes"><Btn ghost>Cancelar</Btn><Btn alvo={alvoCont} ativo={contAtivo}>Continuar</Btn></div>
+    </Modal>
+  )
+}
+
+// ─── 10a. Compra de ingrediente ──────────────────────────────────────────────
+
+const P_COMPRA_ING: Passo[] = [
   { legenda: 'Início', dur: 1200 },
-  { legenda: 'Na aba Ração, clique em "+ Registrar compra"', alvo: 'reg', clique: true, dur: 1600 },
-  { legenda: 'Escolha "Ingrediente" para a ração feita na fazenda', alvo: 'opt-ing', clique: true, dur: 1800 },
+  { legenda: 'Clique em "+ Registrar compra"', alvo: 'compra', clique: true, dur: 1600 },
+  { legenda: 'Escolha "Ingrediente"', alvo: 'opt-ing', clique: true, dur: 1700 },
   { legenda: 'Clique em "Continuar"', alvo: 'cont', clique: true, dur: 1300 },
   { legenda: 'Escolha o ingrediente', alvo: 'ing', clique: true, dur: 1500 },
-  { legenda: 'Compra ou produção própria (com o custo de produção)', alvo: 'origem', dur: 1900 },
-  { legenda: 'Informe a quantidade em kg, como foi pesada', alvo: 'qtd', dur: 1600 },
-  { legenda: 'Informe o valor pago', alvo: 'valor', dur: 1500 },
+  { legenda: 'Origem: Compra ou Produção própria', alvo: 'origem', clique: true, dur: 1800 },
+  { legenda: 'Quantidade em kg de matéria natural, como pesada', alvo: 'qtd', dur: 1700 },
+  { legenda: 'Valor total (na produção própria, o custo de produção)', alvo: 'valor', dur: 1900 },
   { legenda: 'Clique em "Registrar"', alvo: 'salvar', clique: true, dur: 1400 },
-  { legenda: 'Saldo e custo médio do estoque atualizados', alvo: 'linha', dur: 3000 },
+  { legenda: 'Entradas, saldo e custo médio atualizados', alvo: 'linha', dur: 3000 },
 ]
 
 export function MockCompras() {
   return (
-    <Mockup pagina="Compras" rota="/compras" passos={P_COMPRAS}>
+    <Mockup pagina="Compras" rota="/compras" passos={P_COMPRA_ING}>
       {p => {
-        const linhas: ReactNode[][] = [
-          [<strong>Farelo de soja</strong>, '3.000 kg', '1.240 kg', '1.760 kg', 'R$ 2,10'],
-        ]
-        linhas.unshift(p >= 9
+        const milho = p >= 9
           ? [<strong data-alvo="linha">Milho grão</strong>, '14.000 kg', '5.600 kg', '8.400 kg', 'R$ 0,97']
-          : [<strong>Milho grão</strong>, '6.000 kg', '5.600 kg', '400 kg', 'R$ 0,88'])
+          : [<strong>Milho grão</strong>, '6.000 kg', '5.600 kg', '400 kg', 'R$ 0,88']
         return (
           <>
-            <Cab titulo="Compras" sub="Rações, medicamentos e outras compras rateadas entre os animais"
-              acao={<Btn alvo="reg" ativo={p === 1}>+ Registrar compra</Btn>} />
-            <Abas itens={['Ração', 'Medicamentos', 'Outros']} ativa={0} />
-            <div className="tt-sec">Dieta pronta</div>
-            <div className="tt-card" style={{ marginBottom: 10 }}>
-              <div className="tt-card-titulo">Currais Terminação <Badge>Ativo</Badge></div>
-              <div className="tt-mini">Terminação 80/20</div>
-            </div>
-            <div className="tt-sec">Ingredientes (ração feita na fazenda)</div>
+            <CabCompras ativo={p === 1 ? 'compra' : undefined} />
+            <Secao titulo="Ingredientes (ração feita na fazenda)"
+              texto="Saldo = entradas menos o consumo, em kg de matéria natural." />
             <div className="tt-card sem-pad">
-              <Tabela cols={['Ingrediente', 'Entradas', 'Consumo teórico', 'Saldo', 'Custo médio/kg']} linhas={linhas}
-                destaque={p >= 9 ? [0] : []} alinhar={['l', 'r', 'r', 'r', 'r']} />
+              <Tabela cols={['Ingrediente', 'Entradas', 'Consumo', 'Saldo', 'Custo médio/kg']} alinhar={['l', 'r', 'r', 'r', 'r']}
+                destaque={p >= 9 ? [0] : []} linhas={[
+                  milho,
+                  [<strong>Farelo de soja</strong>, '3.000 kg', '1.240 kg', '1.760 kg', 'R$ 2,10'],
+                  [<strong>Silagem de milho</strong>, '40.000 kg', '18.300 kg', '21.700 kg', 'R$ 0,28'],
+                ]} />
             </div>
             {p >= 2 && p <= 3 && (
-              <Modal titulo="Registrar compra" largura={400}>
-                <div className="tt-label">O que foi comprado?</div>
-                <div className="tt-mini" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Check on={false} />Dieta pronta</div>
-                <div className="tt-mini" data-alvo="opt-ing" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Check on={p >= 3} />Ingrediente</div>
-                <div className="tt-acoes"><Btn ghost>Cancelar</Btn><Btn alvo="cont" ativo={p === 3}>Continuar</Btn></div>
-              </Modal>
+              <ModalTipoCompra ingrediente={p >= 3} alvoIng="opt-ing" alvoCont="cont" contAtivo={p === 3} />
             )}
             {p >= 4 && p <= 8 && (
-              <Modal titulo="Registrar ingrediente" largura={440}>
+              <Modal titulo="Registrar ingrediente" largura={450}>
                 <Linha>
                   <Sel label="Ingrediente" alvo="ing" foco={p === 4} valor={p >= 5 ? 'Milho grão' : undefined} />
                   <Sel label="Origem" alvo="origem" foco={p === 5} valor="Compra" />
                 </Linha>
-                {p >= 5 && <div className="tt-mini">% MS do ingrediente: 88%. Informe a quantidade em kg de matéria natural.</div>}
+                {p >= 5 && <div className="tt-mini">% MS do ingrediente: 88,0%. Informe a quantidade em kg de matéria natural (como pesada).</div>}
                 <Linha>
                   <Campo label="Data da entrada">20/11/2026</Campo>
                   <Campo label="Quantidade (kg)" alvo="qtd" foco={p === 6}><Digita texto="8000" ativo={p >= 6} velocidade={110} /></Campo>
@@ -845,6 +893,7 @@ export function MockCompras() {
                 </Linha>
                 {p >= 8 && <div className="tt-mini">R$ 0,97 por kg. Entra no custo médio do estoque a partir da data da entrada.</div>}
                 <Sel label="Fornecedor" valor="Cerealista Central" />
+                <Campo label="Observações" vazio="Opcional" />
                 <div className="tt-acoes"><Btn ghost>Cancelar</Btn><Btn alvo="salvar" ativo={p === 8}>Registrar</Btn></div>
               </Modal>
             )}
@@ -855,18 +904,26 @@ export function MockCompras() {
   )
 }
 
-// ─── Fornecimento de ração ───────────────────────────────────────────────────
+// ─── 10b. Fornecimento de ração ──────────────────────────────────────────────
 
 const P_FORN: Passo[] = [
   { legenda: 'Início', dur: 1200 },
-  { legenda: 'Clique em "+ Registrar fornecimento"', alvo: 'reg', clique: true, dur: 1600 },
-  { legenda: 'Escolha a dieta: os lotes que usam ela já vêm marcados', alvo: 'dieta', clique: true, dur: 2100 },
-  { legenda: 'Ração feita na fazenda ou mistura pronta comprada', alvo: 'origem', dur: 1700 },
+  { legenda: 'Clique em "+ Registrar fornecimento"', alvo: 'forn', clique: true, dur: 1600 },
+  { legenda: 'Escolha a dieta: os lotes com essa dieta planejada já vêm marcados', alvo: 'dieta', clique: true, dur: 2200 },
+  { legenda: 'Origem: feita na fazenda ou mistura pronta (comprada)', alvo: 'origem', dur: 1800 },
   { legenda: 'Informe o total: os ingredientes vêm pela composição', alvo: 'total', dur: 2200 },
-  { legenda: 'Ajuste os kg se a mistura foi diferente', alvo: 'itens', dur: 1800 },
+  { legenda: 'Ajuste os kg se a mistura foi diferente', alvo: 'itens', dur: 1900 },
   { legenda: 'Clique em "Registrar fornecimento"', alvo: 'salvar', clique: true, dur: 1500 },
-  { legenda: 'Divisão automática entre os lotes', alvo: 'divisao', dur: 2200 },
-  { legenda: 'Planejado x realizado de cada lote', alvo: 'comparativo', dur: 3000 },
+  { legenda: 'Divisão automática entre os lotes', alvo: 'divisao', dur: 2400 },
+  { legenda: 'Planejado x realizado de cada lote', alvo: 'pxr', dur: 3200 },
+]
+
+const PXR = [
+  ['Consumo MS (% PV)', '2,40%', '2,31%', '-3,8%'],
+  ['Concentrado na MS', '80,00%', '76,50%', '-4,4%'],
+  ['Custo por cabeça/dia', 'R$ 14,20', 'R$ 13,65', '-3,9%'],
+  ['Custo por kg ganho', 'R$ 9,80', 'R$ 9,52', '-2,9%'],
+  ['Conversão', '6,10', '5,92', '-3,0%'],
 ]
 
 export function MockFornecimento() {
@@ -874,65 +931,298 @@ export function MockFornecimento() {
     <Mockup pagina="Compras" rota="/compras" passos={P_FORN}>
       {p => (
         <>
-          <Cab titulo="Compras" sub="Ração (compras, estoque e fornecimento), medicamentos e outras compras"
-            acao={<Btn alvo="reg" ativo={p === 1}>+ Registrar fornecimento</Btn>} />
-          <Abas itens={['Ração', 'Medicamentos', 'Outros']} ativa={0} />
-          <div className="tt-sec">Fornecimento de ração</div>
-          <div className="tt-card sem-pad" style={{ marginBottom: 10 }}>
-            <Tabela cols={['Data', 'Dieta', 'Origem', 'Quantidade', 'Lotes']} destaque={p >= 7 ? [0] : []} linhas={[
-              ...(p >= 7 ? [['21/11/2026', 'Terminação 80/20', 'Feita na fazenda', '4.200 kg', 'Curral 1, Curral 2']] : []),
-              ['20/11/2026', 'Terminação 80/20', 'Feita na fazenda', '4.100 kg', 'Curral 1, Curral 2'],
-            ]} />
-          </div>
-          <div className="tt-sec">Planejado x realizado</div>
-          <div className="tt-card sem-pad" data-alvo="comparativo">
-            <Tabela cols={['Curral 1', 'Planejado', 'Realizado', 'Diferença']} alinhar={['l', 'r', 'r', 'r']} linhas={[
-              ['Consumo MS (% PV)', '2,40%', '2,31%', '-3,8%'],
-              ['Concentrado na MS', '80,00%', '76,50%', '-4,4%'],
-              ['Custo por cabeça/dia', 'R$ 14,20', 'R$ 13,65', '-3,9%'],
-            ]} />
-          </div>
+          <CabCompras ativo={p === 1 ? 'forn' : undefined} />
+          {p < 8 ? (
+            <>
+              <Secao titulo="Fornecimento de ração" texto="Ração efetivamente fornecida aos lotes, dividida entre eles pelo consumo previsto de cada um." />
+              <div className="tt-card sem-pad">
+                <Tabela cols={['Data', 'Dieta', 'Origem', 'Quantidade', 'Lotes']} alinhar={['l', 'l', 'l', 'r', 'l']} destaque={p === 7 ? [0] : []} linhas={[
+                  ...(p >= 7 ? [['21/11/2026', 'Terminação 80/20', 'Feita na fazenda', '4.200 kg', 'Curral 1, Curral 2']] : []),
+                  ['20/11/2026', 'Terminação 80/20', 'Feita na fazenda', '4.100 kg', 'Curral 1, Curral 2'],
+                ]} />
+              </div>
+            </>
+          ) : (
+            <>
+              <Secao titulo="Planejado x realizado" texto="Por lote, desde o primeiro fornecimento. Planejado: dieta dos ciclos do lote. Realizado: ração fornecida." />
+              <div className="tt-card sem-pad" data-alvo="pxr" style={{ maxWidth: 380 }}>
+                <div style={{ padding: '8px 10px 4px' }}>
+                  <strong style={{ fontSize: 12 }}>Curral 1</strong>
+                  <div className="tt-mini">desde 20/11/2026 · 2 dias</div>
+                </div>
+                <Tabela cols={['', 'Planejado', 'Realizado', 'Diferença']} alinhar={['l', 'r', 'r', 'r']} linhas={PXR} />
+              </div>
+            </>
+          )}
           {p >= 2 && p <= 6 && (
-            <Modal titulo="Registrar fornecimento de ração" largura={460}>
+            <Modal titulo="Registrar fornecimento de ração" largura={480}>
               <Linha>
                 <Campo label="Data do fornecimento">21/11/2026</Campo>
                 <Sel label="Dieta" alvo="dieta" foco={p === 2} valor={p >= 3 ? 'Terminação 80/20' : undefined} />
               </Linha>
               <div className="tt-label">Origem da ração</div>
-              <div className="tt-mini" data-alvo="origem" style={{ display: 'flex', gap: 12 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Check on={true} />Feita na fazenda</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Check on={false} />Mistura pronta (comprada)</span>
+              <div className="tt-linha" data-alvo="origem" style={{ gap: 14, width: 'auto', alignSelf: 'flex-start' }}>
+                <Radio on>Feita na fazenda</Radio><Radio on={false}>Mistura pronta (comprada)</Radio>
               </div>
               <Campo label="Quantidade total (kg)" alvo="total" foco={p === 4}><Digita texto="4200" ativo={p >= 4} velocidade={110} /></Campo>
               {p >= 4 && (
-                <div data-alvo="itens">
-                  <Tabela cols={['Ingrediente', 'Tipo', 'kg', '% MS']} alinhar={['l', 'l', 'r', 'r']} linhas={[
-                    ['Milho grão', 'Concentrado', p >= 5 ? '2.450' : '2.430', '88'],
-                    ['Farelo de soja', 'Concentrado', '520', '89'],
-                    ['Silagem de milho', 'Volumoso', p >= 5 ? '1.230' : '1.250', '32'],
-                  ]} />
-                </div>
+                <>
+                  <div className="tt-mini">Dividida nos ingredientes pela composição da dieta. Ajuste os kg abaixo se a mistura foi diferente.</div>
+                  <div data-alvo="itens" className={`tt-lista${p === 5 ? ' foco' : ''}`}>
+                    <Tabela cols={['Ingrediente', 'Tipo', 'kg', '% MS']} alinhar={['l', 'l', 'r', 'r']} linhas={[
+                      ['Milho grão', 'Concentrado', p >= 5 ? '2.450' : '2.430', '88'],
+                      ['Farelo de soja', 'Concentrado', '520', '89'],
+                      ['Silagem de milho', 'Volumoso', p >= 5 ? '1.230' : '1.250', '32'],
+                    ]} />
+                  </div>
+                </>
               )}
-              {p >= 3 && (
-                <div className="tt-mini" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Check on={true} />Curral 1 <span className="tt-mini verde">dieta planejada</span></span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Check on={true} />Curral 2 <span className="tt-mini verde">dieta planejada</span></span>
-                </div>
-              )}
+              <div className="tt-label">Lotes que receberam</div>
+              <div className="tt-mini" style={{ display: 'flex', gap: 14 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Check on={p >= 3} />Curral 1{p >= 3 && <span className="tt-mini verde">dieta planejada</span>}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Check on={p >= 3} />Curral 2{p >= 3 && <span className="tt-mini verde">dieta planejada</span>}</span>
+              </div>
               <div className="tt-acoes"><Btn ghost>Cancelar</Btn><Btn alvo="salvar" ativo={p === 6}>Registrar fornecimento</Btn></div>
             </Modal>
           )}
           {p === 7 && (
             <Modal titulo="Registrar fornecimento de ração" largura={360}>
-              <div data-alvo="divisao" className="tt-card">
-                <div className="tt-card-titulo">Fornecimento registrado</div>
-                <div className="tt-mini" style={{ display: 'flex', justifyContent: 'space-between' }}><span>Curral 1</span><span>58,3%</span></div>
-                <div className="tt-mini" style={{ display: 'flex', justifyContent: 'space-between' }}><span>Curral 2</span><span>41,7%</span></div>
+              <div data-alvo="divisao" className="tt-sucesso" style={{ marginTop: 0 }}>
+                <div className="tt-sucesso-titulo">Fornecimento registrado</div>
+                <div className="tt-mini" style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}><span>Curral 1</span><span>58,3%</span></div>
+                <div className="tt-mini" style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}><span>Curral 2</span><span>41,7%</span></div>
               </div>
+              <div className="tt-acoes"><Btn>Fechar</Btn></div>
             </Modal>
           )}
         </>
       )}
+    </Mockup>
+  )
+}
+
+// ─── 10c. Repetir último fornecimento ────────────────────────────────────────
+
+const P_REPETIR: Passo[] = [
+  { legenda: 'Início', dur: 1200 },
+  { legenda: 'Clique em "Repetir último fornecimento"', alvo: 'repetir', clique: true, dur: 1700 },
+  { legenda: 'Vem tudo preenchido, com a data de hoje', alvo: 'data', dur: 2200 },
+  { legenda: 'Altere só o que mudou (ex: o total)', alvo: 'total', dur: 2100 },
+  { legenda: 'Clique em "Registrar fornecimento"', alvo: 'salvar', clique: true, dur: 1500 },
+  { legenda: 'Fornecimento do dia lançado', alvo: 'nova', dur: 3000 },
+]
+
+export function MockRepetirFornecimento() {
+  return (
+    <Mockup pagina="Compras" rota="/compras" passos={P_REPETIR}>
+      {p => (
+        <>
+          <CabCompras ativo={p === 1 ? 'repetir' : undefined} />
+          <Secao titulo="Fornecimento de ração" texto="Vale do dia do fornecimento até o próximo do mesmo lote, e substitui o consumo teórico no custo e na baixa de estoque." />
+          <div className="tt-card sem-pad">
+            <Tabela cols={['Data', 'Dieta', 'Origem', 'Quantidade', 'Lotes']} alinhar={['l', 'l', 'l', 'r', 'l']} destaque={p >= 5 ? [0] : []} linhas={[
+              ...(p >= 5 ? [[<span data-alvo="nova">22/11/2026</span>, 'Terminação 80/20', 'Feita na fazenda', '4.300 kg', 'Curral 1, Curral 2']] : []),
+              ['21/11/2026', 'Terminação 80/20', 'Feita na fazenda', '4.200 kg', 'Curral 1, Curral 2'],
+              ['20/11/2026', 'Terminação 80/20', 'Feita na fazenda', '4.100 kg', 'Curral 1, Curral 2'],
+            ]} />
+          </div>
+          {p >= 2 && p <= 4 && (
+            <Modal titulo="Registrar fornecimento de ração" largura={480}>
+              <Linha>
+                <Campo label="Data do fornecimento" alvo="data" foco={p === 2}>22/11/2026</Campo>
+                <Sel label="Dieta" valor="Terminação 80/20" />
+              </Linha>
+              <div className="tt-label">Origem da ração</div>
+              <div className="tt-linha" style={{ gap: 14 }}>
+                <Radio on>Feita na fazenda</Radio><Radio on={false}>Mistura pronta (comprada)</Radio>
+              </div>
+              <Campo label="Quantidade total (kg)" alvo="total" foco={p === 3}>
+                {p >= 3 ? <Digita texto="4300" ativo velocidade={120} /> : '4200'}
+              </Campo>
+              <div className={`tt-lista${p === 3 ? ' foco' : ''}`}>
+                <Tabela cols={['Ingrediente', 'Tipo', 'kg', '% MS']} alinhar={['l', 'l', 'r', 'r']} linhas={[
+                  ['Milho grão', 'Concentrado', p >= 3 ? '2.488' : '2.430', '88'],
+                  ['Farelo de soja', 'Concentrado', p >= 3 ? '532' : '520', '89'],
+                  ['Silagem de milho', 'Volumoso', p >= 3 ? '1.280' : '1.250', '32'],
+                ]} />
+              </div>
+              <div className="tt-label">Lotes que receberam</div>
+              <div className="tt-mini" style={{ display: 'flex', gap: 14 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Check on />Curral 1</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Check on />Curral 2</span>
+              </div>
+              <div className="tt-acoes"><Btn ghost>Cancelar</Btn><Btn alvo="salvar" ativo={p === 4}>Registrar fornecimento</Btn></div>
+            </Modal>
+          )}
+        </>
+      )}
+    </Mockup>
+  )
+}
+
+// ─── 10d. Dieta pronta (grupo de consumo) ────────────────────────────────────
+
+const P_DIETA_PRONTA: Passo[] = [
+  { legenda: 'Início', dur: 1200 },
+  { legenda: 'Clique em "+ Novo grupo"', alvo: 'grupo', clique: true, dur: 1500 },
+  { legenda: 'Dê um nome ao grupo', alvo: 'nome', dur: 1900 },
+  { legenda: 'Escolha a dieta comprada pronta', alvo: 'dieta', clique: true, dur: 1500 },
+  { legenda: 'Marque os lotes que dividem essa ração', alvo: 'lotes', dur: 1700 },
+  { legenda: 'Clique em "Criar grupo"', alvo: 'criar', clique: true, dur: 1400 },
+  { legenda: 'Clique em "+ Registrar compra"', alvo: 'compra', clique: true, dur: 1600 },
+  { legenda: '"Dieta pronta" e o grupo de consumo', alvo: 'gc', clique: true, dur: 1800 },
+  { legenda: 'Clique em "Continuar"', alvo: 'cont', clique: true, dur: 1300 },
+  { legenda: 'Quantidade, % MS e valor total', alvo: 'valor', dur: 2400 },
+  { legenda: 'Data da compra e início de uso', alvo: 'inicio', dur: 1500 },
+  { legenda: 'Clique em "Registrar compra"', alvo: 'salvar', clique: true, dur: 1400 },
+  { legenda: 'Saldo do grupo em matéria seca', alvo: 'saldo', dur: 3200 },
+]
+
+export function MockDietaPronta() {
+  return (
+    <Mockup pagina="Compras" rota="/compras" passos={P_DIETA_PRONTA}>
+      {p => (
+        <>
+          <CabCompras ativo={p === 1 ? 'grupo' : p === 6 ? 'compra' : undefined} />
+          <Secao titulo="Dieta pronta" texto="Ração comprada pronta, dividida entre os lotes de um grupo de consumo." />
+          {p >= 6 ? (
+            <div className="tt-grade2">
+              <div className={`tt-card${p === 6 ? ' destaque' : ''}`}>
+                <div className="tt-card-titulo" style={{ justifyContent: 'space-between' }}>Currais Terminação <Badge>Ativo</Badge></div>
+                <div className="tt-mini">Terminação 80/20</div>
+              </div>
+            </div>
+          ) : (
+            <div className="tt-card tt-vazio">
+              <div className="tt-vazio-titulo">Nenhum grupo de consumo</div>
+              <div className="tt-mini">Crie um grupo quando vários lotes dividirem a mesma leva de ração comprada.</div>
+            </div>
+          )}
+          {p >= 2 && p <= 5 && (
+            <Modal titulo="Novo grupo de consumo" largura={470}>
+              <Linha>
+                <Campo label="Nome do grupo" alvo="nome" foco={p === 2} vazio="Ex: Currais Ciclo 2 — Terminação"><Digita texto="Currais Terminação" ativo={p >= 2} /></Campo>
+                <Sel label="Dieta" alvo="dieta" foco={p === 3} valor={p >= 4 ? 'Terminação 80/20' : undefined} />
+              </Linha>
+              <div className="tt-label">Lotes que compartilham essa leva de ração</div>
+              <div data-alvo="lotes" className={`tt-bloco${p === 4 ? ' foco' : ''}`}>
+                {[['Curral 1', 'L-010', true], ['Curral 2', 'L-011', true], ['Lote Primavera', 'L-012', false]].map(([n, c, marca]) => (
+                  <span key={String(n)} className="tt-mini" style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1c1917' }}>
+                    <Check on={p >= 4 && Boolean(marca)} />{n} <span style={{ color: '#bdbdbd' }}>({c})</span>
+                  </span>
+                ))}
+              </div>
+              <Campo label="Observações" vazio="Opcional" />
+              <div className="tt-acoes"><Btn ghost>Cancelar</Btn><Btn alvo="criar" ativo={p === 5}>Criar grupo</Btn></div>
+            </Modal>
+          )}
+          {p >= 7 && p <= 8 && (
+            <ModalTipoCompra ingrediente={false} alvoGrupo="gc" focoGrupo={p === 7} grupo={p >= 8 ? 'Currais Terminação' : undefined}
+              alvoCont="cont" contAtivo={p === 8} />
+          )}
+          {p >= 9 && p <= 11 && (
+            <Modal titulo="Registrar compra" largura={450}>
+              <Linha>
+                <Campo label="Quantidade (kg)" foco={p === 9}><Digita texto="12000" ativo={p >= 9} velocidade={100} /></Campo>
+                <Campo label="% Matéria seca">88</Campo>
+                <Campo label="Valor total" alvo="valor" foco={p === 9}><Digita texto="21600" ativo={p >= 9} velocidade={140} /></Campo>
+              </Linha>
+              <div className="tt-mini">% MS calculada pelos componentes da dieta: 88,0%. Ajuste se a ração comprada for diferente.</div>
+              <Linha>
+                <Campo label="Data da compra">18/11/2026</Campo>
+                <Campo label="Início de uso" alvo="inicio" foco={p === 10}>20/11/2026</Campo>
+              </Linha>
+              <Sel label="Fornecedor" valor="Rações Pampa" />
+              <Campo label="Observações" vazio="Opcional" />
+              <div className="tt-acoes"><Btn ghost>Cancelar</Btn><Btn alvo="salvar" ativo={p === 11}>Registrar compra</Btn></div>
+            </Modal>
+          )}
+          {p >= 12 && (
+            <Modal titulo="Currais Terminação" sub="Terminação 80/20" largura={500}>
+              <div className="tt-sec" style={{ color: '#1c1917' }}>Saldo</div>
+              <div data-alvo="saldo" className="tt-metricas">
+                {[['Comprado (MS)', '10.560 kg'], ['Consumido teórico (MS)', '0 kg'], ['Saldo (MS)', '10.560 kg'], ['Custo médio/kg MS vigente', 'R$ 2,05']].map(([r, v]) => (
+                  <div key={r} className="tt-metrica"><div className="tt-mini">{r}</div><strong>{v}</strong></div>
+                ))}
+              </div>
+              <div className="tt-sec" style={{ color: '#1c1917' }}>Compras</div>
+              <Tabela cols={['Data compra', 'Início de uso', 'Quantidade', '% MS', 'Valor', 'R$/kg']} alinhar={['l', 'l', 'r', 'r', 'r', 'r']} destaque={[0]} linhas={[
+                ['18/11/2026', '20/11/2026', '12.000 kg', '88', 'R$ 21.600,00', 'R$ 1,80'],
+              ]} />
+            </Modal>
+          )}
+        </>
+      )}
+    </Mockup>
+  )
+}
+
+// ─── 10e. Ajustar inventário ─────────────────────────────────────────────────
+
+const P_AJUSTE: Passo[] = [
+  { legenda: 'Início', dur: 1200 },
+  { legenda: 'Clique em "Ajustar inventário" no ingrediente', alvo: 'ajustar', clique: true, dur: 1700 },
+  { legenda: 'Informe a data da contagem', alvo: 'data', dur: 1400 },
+  { legenda: 'Informe o saldo contado fisicamente', alvo: 'saldo', dur: 1800 },
+  { legenda: 'Clique em "Salvar ajuste"', alvo: 'salvar', clique: true, dur: 1400 },
+  { legenda: 'O saldo parte do valor contado; o custo médio não muda', alvo: 'novo-saldo', dur: 2200 },
+  { legenda: 'Clique em "Entradas"', alvo: 'entradas', clique: true, dur: 1500 },
+  { legenda: 'O ajuste fica registrado nas entradas do ingrediente', alvo: 'ajuste-linha', dur: 3200 },
+]
+
+export function MockAjusteInventario() {
+  return (
+    <Mockup pagina="Compras" rota="/compras" passos={P_AJUSTE}>
+      {p => {
+        const acoes = (alvoE?: string, alvoA?: string) => (
+          <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+            <Btn sm ghost alvo={alvoE} ativo={alvoE != null && p === 6}>{p >= 7 && alvoE ? 'Ocultar' : 'Entradas'}</Btn>
+            <Btn sm ghost alvo={alvoA} ativo={alvoA != null && p === 1}>Ajustar inventário</Btn>
+          </span>
+        )
+        return (
+          <>
+            <CabCompras />
+            <Secao titulo="Ingredientes (ração feita na fazenda)" />
+            <div className="tt-card sem-pad">
+              <table className="tt-tabela compacta">
+                <thead><tr><th>Ingrediente</th><th className="r">Entradas</th><th className="r">Consumo</th><th className="r">Saldo</th><th className="r">Custo médio/kg</th><th /></tr></thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Milho grão</strong></td><td className="r">14.000 kg</td><td className="r">5.600 kg</td>
+                    <td className={`r${p >= 5 ? ' col-dest' : ''}`}><span data-alvo="novo-saldo">{p >= 5 ? '8.150 kg' : '8.400 kg'}</span></td>
+                    <td className="r">R$ 0,97</td>
+                    <td>{acoes('entradas', 'ajustar')}</td>
+                  </tr>
+                  {p >= 2 && p <= 4 && (
+                    <tr><td colSpan={6} style={{ background: '#fafafa', whiteSpace: 'normal' }}>
+                      <div className="tt-mini" style={{ marginBottom: 6 }}>Informe o saldo contado fisicamente. A partir da data, o saldo parte desse valor; o custo médio não muda. Saldo teórico hoje: 8.400 kg.</div>
+                      <Linha>
+                        <Campo label="Data da contagem" alvo="data" foco={p === 2}>25/11/2026</Campo>
+                        <Campo label="Saldo contado (kg)" alvo="saldo" foco={p === 3}><Digita texto="8150" ativo={p >= 3} velocidade={120} /></Campo>
+                        <Campo label="Observações" vazio="Opcional" />
+                      </Linha>
+                      <div className="tt-linha" style={{ gap: 6, marginTop: 6 }}><Btn sm alvo="salvar" ativo={p === 4}>Salvar ajuste</Btn><Btn sm ghost>Cancelar</Btn></div>
+                    </td></tr>
+                  )}
+                  {p >= 7 && (
+                    <tr><td colSpan={6} style={{ background: '#fafafa', padding: 6 }}>
+                      <Tabela cols={['Data', 'Tipo', 'Quantidade', 'Valor', 'R$/kg', 'Fornecedor']} destaque={[0]} linhas={[
+                        [<span data-alvo="ajuste-linha">25/11/2026</span>, 'Ajuste de inventário', 'Saldo contado: 8.150 kg', '—', '—', '—'],
+                        ['20/11/2026', 'Compra', '8.000 kg', 'R$ 7.760,00', 'R$ 0,97', 'Cerealista Central'],
+                      ]} />
+                    </td></tr>
+                  )}
+                  <tr>
+                    <td><strong>Farelo de soja</strong></td><td className="r">3.000 kg</td><td className="r">1.240 kg</td><td className="r">1.760 kg</td><td className="r">R$ 2,10</td>
+                    <td>{acoes()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </>
+        )
+      }}
     </Mockup>
   )
 }
