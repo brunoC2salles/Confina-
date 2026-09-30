@@ -185,7 +185,7 @@ export default function Compras() {
       <Modal open={showRegistrar} onClose={() => setShowRegistrar(false)} title="Registrar compra">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="form-group">
-            <label className="form-label">O que foi comprado?</label>
+            <label className="form-label">O que deseja registrar?</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' }}>
                 <input type="radio" name="tipo-registro" checked={tipoRegistro === 'dieta'} onChange={() => setTipoRegistro('dieta')} style={{ marginTop: 3 }} />

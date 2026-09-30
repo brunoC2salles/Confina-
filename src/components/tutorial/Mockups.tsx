@@ -824,7 +824,7 @@ function ModalTipoCompra({ tipo, alvoIng, alvoDieta, alvoForn, grupo, alvoGrupo,
 }) {
   return (
     <Modal titulo="Registrar compra" largura={410}>
-      <div className="tt-label">O que foi comprado?</div>
+      <div className="tt-label">O que deseja registrar?</div>
       <div className="tt-opcao" data-alvo={alvoDieta}>
         <span className={`tt-radio${tipo === 'dieta' ? ' on' : ''}`} />
         <div><strong>Dieta pronta</strong><div className="tt-mini">Ração comprada pronta para um grupo de consumo.</div></div>
