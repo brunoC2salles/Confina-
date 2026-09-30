@@ -37,6 +37,7 @@ interface LinhaAtivo {
   brinco: string
   loteId: string
   loteNome: string
+  cicloAtual: number
   fornecedorId: string | null
   fornecedorNome: string
   pesoEntrada: number
@@ -70,7 +71,7 @@ interface LinhaVendido {
 
 export default function Ranking() {
   const { user } = useAuth()
-  const { lotes } = useLotes()
+  const { lotes, ciclosPorLote } = useLotes()
   const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
   const { parceiros } = useParceiros()
@@ -81,6 +82,25 @@ export default function Ranking() {
   const [tab, setTab] = useState<'ativos' | 'vendidos'>('ativos')
   const [loteFiltro, setLoteFiltro] = useState('todos')
   const [fornecedorFiltro, setFornecedorFiltro] = useState('todos')
+  // Filtro por ciclo (só aba Ativos): vazio = todos os ciclos. Usa o ciclo
+  // vigente de cada animal (animais.ciclo_atual); só filtra, não recalcula.
+  const [ciclosFiltro, setCiclosFiltro] = useState<Set<number>>(new Set())
+  const toggleCicloFiltro = (n: number) => {
+    setCiclosFiltro(prev => {
+      const novo = new Set(prev)
+      if (novo.has(n)) novo.delete(n); else novo.add(n)
+      return novo
+    })
+  }
+  // Mesmo critério do Comparativo: união dos números de ciclo dos lotes ativos.
+  const ciclosDisponiveis = useMemo(() => {
+    const nums = new Set<number>()
+    for (const lote of lotes) {
+      if (lote.status !== 'ativo') continue
+      for (const c of ciclosPorLote[lote.id] ?? []) nums.add(c.numero)
+    }
+    return Array.from(nums).sort((a, b) => a - b)
+  }, [lotes, ciclosPorLote])
   const [criterio, setCriterio] = useState<Criterio>('ganho')
   const [ordemDesc, setOrdemDesc] = useState(true)
   const [topN, setTopN] = useState('')
@@ -101,10 +121,10 @@ export default function Ranking() {
     if (!user) return
     setLoadingAtivos(true)
     const { data: animaisData } = await supabase
-      .from('animais').select('id, codigo, brinco, peso_entrada, valor_compra, lote_atual_id, data_entrada')
+      .from('animais').select('id, codigo, brinco, peso_entrada, valor_compra, lote_atual_id, data_entrada, ciclo_atual')
       .eq('user_id', user.id).eq('status', 'ativo')
 
-    const lista = (animaisData ?? []) as Array<{ id: string; codigo: string; brinco: string; peso_entrada: number; valor_compra: number; lote_atual_id: string; data_entrada: string }>
+    const lista = (animaisData ?? []) as Array<{ id: string; codigo: string; brinco: string; peso_entrada: number; valor_compra: number; lote_atual_id: string; data_entrada: string; ciclo_atual: number }>
     if (lista.length === 0) { setAtivos([]); setLoadingAtivos(false); return }
 
     const [custos, custosVarData, fornecedorPorAnimal] = await Promise.all([
@@ -129,6 +149,7 @@ export default function Ranking() {
       return {
         animal_id: a.id, codigo: a.codigo, brinco: a.brinco,
         loteId: a.lote_atual_id, loteNome: lotes.find(l => l.id === a.lote_atual_id)?.nome_lote ?? '—',
+        cicloAtual: a.ciclo_atual,
         fornecedorId, fornecedorNome: nomeFornecedor(fornecedorId),
         pesoEntrada: a.peso_entrada, pesoAtual, ganho,
         diasConfinamento: r?.diasConfinamento ?? 0,
@@ -203,7 +224,8 @@ export default function Ranking() {
     fornecedorFiltro === 'todos' || (fornecedorFiltro === 'nao_informado' ? fornecedorId == null : fornecedorId === fornecedorFiltro)
 
   const ativosFiltrados = ativosComLucro.filter(a =>
-    (loteFiltro === 'todos' || a.loteId === loteFiltro) && passaFiltroFornecedor(a.fornecedorId))
+    (loteFiltro === 'todos' || a.loteId === loteFiltro) && passaFiltroFornecedor(a.fornecedorId)
+    && (ciclosFiltro.size === 0 || ciclosFiltro.has(a.cicloAtual)))
   const vendidosFiltrados = vendidos.filter(v =>
     (loteFiltro === 'todos' || v.loteId === loteFiltro) && passaFiltroFornecedor(v.fornecedorId))
 
@@ -296,6 +318,10 @@ export default function Ranking() {
   )
 
   const tituloPdf = TITULOS_RANKING[criterio][ordemDesc ? 'desc' : 'asc']
+  const ciclosFiltroOrdenados = Array.from(ciclosFiltro).sort((a, b) => a - b)
+  const ciclosPdf = tab === 'ativos' && ciclosFiltroOrdenados.length > 0
+    ? `${ciclosFiltroOrdenados.length === 1 ? 'Ciclo' : 'Ciclos'} ${ciclosFiltroOrdenados.join(', ')}`
+    : null
   const qtdSelecionados = tab === 'ativos' ? selecionadosAtivos.size : selecionadosVendidos.size
   const podeExportar = qtdSelecionados > 0
 
@@ -351,6 +377,26 @@ export default function Ranking() {
           Exportar PDF{qtdSelecionados > 0 ? ` (${qtdSelecionados})` : ''}
         </button>
       </div>
+
+      {tab === 'ativos' && ciclosDisponiveis.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+            Marque um ou mais ciclos para ver só os animais que estão neles hoje. Sem marcar nenhum, aparecem todos os ciclos.
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="form-label" style={{ margin: 0 }}>Filtrar por ciclo:</span>
+            {ciclosDisponiveis.map(n => (
+              <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', padding: '4px 10px', borderRadius: 20, border: '1px solid var(--border)', background: ciclosFiltro.has(n) ? 'var(--green-bg)' : '#fff' }}>
+                <input type="checkbox" checked={ciclosFiltro.has(n)} onChange={() => toggleCicloFiltro(n)} />
+                Ciclo {n}
+              </label>
+            ))}
+            {ciclosFiltro.size > 0 && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setCiclosFiltro(new Set())}>Limpar seleção</button>
+            )}
+          </div>
+        </div>
+      )}
 
       {tab === 'ativos' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
@@ -457,6 +503,7 @@ export default function Ranking() {
       <div className="print-area">
         <RankingPdfImprimivel
           titulo={tituloPdf}
+          ciclos={ciclosPdf}
           tab={tab}
           ativos={ativosParaPdf}
           vendidos={vendidosParaPdf}
@@ -471,9 +518,10 @@ export default function Ranking() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function RankingPdfImprimivel({
-  titulo, tab, ativos, vendidos,
+  titulo, ciclos, tab, ativos, vendidos,
 }: {
   titulo: string
+  ciclos: string | null
   tab: 'ativos' | 'vendidos'
   ativos: LinhaAtivo[]
   vendidos: LinhaVendido[]
@@ -486,7 +534,7 @@ function RankingPdfImprimivel({
 
       <h1 style={{ fontSize: 18, fontWeight: 700, textAlign: 'center', marginBottom: 4 }}>{titulo}</h1>
       <p style={{ fontSize: 12, textAlign: 'center', color: '#555', marginBottom: 28 }}>
-        Emitido em {fmtData(new Date().toISOString().split('T')[0])} · Ordenado por brinco
+        Emitido em {fmtData(new Date().toISOString().split('T')[0])}{ciclos ? ` · ${ciclos}` : ''} · Ordenado por brinco
       </p>
 
       {tab === 'ativos' ? (
