@@ -186,6 +186,7 @@ tr:hover td { background: var(--gray-50); }
 .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.5; }
 .empty-title { font-size: 15px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
 .empty-desc { font-size: 13px; color: var(--text-3); }
+.empty-action { margin-top: 16px; }
 
 /* Toasts */
 .toast-wrap { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }

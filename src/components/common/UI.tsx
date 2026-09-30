@@ -31,7 +31,7 @@ export function PageHeader({ title, subtitle, action }:
         <h1 style={{ fontSize: '22px', fontWeight: 600 }}>{title}</h1>
         {subtitle && <p style={{ fontSize: '13px', color: '#9e9e9e', marginTop: '3px' }}>{subtitle}</p>}
       </div>
-      {action}
+      {action && <div className="empty-action">{action}</div>}
     </div>
   )
 }

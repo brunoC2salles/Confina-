@@ -23,14 +23,14 @@ export default function Compras() {
   const [abrirCompraNoGrupo, setAbrirCompraNoGrupo] = useState(false)
   const [form, setForm] = useState(formVazio)
   const [saving, setSaving] = useState(false)
-  // "Registrar compra" na aba Ração: primeiro escolhe se é dieta pronta
-  // (compra de um grupo de consumo) ou ingrediente (ração feita na fazenda).
+  // "Registrar Compra" na aba Ração: primeiro escolhe se é dieta pronta
+  // (compra de um grupo de consumo), ingrediente (ração feita na fazenda)
+  // ou fornecimento de ração aos lotes.
   const [showRegistrar, setShowRegistrar] = useState(false)
-  const [tipoRegistro, setTipoRegistro] = useState<'dieta' | 'ingrediente'>('dieta')
+  const [tipoRegistro, setTipoRegistro] = useState<'dieta' | 'ingrediente' | 'fornecimento'>('dieta')
   const [grupoParaCompra, setGrupoParaCompra] = useState('')
   const [pedidoIngrediente, setPedidoIngrediente] = useState(0)
   const [pedidoFornecimento, setPedidoFornecimento] = useState(0)
-  const [pedidoRepetirFornecimento, setPedidoRepetirFornecimento] = useState(0)
   // Incrementado quando um fornecimento é registrado ou excluído — a seção
   // de ingredientes recarrega o estoque.
   const [versaoEstoque, setVersaoEstoque] = useState(0)
@@ -43,6 +43,11 @@ export default function Compras() {
     if (tipoRegistro === 'ingrediente') {
       setShowRegistrar(false)
       setPedidoIngrediente(n => n + 1)
+      return
+    }
+    if (tipoRegistro === 'fornecimento') {
+      setShowRegistrar(false)
+      setPedidoFornecimento(n => n + 1)
       return
     }
     const grupo = grupos.find(g => g.id === grupoParaCompra)
@@ -75,9 +80,7 @@ export default function Compras() {
         action={aba === 'racao' ? (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn btn-ghost" onClick={() => setShowNovo(true)}>+ Novo grupo</button>
-            <button className="btn btn-ghost" onClick={abrirRegistrar}>+ Registrar compra</button>
-            <button className="btn btn-ghost" onClick={() => setPedidoRepetirFornecimento(n => n + 1)}>Repetir último fornecimento</button>
-            <button className="btn btn-primary" onClick={() => setPedidoFornecimento(n => n + 1)}>+ Registrar fornecimento</button>
+            <button className="btn btn-primary" onClick={abrirRegistrar}>+ Registrar Compra</button>
           </div>
         ) : undefined}
       />
@@ -94,7 +97,7 @@ export default function Compras() {
 
       {aba === 'racao' && (
       <>
-      <SecaoFornecimentos pedidoRegistro={pedidoFornecimento} pedidoRepetir={pedidoRepetirFornecimento}
+      <SecaoFornecimentos pedidoRegistro={pedidoFornecimento}
         onEstoqueAlterado={() => setVersaoEstoque(n => n + 1)} />
 
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Dieta pronta</div>
@@ -191,6 +194,10 @@ export default function Compras() {
               <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' }}>
                 <input type="radio" name="tipo-registro" checked={tipoRegistro === 'ingrediente'} onChange={() => setTipoRegistro('ingrediente')} style={{ marginTop: 3 }} />
                 <span><strong>Ingrediente</strong><br /><span style={{ color: '#9e9e9e' }}>Ingrediente comprado ou produzido na fazenda para a ração feita em casa.</span></span>
+              </label>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' }}>
+                <input type="radio" name="tipo-registro" checked={tipoRegistro === 'fornecimento'} onChange={() => setTipoRegistro('fornecimento')} style={{ marginTop: 3 }} />
+                <span><strong>Fornecimento</strong><br /><span style={{ color: '#9e9e9e' }}>Ração fornecida aos lotes, dividida entre eles pelo consumo previsto de cada um.</span></span>
               </label>
             </div>
           </div>
@@ -621,9 +628,8 @@ const formFornecimentoVazio = () => ({
 
 const arred = (v: number, casas = 1) => Math.round(v * 10 ** casas) / 10 ** casas
 
-function SecaoFornecimentos({ pedidoRegistro, pedidoRepetir, onEstoqueAlterado }: {
+function SecaoFornecimentos({ pedidoRegistro, onEstoqueAlterado }: {
   pedidoRegistro: number
-  pedidoRepetir: number
   onEstoqueAlterado: () => void
 }) {
   const {
@@ -701,45 +707,12 @@ function SecaoFornecimentos({ pedidoRegistro, pedidoRepetir, onEstoqueAlterado }
     setShowForm(true)
   }
 
-  // Repete o último fornecimento: mesma dieta, origem, quantidades e lotes,
-  // com a data de hoje.
-  const repetirUltimo = () => {
-    const ultimo = fornecimentos[0]
-    if (!ultimo) { abrirNovo(); return }
-    setForm({
-      data: hojeStr(),
-      dieta_id: ultimo.dieta_id,
-      modo: ultimo.modo,
-      grupo_id: ultimo.grupo_id ?? '',
-      kg_total: String(ultimo.kg_total),
-      pct_ms: ultimo.pct_ms != null ? String(ultimo.pct_ms) : '',
-      observacoes: '',
-      loteIds: ultimo.lotes.map(l => l.lote_id).filter(id => lotesAtivos.some(l => l.id === id)),
-    })
-    setLinhas(ultimo.itens.map(i => ({
-      chave: i.chave,
-      nome: ingredientePorChave[i.chave]?.nome ?? 'Ingrediente',
-      tipo: i.tipo,
-      kg: String(i.kg),
-      pct_ms: String(i.pct_ms),
-      preco: i.preco_kg_referencia,
-    })))
-    setAvisoComposicao(null)
-    setErro(null)
-    setResultado(null)
-    setShowForm(true)
-  }
-
-  // Pedidos vindos dos botões do cabeçalho da página. Guarda o último pedido
+  // Pedido vindo de "Registrar Compra" > Fornecimento, no cabeçalho da página. Guarda o último pedido
   // atendido para não reabrir o formulário quando a seção é montada de novo.
   const ultimoPedido = useRef(pedidoRegistro)
   useEffect(() => {
     if (pedidoRegistro !== ultimoPedido.current) { ultimoPedido.current = pedidoRegistro; abrirNovo() }
   }, [pedidoRegistro])
-  const ultimoRepetir = useRef(pedidoRepetir)
-  useEffect(() => {
-    if (pedidoRepetir !== ultimoRepetir.current) { ultimoRepetir.current = pedidoRepetir; repetirUltimo() }
-  }, [pedidoRepetir])
 
   const adicionarIngrediente = () => {
     const opcao = ingredientePorChave[ingredienteParaAdicionar]
@@ -812,7 +785,7 @@ function SecaoFornecimentos({ pedidoRegistro, pedidoRepetir, onEstoqueAlterado }
         ? <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><div className="spinner" style={{ width: 24, height: 24 }} /></div>
         : fornecimentos.length === 0
           ? <div className="card"><EmptyState icon="" title="Nenhum fornecimento registrado" desc="Registre a ração fornecida aos lotes para que custo, consumo e estoque passem a usar o realizado."
-              action={<button className="btn btn-primary" onClick={abrirNovo}>Registrar fornecimento</button>} /></div>
+              action={<button className="btn btn-primary" onClick={abrirNovo}>Registrar Compra</button>} /></div>
           : (
             <div className="table-wrap">
               <table>
@@ -923,7 +896,7 @@ function SecaoFornecimentos({ pedidoRegistro, pedidoRepetir, onEstoqueAlterado }
         </div>
       )}
 
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="Registrar fornecimento de ração" size="lg">
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Registrar Compra" size="lg">
         {resultado ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ padding: 14, background: 'var(--green-bg)', borderRadius: 8 }}>
@@ -1089,7 +1062,7 @@ function SecaoFornecimentos({ pedidoRegistro, pedidoRepetir, onEstoqueAlterado }
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Registrar fornecimento'}
+                {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Registrar Compra'}
               </button>
             </div>
           </form>

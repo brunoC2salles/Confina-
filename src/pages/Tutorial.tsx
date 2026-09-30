@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import './tutorial.css'
 import {
   MockIngredientes, MockDietas, MockLotes, MockAnimais, MockCsv,
-  MockImportarLote, MockPesagens, MockCompras, MockFornecimento, MockRepetirFornecimento, MockDietaPronta, MockAjusteInventario, MockComparativo, MockRanking, MockParceiros,
+  MockImportarLote, MockPesagens, MockCompras, MockFornecimento, MockDietaPronta, MockAjusteInventario, MockComparativo, MockRanking, MockParceiros,
 } from '@/components/tutorial/Mockups'
 
 interface Secao {
@@ -136,18 +136,16 @@ const SECOES: Secao[] = [
     rota: '/compras', rotaLabel: 'Abrir Compras',
     resumo: 'Na aba Ração de Compras fica tudo da alimentação: o fornecimento de ração aos lotes com o planejado x realizado, as compras de dieta pronta e o estoque de ingredientes da ração feita na fazenda. Medicamentos e Outros têm abas próprias, com o valor rateado entre os animais.',
     dicas: [
-      'Ingrediente: em "+ Registrar compra", escolha Ingrediente e informe se foi Compra ou Produção própria (com o custo de produção). A quantidade é em kg de matéria natural, como foi pesada.',
+      'Ingrediente: em "+ Registrar Compra", escolha Ingrediente e informe se foi Compra ou Produção própria (com o custo de produção). A quantidade é em kg de matéria natural, como foi pesada.',
       'O custo médio do estoque passa a ser o preço do ingrediente nas dietas a partir da data de cada entrada.',
-      'Fornecimento: escolha a dieta e informe o total; os ingredientes vêm pela composição e a divisão entre os lotes é feita pelo consumo previsto de cada um.',
+      'Fornecimento: em "+ Registrar Compra", escolha Fornecimento, a dieta e informe o total; os ingredientes vêm pela composição e a divisão entre os lotes é feita pelo consumo previsto de cada um.',
       'Cada fornecimento vale do dia dele até o próximo do mesmo lote e substitui o consumo teórico no custo e na baixa de estoque.',
-      '"Repetir último fornecimento" abre o formulário com a mesma dieta, origem, quantidades e lotes, já com a data de hoje.',
       'Dieta pronta: crie um grupo com os lotes que dividem a mesma ração e registre as compras dentro dele. O saldo do grupo é controlado em matéria seca.',
       'O saldo de cada ingrediente é entradas menos consumo. "Ajustar inventário" corrige o saldo com a contagem física, sem mudar o custo médio.',
     ],
     mockups: [
       { titulo: 'Registrar a compra de um ingrediente', el: <MockCompras /> },
       { titulo: 'Registrar o fornecimento de ração', el: <MockFornecimento /> },
-      { titulo: 'Repetir o último fornecimento', el: <MockRepetirFornecimento /> },
       { titulo: 'Comprar dieta pronta para um grupo de lotes', el: <MockDietaPronta /> },
       { titulo: 'Ajustar o inventário de um ingrediente', el: <MockAjusteInventario /> },
     ],
