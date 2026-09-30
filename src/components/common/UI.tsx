@@ -31,7 +31,7 @@ export function PageHeader({ title, subtitle, action }:
         <h1 style={{ fontSize: '22px', fontWeight: 600 }}>{title}</h1>
         {subtitle && <p style={{ fontSize: '13px', color: '#9e9e9e', marginTop: '3px' }}>{subtitle}</p>}
       </div>
-      {action && <div className="empty-action">{action}</div>}
+      {action}
     </div>
   )
 }
@@ -43,7 +43,7 @@ export function EmptyState({ icon = '◈', title, desc, action }:
       {icon && <div className="empty-icon">{icon}</div>}
       <div className="empty-title">{title}</div>
       {desc && <div className="empty-desc">{desc}</div>}
-      {action}
+      {action && <div className="empty-action">{action}</div>}
     </div>
   )
 }
