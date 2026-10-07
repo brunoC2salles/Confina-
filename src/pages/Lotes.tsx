@@ -2935,8 +2935,13 @@ function ModalEditarCiclos({
         d.setDate(d.getDate() + (anterior.dias_planejados || 0))
         sugestao = d.toISOString().slice(0, 10)
       }
+      // Número = último ciclo da lista + 1 (e não prev.length + 1): lotes
+      // criados já num ciclo avançado (ciclo inicial > 1) têm numeração que
+      // não começa em 1, e usar o tamanho da lista colidia com um número
+      // existente (constraint única lote_id + numero).
+      const numeroNovo = anterior ? anterior.numero + 1 : 1
       return [...prev, {
-        numero: prev.length + 1, nome: cicloLabelPadrao(prev.length + 1), tipo_ciclo: 'confinamento',
+        numero: numeroNovo, nome: cicloLabelPadrao(numeroNovo), tipo_ciclo: 'confinamento',
         dias_planejados: 30, dieta_id: null, gmd_esperado: null, data_inicio: sugestao,
       }]
     })
