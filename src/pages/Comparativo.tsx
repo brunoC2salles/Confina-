@@ -60,6 +60,10 @@ interface LinhaPorCiclo {
   custoAlimMedio: number
   custoOpMedio: number
   custoPorKg: number | null
+  // Somas brutas de concentrado — só pra linha de média ponderada (conversão
+  // geral precisa das somas, não da média das conversões de cada lote).
+  consumoConcSoma: number
+  ganhoConcentradoSoma: number
 }
 
 // ─── Dados brutos de cada venda já registrada (uma linha por animal vendido,
@@ -357,8 +361,38 @@ export default function Comparativo() {
       custoAlimMedio: g.qtd > 0 ? g.custoAlimSoma / g.qtd : 0,
       custoOpMedio: g.qtd > 0 ? g.custoOpSoma / g.qtd : 0,
       custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
+      consumoConcSoma: g.consumoConcSoma,
+      ganhoConcentradoSoma: g.ganhoConcentradoSoma,
     }))
   }, [animaisAtivosRaw, resultadosAtivos, ciclosSelecionados, nomePorLote, fornecedorPorAnimalAtivos, passaFiltroFornecedor])
+
+  // Linha de média da tabela por ciclo — ponderada por animal: reconstrói as
+  // somas de cada lote (média x qtd) e aplica as mesmas fórmulas das linhas,
+  // como se todos os animais fossem um grupo só. Útil quando o mesmo grupo de
+  // animais foi bifurcado em vários lotes ao longo do caminho.
+  const totalPorCiclo = useMemo(() => {
+    if (linhasPorCiclo.length < 2) return null
+    let qtd = 0, diasSoma = 0, ganhoSoma = 0, custoAlimSoma = 0, custoOpSoma = 0, consumoConcSoma = 0, ganhoConcentradoSoma = 0
+    for (const l of linhasPorCiclo) {
+      qtd += l.qtd
+      diasSoma += l.diasMedio * l.qtd
+      ganhoSoma += l.ganhoMedio * l.qtd
+      custoAlimSoma += l.custoAlimMedio * l.qtd
+      custoOpSoma += l.custoOpMedio * l.qtd
+      consumoConcSoma += l.consumoConcSoma
+      ganhoConcentradoSoma += l.ganhoConcentradoSoma
+    }
+    return {
+      qtd,
+      diasMedio: qtd > 0 ? diasSoma / qtd : 0,
+      ganhoMedio: qtd > 0 ? ganhoSoma / qtd : 0,
+      gmdMedio: diasSoma > 0 ? ganhoSoma / diasSoma : 0,
+      conversao: (consumoConcSoma > 0 && ganhoConcentradoSoma > 0) ? consumoConcSoma / ganhoConcentradoSoma : null,
+      custoAlimMedio: qtd > 0 ? custoAlimSoma / qtd : 0,
+      custoOpMedio: qtd > 0 ? custoOpSoma / qtd : 0,
+      custoPorKg: ganhoSoma > 0 ? (custoAlimSoma + custoOpSoma) / ganhoSoma : null,
+    }
+  }, [linhasPorCiclo])
 
   // ─── Dados brutos de cada venda já registrada — ver VendidoRaw no topo. ───
   const [vendidosRaw, setVendidosRaw] = useState<VendidoRaw[]>([])
@@ -629,6 +663,21 @@ export default function Comparativo() {
                     </tr>
                   ))}
                 </tbody>
+                {totalPorCiclo && (
+                  <tfoot>
+                    <tr style={{ fontWeight: 600 }}>
+                      <td>Média / total geral</td>
+                      <td>{totalPorCiclo.qtd}</td>
+                      <td>{fmtNum(totalPorCiclo.diasMedio, 1)}</td>
+                      <td>{fmtNum(totalPorCiclo.ganhoMedio, 1)} kg</td>
+                      <td>{fmtNum(totalPorCiclo.gmdMedio, 2)} kg/dia</td>
+                      <td>{totalPorCiclo.conversao != null ? `${fmtNum(totalPorCiclo.conversao, 2)} kg/kg` : '—'}</td>
+                      <td>{fmt(totalPorCiclo.custoAlimMedio)}</td>
+                      <td>{fmt(totalPorCiclo.custoOpMedio)}</td>
+                      <td>{totalPorCiclo.custoPorKg != null ? `${fmt(totalPorCiclo.custoPorKg)}/kg` : '—'}</td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           )}
