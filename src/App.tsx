@@ -12,6 +12,7 @@ import Pesagens from '@/pages/Pesagens'
 import Vendas from '@/pages/Vendas'
 import Ranking from '@/pages/Ranking'
 import Comparativo from '@/pages/Comparativo'
+import Simulador from '@/pages/Simulador'
 import Importar from '@/pages/Importar'
 import Dietas from '@/pages/Dietas'
 import Ingredientes from '@/pages/Ingredientes'
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="vendas"       element={<Vendas />} />
             <Route path="ranking"      element={<Ranking />} />
             <Route path="comparativo"  element={<Comparativo />} />
+            <Route path="simulador"    element={<Simulador />} />
             <Route path="importar"     element={<Importar />} />
             <Route path="dietas"       element={<Dietas />} />
             <Route path="ingredientes" element={<Ingredientes />} />

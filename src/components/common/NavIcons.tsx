@@ -19,6 +19,7 @@ export const ICONES: Record<string, ReactNode> = {
   '/vendas': <Base><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.5 1.5 0 0 1 0 2.1l-6.4 6.4a1.5 1.5 0 0 1-2.1 0z" /><circle cx="8" cy="8" r="1.4" /></Base>,
   '/ranking': <Base><rect x="3.5" y="12" width="5" height="8.5" rx="1" /><rect x="9.5" y="5" width="5" height="15.5" rx="1" /><rect x="15.5" y="9" width="5" height="11.5" rx="1" /></Base>,
   '/comparativo': <Base><rect x="3.5" y="3.5" width="7" height="17" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="17" rx="1.5" /><path d="M6 8h2M16 8h2M6 12h2M16 12h2" /></Base>,
+  '/simulador': <Base><circle cx="5.5" cy="18.5" r="2" /><circle cx="18.5" cy="5.5" r="2" /><circle cx="18.5" cy="18.5" r="2" /><path d="M7.5 18.5h9M5.5 16.5V12a4 4 0 0 1 4-4h7" /></Base>,
   '/importar': <Base><path d="M14 3.5H6.5a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V8z" /><path d="M14 3.5V8h4.5" /><path d="M12 11.5v5.5M9.2 14.2h5.6" /></Base>,
   '/dietas': <Base><path d="M3.5 11.5h17a8.5 8.5 0 0 1-17 0z" /><path d="M9 4.5c0 1.5 1.5 1.5 1.5 3M14 4.5c0 1.5 1.5 1.5 1.5 3" /></Base>,
   '/ingredientes': <Base><path d="M5 19C5 10.5 10.5 5 20 4c-.8 9.5-6.5 15-15 15z" /><path d="M5 19l8.5-8.5" /></Base>,
