@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { getPctMsEfetivo, type Dieta, type IngredienteDisponivel } from '@/hooks/useDietas'
 import { fmt } from '@/lib/calculations'
 import {
-  num, custoKgMsDieta, custoLadoKgMs, validarDieta,
+  num, custoKgMsDieta, custoLadoKgMs, validarDieta, dietaVazia,
   type SimCiclo, type SimDieta, type SimComponente, type TipoCicloSim,
 } from '@/lib/simulador'
 
@@ -81,6 +81,12 @@ export function CicloCard({
     setDietaAberta(false)
   }
 
+  const montarManual = () => {
+    if (!window.confirm('Descartar a dieta copiada e montar uma dieta à mão neste ciclo?')) return
+    setDieta(dietaVazia())
+    setDietaAberta(true)
+  }
+
   const fieldLabel: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: 'var(--text-2)', marginBottom: 4, display: 'block' }
 
   return (
@@ -157,6 +163,9 @@ export function CicloCard({
                   <option value="">Copiar dieta cadastrada...</option>
                   {dietas.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
                 </select>
+              )}
+              {ciclo.dieta.origemNome && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={montarManual}>Montar à mão</button>
               )}
               {!ciclo.dieta.origemNome && (
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDietaAberta(v => !v)}>
