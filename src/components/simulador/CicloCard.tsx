@@ -78,7 +78,7 @@ export function CicloCard({
     if ((ciclo.dieta.componentes.length > 0 || ciclo.dieta.custo_manual_ativo)
       && !window.confirm(`Substituir a dieta deste ciclo pela cópia de "${d.nome}"?`)) return
     onChange({ ...ciclo, dieta: copiarDieta(d), gmd: d.gmd_esperado ? String(d.gmd_esperado) : ciclo.gmd })
-    setDietaAberta(true)
+    setDietaAberta(false)
   }
 
   const fieldLabel: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: 'var(--text-2)', marginBottom: 4, display: 'block' }
@@ -158,12 +158,14 @@ export function CicloCard({
                   {dietas.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
                 </select>
               )}
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDietaAberta(v => !v)}>
-                {dietaAberta ? 'Fechar dieta' : 'Editar dieta'}
-              </button>
+              {!ciclo.dieta.origemNome && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDietaAberta(v => !v)}>
+                  {dietaAberta ? 'Fechar dieta' : 'Editar dieta'}
+                </button>
+              )}
             </div>
           </div>
-          {dietaAberta && <EditorDieta dieta={ciclo.dieta} ingredientes={ingredientes} onChange={setDieta} gmdCiclo={num(ciclo.gmd)} />}
+          {dietaAberta && !ciclo.dieta.origemNome && <EditorDieta dieta={ciclo.dieta} ingredientes={ingredientes} onChange={setDieta} gmdCiclo={num(ciclo.gmd)} />}
         </div>
       )}
     </div>

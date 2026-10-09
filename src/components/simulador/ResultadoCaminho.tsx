@@ -5,15 +5,15 @@ import type { ResultadoCenario } from '@/lib/simulador'
 
 const corValor = (v: number | null) => v == null ? undefined : v >= 0 ? 'var(--green)' : 'var(--red)'
 
-export function ResultadoCaminho({ r }: { r: ResultadoCenario }) {
+export function ResultadoCaminho({ r, mostrarLucro }: { r: ResultadoCenario; mostrarLucro: boolean }) {
   // Ciclo com a maior e a menor margem por kg produzido (só faz sentido com
   // preço de venda informado e 2 ou mais ciclos).
   const destaques = useMemo(() => {
     const comMargem = r.ciclos.filter(c => c.margemKg != null)
-    if (comMargem.length < 2) return { melhor: null as string | null, pior: null as string | null }
+    if (!mostrarLucro || comMargem.length < 2) return { melhor: null as string | null, pior: null as string | null }
     const ord = [...comMargem].sort((a, b) => (b.margemKg ?? 0) - (a.margemKg ?? 0))
     return { melhor: ord[0].cicloId, pior: ord[ord.length - 1].cicloId }
-  }, [r])
+  }, [r, mostrarLucro])
 
   const negativos = r.ciclos.filter(c => c.margemKg != null && c.margemKg < 0)
 
@@ -53,8 +53,8 @@ export function ResultadoCaminho({ r }: { r: ResultadoCenario }) {
                 <th>Custo alimentação</th>
                 <th>Custo estrutura</th>
                 <th>Custo do kg produzido</th>
-                <th>Margem por kg</th>
-                <th>Resultado do ciclo</th>
+                {mostrarLucro && <th>Margem por kg</th>}
+                {mostrarLucro && <th>Resultado do ciclo</th>}
               </tr>
             </thead>
             <tbody>
@@ -73,14 +73,14 @@ export function ResultadoCaminho({ r }: { r: ResultadoCenario }) {
                   <td>{fmt(c.custoAlimentacao)}</td>
                   <td>{fmt(c.custoEstrutura)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{c.custoKgProduzido != null ? `${fmt(c.custoKgProduzido)}/kg` : '—'}</td>
-                  <td style={{ whiteSpace: 'nowrap', color: corValor(c.margemKg), fontWeight: 600 }}>{c.margemKg != null ? `${fmt(c.margemKg)}/kg` : '—'}</td>
-                  <td style={{ color: corValor(c.resultado), fontWeight: 600 }}>{c.resultado != null ? fmt(c.resultado) : '—'}</td>
+                  {mostrarLucro && <td style={{ whiteSpace: 'nowrap', color: corValor(c.margemKg), fontWeight: 600 }}>{c.margemKg != null ? `${fmt(c.margemKg)}/kg` : '—'}</td>}
+                  {mostrarLucro && <td style={{ color: corValor(c.resultado), fontWeight: 600 }}>{c.resultado != null ? fmt(c.resultado) : '—'}</td>}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>
+        {mostrarLucro && <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>
           {r.precoLiquidoKg != null ? (
             <>
               Margem por kg = preço de venda líquido ({fmt(r.precoLiquidoKg)}/kg, já sem comissão e encargos) menos o custo do kg produzido no ciclo. Não inclui a compra do animal.
@@ -91,13 +91,13 @@ export function ResultadoCaminho({ r }: { r: ResultadoCenario }) {
               )}
             </>
           ) : 'Informe o preço de venda do caminho para ver a margem de cada ciclo.'}
-        </div>
+        </div>}
       </div>
 
       <div className="card" style={{ padding: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Custo acumulado e valor do animal</div>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{mostrarLucro ? 'Custo acumulado e valor do animal' : 'Custo acumulado'}</div>
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>
-          Por cabeça, em milhares de reais. Custo inclui compra e custo já incorrido. Valor do animal = peso x preço de venda líquido.
+          Por cabeça, em milhares de reais. Custo inclui compra e custo já incorrido.{mostrarLucro && ' Valor do animal = peso x preço de venda líquido.'}
         </div>
         <div style={{ width: '100%', height: 280 }}>
           <ResponsiveContainer>
@@ -113,7 +113,7 @@ export function ResultadoCaminho({ r }: { r: ResultadoCenario }) {
                   label={{ value: c.nome, fontSize: 10, fill: '#9e9e9e', position: 'insideTopLeft', offset: 6 }} />
               ))}
               <Line type="monotone" dataKey="custoAcumulado" name="Custo acumulado" stroke="#b91c1c" dot={false} strokeWidth={2} />
-              {r.precoLiquidoKg != null && (
+              {mostrarLucro && r.precoLiquidoKg != null && (
                 <Line type="monotone" dataKey="valorAnimal" name="Valor do animal" stroke="#2e7d32" dot={false} strokeWidth={2} />
               )}
             </LineChart>

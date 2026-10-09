@@ -9,7 +9,7 @@ import { CicloCard } from '@/components/simulador/CicloCard'
 import { ResultadoCaminho } from '@/components/simulador/ResultadoCaminho'
 import { fmt, fmtNum } from '@/lib/calculations'
 import {
-  calcularCenario, cicloVazio, cenarioVazio, dadosIniciais, duplicarCenario,
+  calcularCenario, cicloVazio, cenarioVazio, dadosIniciais, duplicarCenario, lucroVisivel,
   type SimDados, type SimCenario, type SimPartida, type ResultadoCenario,
 } from '@/lib/simulador'
 
@@ -96,8 +96,12 @@ export default function Simulador() {
 
 function CardSimulacao({ s, onAbrir }: { s: Simulacao; onAbrir: () => void }) {
   const resultados = useMemo(() => s.dados.cenarios.map(c => ({ c, r: calcularCenario(s.dados.partida, c) })), [s])
+  const comLucro = lucroVisivel(s.dados)
   const validos = resultados.filter(x => x.r.erros.length === 0 && x.r.lucroCabeca != null)
-  const melhor = validos.length > 0 ? validos.reduce((a, b) => (b.r.lucroCabeca! > a.r.lucroCabeca! ? b : a)) : null
+  const melhor = comLucro && validos.length > 0 ? validos.reduce((a, b) => (b.r.lucroCabeca! > a.r.lucroCabeca! ? b : a)) : null
+  const comCusto = resultados.filter(x => x.r.erros.length === 0 && x.r.custoMedioKgProduzido != null)
+  const menorCusto = !comLucro && comCusto.length > 0
+    ? comCusto.reduce((a, b) => (b.r.custoMedioKgProduzido! < a.r.custoMedioKgProduzido! ? b : a)) : null
   return (
     <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <div style={{ fontSize: 15, fontWeight: 600 }}>{s.nome}</div>
@@ -110,6 +114,12 @@ function CardSimulacao({ s, onAbrir }: { s: Simulacao; onAbrir: () => void }) {
         <div style={{ fontSize: 13 }}>
           Mais rentável: <strong>{melhor.c.nome}</strong>{' '}
           <span style={{ color: corValor(melhor.r.lucroCabeca) }}>{fmt(melhor.r.lucroCabeca!)}/cabeça</span>
+        </div>
+      )}
+      {menorCusto && (
+        <div style={{ fontSize: 13 }}>
+          Menor custo/kg: <strong>{menorCusto.c.nome}</strong>{' '}
+          <span style={{ color: 'var(--text-2)' }}>{fmt(menorCusto.r.custoMedioKgProduzido!)}/kg</span>
         </div>
       )}
       <button className="btn btn-ghost btn-sm" style={{ justifyContent: 'center', marginTop: 'auto' }} onClick={onAbrir}>Abrir</button>
@@ -137,6 +147,7 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
   const setPartida = (p: Partial<SimPartida>) => setDados({ ...dados, partida: { ...dados.partida, ...p } })
   const setCenario = (c: SimCenario) => setDados({ ...dados, cenarios: dados.cenarios.map(x => x.id === c.id ? c : x) })
 
+  const mostrarLucro = lucroVisivel(dados)
   const cenarioAtivo = dados.cenarios.find(c => c.id === cenarioAtivoId) ?? dados.cenarios[0]
   useEffect(() => { if (cenarioAtivo && cenarioAtivo.id !== cenarioAtivoId) setCenarioAtivoId(cenarioAtivo.id) }, [cenarioAtivo, cenarioAtivoId])
 
@@ -194,7 +205,8 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
 
       <PartidaCard partida={dados.partida} onChange={setPartida} />
 
-      <ComparativoCaminhos cenarios={dados.cenarios} resultados={resultados} ativoId={cenarioAtivo?.id ?? ''} onSelecionar={setCenarioAtivoId} />
+      <ComparativoCaminhos cenarios={dados.cenarios} resultados={resultados} ativoId={cenarioAtivo?.id ?? ''} onSelecionar={setCenarioAtivoId}
+        mostrarLucro={mostrarLucro} onAlternarLucro={() => setDados({ ...dados, mostrarLucro: !mostrarLucro })} />
 
       {/* Seleção do caminho em edição */}
       <div className="flex-between" style={{ gap: 8, flexWrap: 'wrap', margin: '24px 0 12px' }}>
@@ -220,8 +232,9 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
                 <label style={fieldLabel}>Nome do caminho</label>
                 <input className="form-input" value={cenarioAtivo.nome} onChange={e => setCenario({ ...cenarioAtivo, nome: e.target.value })} />
               </div>
+              {mostrarLucro && <>
               <div>
-                <label style={fieldLabel}>Preço de venda (R$/kg vivo)</label>
+                <label style={fieldLabel}>Venda (R$/kg vivo)</label>
                 <input className="form-input" type="number" step="0.01" value={cenarioAtivo.venda.precoKg}
                   onChange={e => setCenario({ ...cenarioAtivo, venda: { ...cenarioAtivo.venda, precoKg: e.target.value } })} />
               </div>
@@ -240,10 +253,13 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
                 <input className="form-input" type="number" step="0.1" value={cenarioAtivo.venda.rendimentoPct}
                   onChange={e => setCenario({ ...cenarioAtivo, venda: { ...cenarioAtivo.venda, rendimentoPct: e.target.value } })} />
               </div>
+              </>}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6 }}>
-              Venda em peso vivo. O rendimento de carcaça é usado só no indicador de lucro por @.
-            </div>
+            {mostrarLucro && (
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6 }}>
+                Venda em peso vivo. O rendimento de carcaça é usado só no indicador de lucro por @.
+              </div>
+            )}
           </div>
 
           {cenarioAtivo.ciclos.map((ci, idx) => (
@@ -265,7 +281,7 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
             </button>
           </div>
 
-          {resultados[cenarioAtivo.id] && <ResultadoCaminho r={resultados[cenarioAtivo.id]} />}
+          {resultados[cenarioAtivo.id] && <ResultadoCaminho r={resultados[cenarioAtivo.id]} mostrarLucro={mostrarLucro} />}
         </div>
       )}
     </div>
@@ -394,18 +410,20 @@ function PartidaCard({ partida, onChange }: { partida: SimPartida; onChange: (p:
 
 // ─── Comparativo dos caminhos ───────────────────────────────────────────────
 
-function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar }: {
+function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, mostrarLucro, onAlternarLucro }: {
   cenarios: SimCenario[]
   resultados: Record<string, ResultadoCenario>
   ativoId: string
   onSelecionar: (id: string) => void
+  mostrarLucro: boolean
+  onAlternarLucro: () => void
 }) {
   const validos = cenarios.map(c => resultados[c.id]).filter(r => r && r.erros.length === 0 && r.lucroCabeca != null)
-  const melhorId = validos.length >= 2 ? validos.reduce((a, b) => (b.lucroCabeca! > a.lucroCabeca! ? b : a)).cenarioId : null
+  const melhorId = mostrarLucro && validos.length >= 2 ? validos.reduce((a, b) => (b.lucroCabeca! > a.lucroCabeca! ? b : a)).cenarioId : null
 
-  type Linha = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean }
+  type Linha = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean; lucro?: boolean }
   const ou = (v: number | null, f: (n: number) => string) => v == null ? '—' : f(v)
-  const linhas: Linha[] = [
+  const todas: Linha[] = [
     { rotulo: 'Dias totais', valor: r => String(r.diasTotais) },
     { rotulo: 'Peso final', valor: r => `${fmtNum(r.pesoFinal, 1)} kg` },
     { rotulo: 'Ganho total', valor: r => `${fmtNum(r.ganhoTotal, 1)} kg` },
@@ -414,18 +432,24 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar }: {
     { rotulo: 'Investimento inicial', valor: r => fmt(r.investimentoInicial) },
     { rotulo: 'Custo dos ciclos', valor: r => fmt(r.custoCiclos) },
     { rotulo: 'Custo total', valor: r => fmt(r.custoTotal) },
-    { rotulo: 'Receita líquida', valor: r => ou(r.receitaLiquida, fmt) },
-    { rotulo: 'Lucro por cabeça', valor: r => ou(r.lucroCabeca, fmt), cor: r => corValor(r.lucroCabeca), destaque: true },
-    { rotulo: 'Lucro total', valor: r => ou(r.lucroTotal, fmt), cor: r => corValor(r.lucroTotal), destaque: true },
-    { rotulo: 'Margem', valor: r => ou(r.margemPct, v => `${fmtNum(v, 1)}%`), cor: r => corValor(r.margemPct) },
-    { rotulo: 'Retorno sobre o investimento', valor: r => ou(r.roiPct, v => `${fmtNum(v, 1)}%`), cor: r => corValor(r.roiPct) },
-    { rotulo: 'Lucro por @ de carcaça', valor: r => ou(r.lucroPorArroba, fmt), cor: r => corValor(r.lucroPorArroba) },
+    { rotulo: 'Receita líquida', valor: r => ou(r.receitaLiquida, fmt), lucro: true },
+    { rotulo: 'Lucro por cabeça', valor: r => ou(r.lucroCabeca, fmt), cor: r => corValor(r.lucroCabeca), destaque: true, lucro: true },
+    { rotulo: 'Lucro total', valor: r => ou(r.lucroTotal, fmt), cor: r => corValor(r.lucroTotal), destaque: true, lucro: true },
+    { rotulo: 'Margem', valor: r => ou(r.margemPct, v => `${fmtNum(v, 1)}%`), cor: r => corValor(r.margemPct), lucro: true },
+    { rotulo: 'Retorno sobre o investimento', valor: r => ou(r.roiPct, v => `${fmtNum(v, 1)}%`), cor: r => corValor(r.roiPct), lucro: true },
+    { rotulo: 'Lucro por @ de carcaça', valor: r => ou(r.lucroPorArroba, fmt), cor: r => corValor(r.lucroPorArroba), lucro: true },
   ]
+  const linhas = mostrarLucro ? todas : todas.filter(l => !l.lucro)
 
   return (
     <div className="card" style={{ padding: 0 }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 14, fontWeight: 600 }}>
-        Comparativo dos caminhos <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-3)' }}>· valores por cabeça, exceto lucro total</span>
+      <div className="flex-between" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>
+          Comparativo dos caminhos <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-3)' }}>· valores por cabeça{mostrarLucro ? ', exceto lucro total' : ''}</span>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onAlternarLucro}>
+          {mostrarLucro ? 'Ocultar projeção de lucro' : 'Mostrar projeção de lucro'}
+        </button>
       </div>
       <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
         <table>
@@ -456,7 +480,7 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar }: {
           </tbody>
         </table>
       </div>
-      {cenarios.some(c => resultados[c.id]?.erros.length === 0 && resultados[c.id]?.lucroCabeca == null) && (
+      {mostrarLucro && cenarios.some(c => resultados[c.id]?.erros.length === 0 && resultados[c.id]?.lucroCabeca == null) && (
         <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)' }}>
           Lucro, margem e retorno aparecem quando o preço de venda do caminho é informado.
         </div>

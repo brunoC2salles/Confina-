@@ -87,6 +87,13 @@ export interface SimDados {
   versao: 1
   partida: SimPartida
   cenarios: SimCenario[]
+  // Projeção de lucro sob demanda. Ausente em simulações antigas: nesse caso
+  // fica ligada se algum caminho já tem preço de venda.
+  mostrarLucro?: boolean
+}
+
+export function lucroVisivel(d: SimDados): boolean {
+  return d.mostrarLucro ?? d.cenarios.some(c => num(c.venda.precoKg) > 0)
 }
 
 export const ARROBA_KG = 15
@@ -148,6 +155,7 @@ export function dadosIniciais(): SimDados {
       qtdAnimais: '100', pesoInicial: '250', compraModo: 'kg', compraValor: '', custoAnteriorPorCabeca: '0',
     },
     cenarios: [cenarioVazio(1)],
+    mostrarLucro: false,
   }
 }
 
