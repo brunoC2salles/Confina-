@@ -492,6 +492,26 @@ export function useLotes() {
     return { error: error?.message ?? null }
   }
 
+  // Edição manual do ciclo do lote — só muda a identificação, nunca datas,
+  // dieta ou eventos (custos só mudam com troca de dieta). Ambas rodam numa
+  // função SQL para alterar lote e animais de uma vez.
+  //  - definirCicloAtualLote: lote e todos os animais ativos passam a indicar
+  //    outro ciclo já configurado.
+  //  - renumerarCicloAtualLote: o ciclo vigente do lote troca de número
+  //    (ex.: 1 vira 3) em ciclos_lote, eventos, trocas de dieta, ração real,
+  //    animais e no próprio lote.
+  const definirCicloAtualLote = async (loteId: string, numero: number) => {
+    const { error } = await supabase.rpc('definir_ciclo_atual_lote', { p_lote_id: loteId, p_numero: numero })
+    if (!error) await fetchLotes()
+    return { error: error?.message ?? null }
+  }
+
+  const renumerarCicloAtualLote = async (loteId: string, numeroNovo: number) => {
+    const { error } = await supabase.rpc('renumerar_ciclo_lote', { p_lote_id: loteId, p_numero_novo: numeroNovo })
+    if (!error) await fetchLotes()
+    return { error: error?.message ?? null }
+  }
+
   // Avanço "total": move todos os animais ativos que ainda estão no ciclo-base
   // do lote (lote.ciclo_atual) para o próximo ciclo. Animais que já foram
   // adiantados por um avanço parcial anterior (ciclo_atual já maior) não são
@@ -685,6 +705,8 @@ export function useLotes() {
       preco_kg_compra_no_lote: precoKg,
       compra_id: compra.id,
       lote_atual_id: input.lote_id,
+      // Animal entra no ciclo atual do lote (lotes podem começar em ciclo > 1)
+      ciclo_atual: lote.ciclo_atual,
       sexo: l.sexo ?? null,
       status: 'ativo' as const,
       user_id: user.id,
@@ -845,7 +867,7 @@ export function useLotes() {
     lotesAtivos, lotesEncerrados,
     fetchLotes, proximoNumeroLote,
     criarLote, atualizarLote, editarCiclo, salvarCiclosLote, removerCiclo, avancarCiclo, avancarCicloParcial, encerrarLote,
-    trocarDietaCiclo, removerTrocaDieta,
+    trocarDietaCiclo, removerTrocaDieta, definirCicloAtualLote, renumerarCicloAtualLote,
     criarAnimais, bifurcar, moverAliquota, excluirAnimal,
   }
 }
@@ -1343,7 +1365,7 @@ export function useCustoEngine() {
       const loteIdsArr = Array.from(loteIdsEnvolvidos)
       const [{ data: ciclosData }, { data: custosOpData }, fornecimentosDosLotes, ativosData, { data: eventosCicloData }, { data: trocasDietaData }, { data: membrosGrupoData }] = await Promise.all([
         supabase.from('ciclos_lote').select('lote_id, numero, tipo_ciclo, dieta_id, gmd_esperado, data_inicio, data_fim').in('lote_id', loteIdsArr),
-        supabase.from('custos_operacionais_lote').select('lote_id, valor, data_lancamento').in('lote_id', loteIdsArr),
+        supabase.from('custos_operacionais_lote').select('lote_id, valor, data_lancamento, periodo_dias').in('lote_id', loteIdsArr),
         // Fornecimentos de ração registrados para esses lotes (realizado) —
         // substituem o custo e o consumo estimados a partir do primeiro
         // fornecimento de cada lote (ver fornecimentoRacao.ts).
@@ -1372,7 +1394,7 @@ export function useCustoEngine() {
         qtdAtivaAtualPorLote[a.lote_atual_id] = (qtdAtivaAtualPorLote[a.lote_atual_id] ?? 0) + 1
       }
 
-      const custosOp = (custosOpData ?? []) as Array<{ lote_id: string; valor: number; data_lancamento: string }>
+      const custosOp = (custosOpData ?? []) as Array<{ lote_id: string; valor: number; data_lancamento: string; periodo_dias: number | null }>
       const membrosGrupo = (membrosGrupoData ?? []) as Array<{ lote_id: string; grupo_id: string; data_inicio: string; data_fim: string | null }>
 
       // Primeiro dia com fornecimento registrado em cada lote: dali em diante
@@ -1416,7 +1438,7 @@ export function useCustoEngine() {
         for (const c of custosOp) {
           const qtdHistorica = contarAtivosNoDia(c.lote_id, toDay(c.data_lancamento))
           const qtdAtivaNaData = qtdHistorica > 0 ? qtdHistorica : (qtdAtivaAtualPorLote[c.lote_id] ?? 1)
-          ;(custosOperacionaisPorLote[c.lote_id] ??= []).push({ valor: c.valor, data_lancamento: c.data_lancamento, qtdAtivaNaData })
+          ;(custosOperacionaisPorLote[c.lote_id] ??= []).push({ valor: c.valor, data_lancamento: c.data_lancamento, periodo_dias: c.periodo_dias ?? null, qtdAtivaNaData })
         }
 
         // ─── Fornecimento de ração (realizado) ───────────────────────────
@@ -1840,11 +1862,12 @@ export function useCustosOperacionais(loteId: string | null) {
 
   useEffect(() => { fetch() }, [fetch])
 
-  const adicionarCusto = async (input: { categoria: CategoriaCustoOperacional; descricao?: string; valor: number; data_lancamento: string }) => {
+  const adicionarCusto = async (input: { categoria: CategoriaCustoOperacional; descricao?: string; valor: number; data_lancamento: string; periodo_dias?: number | null }) => {
     if (!user || !loteId) return { error: 'Não autenticado' }
     const { error } = await supabase.from('custos_operacionais_lote').insert({
       lote_id: loteId, categoria: input.categoria, descricao: input.descricao ?? null,
-      valor: input.valor, data_lancamento: input.data_lancamento, user_id: user.id,
+      valor: input.valor, data_lancamento: input.data_lancamento,
+      periodo_dias: input.periodo_dias ?? null, user_id: user.id,
     })
     if (!error) await fetch()
     return { error: error?.message ?? null }

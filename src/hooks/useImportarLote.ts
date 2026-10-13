@@ -305,7 +305,7 @@ export function useImportarLote() {
           peso_entrada: a.peso, data_entrada: a.data_entrada,
           origem: a.origem, raca: a.raca, valor_compra: a.peso * compra.preco_kg,
           preco_kg_compra_no_lote: compra.preco_kg, compra_id: compraRow.id,
-          lote_atual_id: loteId, status: 'ativo' as const, user_id: user.id,
+          lote_atual_id: loteId, ciclo_atual: resLote.lote!.ciclo_atual, status: 'ativo' as const, user_id: user.id,
         }))
         const { data: criados, error: e1 } = await supabase.from('animais').insert(rows).select('id, brinco')
         if (e1) {

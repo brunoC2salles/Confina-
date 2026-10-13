@@ -60,7 +60,7 @@ export default function Lotes() {
   const [searchParams] = useSearchParams()
   const {
     lotes, lotesAtivos, lotesEncerrados, ciclosPorLote, resumo, distribuicaoCiclos, trocasDietaPorLote, loading,
-    criarLote, atualizarLote, editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta,
+    criarLote, atualizarLote, editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta, definirCicloAtualLote, renumerarCicloAtualLote,
     criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
   } = useLotes()
   const { templates: dietasTemplates } = useDietas()
@@ -208,6 +208,8 @@ export default function Lotes() {
           atualizarLote={atualizarLote}
           editarCiclo={editarCiclo}
           salvarCiclosLote={salvarCiclosLote}
+          definirCicloAtualLote={definirCicloAtualLote}
+          renumerarCicloAtualLote={renumerarCicloAtualLote}
           avancarCiclo={avancarCiclo}
           avancarCicloParcial={avancarCicloParcial}
           encerrarLote={encerrarLote}
@@ -945,7 +947,7 @@ function PainelProjecao({
 
 function DetalheLote({
   loteId, onClose, highlightAnimalId, dietasTemplates, todosLotes, ciclosPorLote, distribuicaoCiclos, trocasDietaPorLote,
-  atualizarLote, editarCiclo, salvarCiclosLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
+  atualizarLote, editarCiclo, salvarCiclosLote, definirCicloAtualLote, renumerarCicloAtualLote, avancarCiclo, avancarCicloParcial, encerrarLote, trocarDietaCiclo, removerTrocaDieta, criarAnimais, bifurcar, moverAliquota, excluirAnimal, proximoNumeroLote,
 }: {
   loteId: string
   onClose: () => void
@@ -960,6 +962,8 @@ function DetalheLote({
   avancarCiclo: (loteId: string, data?: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
   salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null }>) => Promise<{ error: string | null }>
   avancarCicloParcial: (loteId: string, animalIds: string[], data: string, pesagem?: PesagemNaTroca) => Promise<{ error: string | null }>
+  definirCicloAtualLote: (loteId: string, numero: number) => Promise<{ error: string | null }>
+  renumerarCicloAtualLote: (loteId: string, numeroNovo: number) => Promise<{ error: string | null }>
   encerrarLote: (loteId: string, motivo: MotivoEncerramento, obs?: string) => Promise<{ error: string | null }>
   trocarDietaCiclo: (loteId: string, cicloNumero: number, dietaId: string, data: string) => Promise<{ error: string | null }>
   removerTrocaDieta: (trocaId: string) => Promise<{ error: string | null }>
@@ -1630,6 +1634,16 @@ function DetalheLote({
         <ModalEditarCiclos
           lote={lote} ciclos={ciclos} dietasTemplates={dietasTemplates}
           salvarCiclosLote={salvarCiclosLote}
+          onDefinirCicloAtual={async (numero) => {
+            const res = await definirCicloAtualLote(lote.id, numero)
+            if (!res.error) await fetch()
+            return res
+          }}
+          onRenumerarCicloAtual={async (numeroNovo) => {
+            const res = await renumerarCicloAtualLote(lote.id, numeroNovo)
+            if (!res.error) await fetch()
+            return res
+          }}
           onClose={() => setShowEditarCiclos(false)}
         />
       )}
@@ -2882,12 +2896,14 @@ function ModalConfirmarExclusaoAnimal({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ModalEditarCiclos({
-  lote, ciclos, dietasTemplates, salvarCiclosLote, onClose,
+  lote, ciclos, dietasTemplates, salvarCiclosLote, onDefinirCicloAtual, onRenumerarCicloAtual, onClose,
 }: {
   lote: Lote
   ciclos: Array<{ id: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null; data_fim: string | null }>
   dietasTemplates: Array<{ id: string; nome: string; gmd_esperado: number; pct_consumo_pv_ms: number; custo_kg_ms: number | null }>
   salvarCiclosLote: (loteId: string, dataCriacao: string, ciclos: Array<{ id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null }>) => Promise<{ error: string | null }>
+  onDefinirCicloAtual: (numero: number) => Promise<{ error: string | null }>
+  onRenumerarCicloAtual: (numeroNovo: number) => Promise<{ error: string | null }>
   onClose: () => void
 }) {
   type LinhaCiclo = { id?: string; numero: number; nome: string; tipo_ciclo: TipoCiclo; dias_planejados: number; dieta_id: string | null; gmd_esperado: number | null; data_inicio: string | null }
@@ -2902,6 +2918,32 @@ function ModalEditarCiclos({
   )
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
+  // ─── Identificação do ciclo atual (só muda o número, não custos) ─────────
+  const [cicloApontado, setCicloApontado] = useState(lote.ciclo_atual)
+  const [numeroNovo, setNumeroNovo] = useState(String(lote.ciclo_atual))
+  const [salvandoIdent, setSalvandoIdent] = useState(false)
+  const [erroIdent, setErroIdent] = useState<string | null>(null)
+
+  const aplicarCicloApontado = async () => {
+    if (cicloApontado === lote.ciclo_atual) return
+    setSalvandoIdent(true); setErroIdent(null)
+    const res = await onDefinirCicloAtual(cicloApontado)
+    setSalvandoIdent(false)
+    if (res.error) { setErroIdent(res.error); return }
+    onClose()
+  }
+
+  const aplicarRenumeracao = async () => {
+    const n = Number(numeroNovo)
+    if (!Number.isInteger(n) || n < 1 || n > 8) { setErroIdent('O número do ciclo deve ficar entre 1 e 8'); return }
+    if (n === lote.ciclo_atual) return
+    setSalvandoIdent(true); setErroIdent(null)
+    const res = await onRenumerarCicloAtual(n)
+    setSalvandoIdent(false)
+    if (res.error) { setErroIdent(res.error); return }
+    onClose()
+  }
 
   // data_fim de cada ciclo = data_inicio do próximo (ou em aberto no
   // último) — sempre derivado, nunca editável direto, pra nunca deixar
@@ -2986,6 +3028,42 @@ function ModalEditarCiclos({
     <Modal open onClose={onClose} title={`Editar ciclos — ${lote.nome_lote}`}
       subtitle="A data de início de cada ciclo agora é editável e comanda o cálculo — dias planejados vira só uma estimativa" size="lg">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#2e7d32' }}>Ciclo atual do lote: {lote.ciclo_atual}</div>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label">Indicar outro ciclo configurado</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select className="form-input" value={cicloApontado} onChange={e => setCicloApontado(Number(e.target.value))}>
+                  {[...ciclos].sort((a, b) => a.numero - b.numero).map(c => (
+                    <option key={c.id} value={c.numero}>Ciclo {c.numero} — {c.nome}</option>
+                  ))}
+                </select>
+                <button className="btn btn-ghost btn-sm" onClick={aplicarCicloApontado}
+                  disabled={salvandoIdent || cicloApontado === lote.ciclo_atual}>Aplicar</button>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Renumerar o ciclo atual</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input className="form-input" type="number" min={1} max={8} value={numeroNovo}
+                  onChange={e => setNumeroNovo(e.target.value)} />
+                <button className="btn btn-ghost btn-sm" onClick={aplicarRenumeracao}
+                  disabled={salvandoIdent || Number(numeroNovo) === lote.ciclo_atual}>Aplicar</button>
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+            Muda só a identificação do ciclo no lote e em todos os animais ativos dele. Datas, dieta e custos não mudam.
+            Aplicar fecha esta janela sem salvar as demais alterações abaixo.
+          </div>
+          {erroIdent && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10, fontSize: 12, color: '#b91c1c' }}>
+              {erroIdent}
+            </div>
+          )}
+        </div>
+
         <div className="form-group">
           <label className="form-label">Data de entrada do lote</label>
           <input className="form-input" type="date" value={dataCriacao} onChange={e => setDataCriacao(e.target.value)} style={{ maxWidth: 200 }} />
@@ -3120,12 +3198,15 @@ function ModalCustosOperacionais({
   loading: boolean
   total: number
   onClose: () => void
-  onAdicionar: (input: { categoria: CategoriaCustoOperacional; descricao?: string; valor: number; data_lancamento: string }) => Promise<{ error: string | null }>
+  onAdicionar: (input: { categoria: CategoriaCustoOperacional; descricao?: string; valor: number; data_lancamento: string; periodo_dias?: number | null }) => Promise<{ error: string | null }>
   onRemover: (id: string) => Promise<void>
 }) {
   const [categoria, setCategoria] = useState<CategoriaCustoOperacional>('sanitario')
   const [descricao, setDescricao] = useState('')
   const [valor, setValor] = useState('')
+  // Período só para mão de obra e maquinário (opcional)
+  const [periodoDias, setPeriodoDias] = useState('')
+  const aceitaPeriodo = categoria === 'mao_de_obra' || categoria === 'maquinario'
   const [data, setData] = useState(hojeStr())
   const [erro, setErro] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -3133,11 +3214,16 @@ function ModalCustosOperacionais({
   const adicionar = async () => {
     const v = Number(valor)
     if (!v || v <= 0) { setErro('Informe um valor válido'); return }
+    let periodo: number | null = null
+    if (aceitaPeriodo && periodoDias.trim()) {
+      periodo = Number(periodoDias)
+      if (!Number.isInteger(periodo) || periodo <= 0) { setErro('Informe o período em dias inteiros, maior que zero'); return }
+    }
     setSaving(true); setErro(null)
-    const res = await onAdicionar({ categoria, descricao: descricao || undefined, valor: v, data_lancamento: data })
+    const res = await onAdicionar({ categoria, descricao: descricao || undefined, valor: v, data_lancamento: data, periodo_dias: periodo })
     setSaving(false)
     if (res.error) { setErro(res.error); return }
-    setDescricao(''); setValor('')
+    setDescricao(''); setValor(''); setPeriodoDias('')
   }
 
   return (
@@ -3167,7 +3253,20 @@ function ModalCustosOperacionais({
                 <label className="form-label">Valor por animal (R$)</label>
                 <input className="form-input" type="number" step="0.01" value={valor} onChange={e => setValor(e.target.value)} />
               </div>
+              {aceitaPeriodo && (
+                <div className="form-group">
+                  <label className="form-label">Período (dias, opcional)</label>
+                  <input className="form-input" type="number" min={1} step={1} value={periodoDias} onChange={e => setPeriodoDias(e.target.value)} />
+                </div>
+              )}
             </div>
+            {aceitaPeriodo && (
+              <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                {Number(periodoDias) > 0 && Number(valor) > 0
+                  ? `${fmt(Number(valor) / Number(periodoDias))} por animal por dia, a partir da data do lançamento. Depois do período, segue somando o mesmo valor diário enquanto o animal estiver no lote.`
+                  : 'Com período, o valor é dividido pelos dias e somado diariamente a partir da data do lançamento, inclusive depois do período. Sem período, o valor é rateado pelos dias do animal no lote.'}
+              </div>
+            )}
             {erro && <div style={{ padding: 8, background: '#ffebee', borderRadius: 8, color: '#b91c1c', fontSize: 12 }}>{erro}</div>}
             <button className="btn btn-primary btn-sm" onClick={adicionar} disabled={saving} style={{ alignSelf: 'flex-end' }}>
               {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '+ Adicionar custo'}
@@ -3185,7 +3284,7 @@ function ModalCustosOperacionais({
               <thead>
                 <tr>
                   <th>Data</th><th>Categoria</th><th>Descrição</th>
-                  <th>Valor/animal</th><th>Animais</th><th>Total</th>
+                  <th>Valor/animal</th><th>Período</th><th>Animais</th><th>Total</th>
                   {loteAtivo && <th></th>}
                 </tr>
               </thead>
@@ -3196,6 +3295,7 @@ function ModalCustosOperacionais({
                     <td>{categoriaCustoOpLabel(c.categoria)}</td>
                     <td>{c.descricao || '—'}</td>
                     <td>{fmt(c.valor)}</td>
+                    <td>{c.periodo_dias ? `${c.periodo_dias} dias (${fmt(c.valor / c.periodo_dias)}/dia)` : '—'}</td>
                     <td>{c.qtdAtivaNaData}</td>
                     <td>{fmt(c.valor * c.qtdAtivaNaData)}</td>
                     {loteAtivo && (

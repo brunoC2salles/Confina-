@@ -263,6 +263,9 @@ export interface CustoOperacionalLote {
   descricao: string | null
   valor: number
   data_lancamento: string
+  // Período em dias (mão de obra / maquinário): valor / periodo_dias somado
+  // por dia a partir do lançamento. Nulo = rateio antigo pelos dias no lote.
+  periodo_dias: number | null
   user_id: string
   created_at: string
 }

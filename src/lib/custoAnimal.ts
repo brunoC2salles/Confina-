@@ -125,6 +125,7 @@ export interface PesagemPonto {
 export interface CustoOperacionalInfo {
   valor: number
   data_lancamento: string
+  periodo_dias?: number | null   // preenchido: valor / periodo_dias por dia a partir do lançamento, sem parar ao fim do período
   qtdAtivaNaData: number   // já resolvida: histórica no dia do lançamento, com fallback para a atual se não houver ninguém registrado naquele dia — usada só para exibir o total do lançamento (valor x qtdAtivaNaData), não entra na conta por animal (que é sempre o valor cheio)
 }
 
@@ -661,10 +662,19 @@ export function calcularAnimalNaData(
           // Só considera lançamentos já feitos até a data alvo (não traz
           // custo do futuro pra um cálculo "como estava em tal data").
           if (toDay(c.data_lancamento) > diaAlvo) continue
-          // valor é por animal, ratado igualmente por dia ao longo de TODOS
-          // os dias já vividos pelo animal naquele lote (todos os ciclos),
-          // não só no dia exato do lançamento — ver diasPorLote acima.
-          const custoDoAnimal = c.valor / Math.max(diasNoLote, 1)
+          let custoDoAnimal: number
+          if (c.periodo_dias != null && c.periodo_dias > 0) {
+            // Com período: valor por animal / periodo_dias somado a cada dia
+            // a partir da data do lançamento. Passado o período, segue
+            // somando o mesmo valor diário enquanto o animal estiver no lote.
+            if (dia < toDay(c.data_lancamento)) continue
+            custoDoAnimal = c.valor / c.periodo_dias
+          } else {
+            // valor é por animal, ratado igualmente por dia ao longo de TODOS
+            // os dias já vividos pelo animal naquele lote (todos os ciclos),
+            // não só no dia exato do lançamento — ver diasPorLote acima.
+            custoDoAnimal = c.valor / Math.max(diasNoLote, 1)
+          }
           custoOperacional += custoDoAnimal
           if (tipoCiclo === 'pastagem') custoOperacionalPastagem += custoDoAnimal
           else if (tipoCiclo === 'misto') custoOperacionalMisto += custoDoAnimal
