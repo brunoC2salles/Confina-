@@ -3,16 +3,19 @@
 // O produtor que faz a própria ração registra entradas de cada ingrediente
 // (compra, produção própria ou ajuste de inventário). Este módulo calcula:
 //
-//  - o consumo de cada ingrediente, dia a dia, em kg de matéria natural. Nos
-//    lotes sem fornecimento de ração registrado, é teórico: peso do animal x
-//    consumo em MS da dieta do dia x fração de MS que o ingrediente
-//    representa na dieta / % MS do ingrediente, somando todos os lotes cujas
-//    dietas usam o ingrediente. A partir do primeiro fornecimento de um lote,
+// Todo o estoque é em base de matéria seca (MS): cada entrada é convertida
+// pelo % MS informado nela (quantidade em kg natural x % MS), e o custo
+// médio é R$/kg de MS.
+//
+//  - o consumo de cada ingrediente, dia a dia, em kg de MS. Nos lotes sem
+//    fornecimento de ração registrado, é teórico: peso do animal x consumo
+//    em MS da dieta do dia x fração de MS que o ingrediente representa na
+//    dieta, somando todos os lotes cujas dietas usam o ingrediente. A partir do primeiro fornecimento de um lote,
 //    vale o que foi fornecido (baixa no dia do fornecimento, ver
 //    fornecimentoRacao.ts).
-//  - o kardex do ingrediente: saldo em kg (entradas - consumo teórico, com
+//  - o kardex do ingrediente: saldo em kg de MS (entradas - consumo, com
 //    ajustes de inventário substituindo o saldo pelo valor contado) e custo
-//    médio ponderado por kg, recalculado a cada entrada — mesma lógica dos
+//    médio ponderado por kg de MS, recalculado a cada entrada — mesma lógica dos
 //    Grupos de Consumo (ver custoRacaoGrupo.ts).
 //  - o custo por kg de MS da dieta com o preço do estoque: nos dias cobertos
 //    por algum período de custo de ingrediente, o preço de cada componente
@@ -86,18 +89,22 @@ export function calcularPctMsDieta(dieta: DietaComposicaoInfo): number | null {
 }
 
 // Mesma fórmula de calcularCustoKgMs (useDietas.ts), com a opção de trocar o
-// preço de componentes específicos (precoPorChave, R$/kg de matéria natural).
-export function calcularCustoKgMsComPrecos(dieta: DietaComposicaoInfo, precoPorChave: Record<string, number>): number | null {
+// preço de componentes específicos pelo preço do estoque (precoMsPorChave,
+// R$/kg de MS — já em base seca, não passa pelo % MS do componente).
+export function calcularCustoKgMsComPrecos(dieta: DietaComposicaoInfo, precoMsPorChave: Record<string, number>): number | null {
   const lado = (tipo: 'concentrado' | 'volumoso'): number | null => {
     const comps = dieta.componentes.filter(c => c.tipo === tipo)
     if (comps.length === 0) return 0
     let soma = 0
     for (const c of comps) {
-      if (c.pct_ms == null || c.pct_ms <= 0) return null
       if (c.pct_participacao == null) return null
-      const preco = c.chave != null && precoPorChave[c.chave] != null ? precoPorChave[c.chave] : c.preco_kg
-      if (preco == null) return null
-      soma += (preco / (c.pct_ms / 100)) * (c.pct_participacao / 100)
+      if (c.chave != null && precoMsPorChave[c.chave] != null) {
+        soma += precoMsPorChave[c.chave] * (c.pct_participacao / 100)
+        continue
+      }
+      if (c.pct_ms == null || c.pct_ms <= 0) return null
+      if (c.preco_kg == null) return null
+      soma += (c.preco_kg / (c.pct_ms / 100)) * (c.pct_participacao / 100)
     }
     return soma
   }
@@ -124,7 +131,7 @@ export function periodoIngredienteNoDia(dia: number, periodos: PeriodoCustoIngre
   return null
 }
 
-// Preço do estoque de cada ingrediente vigente num dia (R$/kg natural).
+// Preço do estoque de cada ingrediente vigente num dia (R$/kg de MS).
 export function precosEstoqueNoDia(dia: number, periodosPorChave: Record<string, PeriodoCustoIngredienteInfo[]>): Record<string, number> {
   const precos: Record<string, number> = {}
   for (const [chave, periodos] of Object.entries(periodosPorChave)) {
@@ -199,7 +206,7 @@ export interface AnimalConsumoIngredienteInput {
   eventosCiclo: CicloAnimalEvento[]
 }
 
-// Retorna chave do ingrediente -> dia (toDay) -> kg de matéria natural.
+// Retorna chave do ingrediente -> dia (toDay) -> kg de MS.
 // Só calcula as chaves pedidas (chavesAlvo) e os dias em [diaInicial, diaFinalExclusivo).
 // inicioCoberturaPorLote: a partir desse dia o lote tem fornecimento de
 // ração registrado, que substitui o teórico (ver fornecimentoRacao.ts) —
@@ -214,16 +221,15 @@ export function calcularConsumoIngredientesPorDia(
   diaFinalExclusivo: number,
   inicioCoberturaPorLote: Record<string, number> = {},
 ): Record<string, Record<number, number>> {
-  // Por dieta: lista de (chave, kg natural por kg de MS consumida).
+  // Por dieta: lista de (chave, kg de MS do ingrediente por kg de MS consumida).
   const fatoresPorDieta: Record<string, Array<{ chave: string; fator: number }>> = {}
   for (const [dietaId, d] of Object.entries(dietas)) {
     const fatores: Array<{ chave: string; fator: number }> = []
     for (const c of d.componentes) {
       if (!c.chave || !chavesAlvo.has(c.chave)) continue
-      if (c.pct_ms == null || c.pct_ms <= 0) continue
       const f = fracaoMsComponente(d, c)
       if (f <= 0) continue
-      fatores.push({ chave: c.chave, fator: f / (c.pct_ms / 100) })
+      fatores.push({ chave: c.chave, fator: f })
     }
     if (fatores.length > 0 && d.pct_consumo_pv_ms != null) fatoresPorDieta[dietaId] = fatores
   }
@@ -259,6 +265,7 @@ export interface EntradaIngredienteInfo {
   id: string
   tipo: TipoEntradaIngrediente
   data: string
+  // kg de MS (quantidade natural da entrada x % MS dela)
   quantidade_kg: number
   valor_total: number
   created_at?: string

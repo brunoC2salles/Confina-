@@ -80,8 +80,9 @@ export function totaisFornecimento(f: FornecimentoInfo, dieta: DietaComposicaoIn
 }
 
 // Valor em R$ do fornecimento inteiro, com o preço vigente na data dele.
-//  - feita na fazenda: cada ingrediente ao custo médio do estoque na data;
-//    sem estoque registrado, ao preço de referência gravado no item.
+//  - feita na fazenda: cada ingrediente ao custo médio do estoque na data
+//    (R$/kg de MS, aplicado ao kg de MS do item); sem estoque registrado, ao
+//    preço de referência gravado no item (R$/kg natural).
 //  - mistura pronta: kg de MS x custo por kg de MS do grupo na data
 //    (custoGrupoKgMs); sem período de custo do grupo, cai no custo por kg de
 //    MS da dieta calculado pelos componentes (com o preço do estoque).
@@ -96,7 +97,7 @@ export function valorFornecimento(
     let valor = 0
     for (const i of f.itens) {
       const periodo = periodoIngredienteNoDia(dia, periodosIngrediente[i.chave] ?? [])
-      valor += i.kg * (periodo ? periodo.custo_medio_kg : i.preco_kg_referencia)
+      valor += periodo ? i.kg * (i.pct_ms / 100) * periodo.custo_medio_kg : i.kg * i.preco_kg_referencia
     }
     return valor
   }

@@ -29,7 +29,7 @@ export function useComprasOutros() {
     setLoading(true)
     const [{ data: comprasData }, { data: parceirosData }] = await Promise.all([
       supabase.from('compras_outros').select('*').eq('user_id', user.id).order('data_aplicacao', { ascending: false }),
-      supabase.from('parceiros').select('id, nome').eq('user_id', user.id).eq('tipo', 'fornecedor').order('nome'),
+      supabase.from('parceiros').select('id, nome').eq('user_id', user.id).in('tipo', ['fornecedor', 'produtor', 'corretor']).order('nome'),
     ])
     setCompras((comprasData ?? []) as CompraOutros[])
     setFornecedores(parceirosData ?? [])

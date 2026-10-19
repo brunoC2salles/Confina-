@@ -44,7 +44,7 @@ export function useGruposConsumoRacao() {
       supabase.from('grupos_consumo_racao').select('*, dieta:dietas(nome)').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('lotes').select('id, nome_lote, codigo_lote').eq('user_id', user.id).eq('status', 'ativo').order('nome_lote'),
       supabase.from('dietas').select('id, nome, pct_consumo_pv_ms').eq('user_id', user.id).order('nome'),
-      supabase.from('parceiros').select('id, nome').eq('user_id', user.id).eq('tipo', 'fornecedor').order('nome'),
+      supabase.from('parceiros').select('id, nome').eq('user_id', user.id).in('tipo', ['fornecedor', 'produtor', 'corretor']).order('nome'),
     ])
     setGrupos(((gruposData ?? []) as Array<GrupoConsumoRacao & { dieta: { nome: string } | null }>)
       .map(g => { const { dieta, ...resto } = g; return { ...resto, dieta_nome: dieta?.nome ?? null } }))

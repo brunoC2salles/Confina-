@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useGruposConsumoRacao, useResumoGrupo, type GrupoConsumoComDieta } from '@/hooks/useGruposConsumoRacao'
 import { useComprasMedicamento } from '@/hooks/useComprasMedicamento'
 import { useComprasOutros } from '@/hooks/useComprasOutros'
-import { useComprasIngrediente } from '@/hooks/useComprasIngrediente'
+import { useComprasIngrediente, kgMsDaEntrada } from '@/hooks/useComprasIngrediente'
 import { useFornecimentosRacao, type IngredienteFornecimentoOpcao } from '@/hooks/useFornecimentosRacao'
 import { chaveIngrediente, calcularPctMsDieta } from '@/lib/custoIngrediente'
 import { dividirTotalPelaComposicao } from '@/lib/fornecimentoRacao'
@@ -1081,7 +1081,7 @@ function SecaoFornecimentos({ pedidoRegistro, onEstoqueAlterado }: {
 
 const formIngredienteVazio = () => ({
   chave: '', tipo: 'compra' as 'compra' | 'producao_propria', data: hojeStr(),
-  quantidade_kg: '', valor_total: '', parceiro_id: '', observacoes: '',
+  quantidade_kg: '', pct_ms: '', valor_total: '', parceiro_id: '', observacoes: '',
 })
 
 const ROTULO_TIPO_ENTRADA: Record<CompraIngrediente['tipo'], string> = {
@@ -1105,7 +1105,7 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
   const [erro, setErro] = useState<string | null>(null)
   const [expandido, setExpandido] = useState<string | null>(null)
   const [ajustando, setAjustando] = useState<string | null>(null)
-  const [formAjuste, setFormAjuste] = useState({ data: hojeStr(), saldo: '', observacoes: '' })
+  const [formAjuste, setFormAjuste] = useState({ data: hojeStr(), saldo: '', pct_ms: '', observacoes: '' })
   const [savingAjuste, setSavingAjuste] = useState(false)
   const [erroAjuste, setErroAjuste] = useState<string | null>(null)
 
@@ -1136,6 +1136,14 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
 
   const quantidadeForm = Number(form.quantidade_kg)
   const valorForm = Number(form.valor_total)
+  const pctMsForm = form.pct_ms === '' ? null : Number(form.pct_ms)
+  const kgMsForm = quantidadeForm * ((pctMsForm != null && pctMsForm > 0 ? pctMsForm : 100) / 100)
+
+  // Ao escolher o ingrediente, o % MS vem do cadastro (editável).
+  const escolherIngrediente = (chave: string) => {
+    const ing = ingredientes.find(i => i.chave === chave)
+    setForm(f => ({ ...f, chave, pct_ms: ing?.pct_ms != null ? String(ing.pct_ms) : '' }))
+  }
 
   const handleRegistrar = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1144,7 +1152,7 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
     setSaving(true)
     const { error } = await registrarEntrada({
       chave: form.chave, tipo: form.tipo, data: form.data,
-      quantidade_kg: quantidadeForm, valor_total: valorForm,
+      quantidade_kg: quantidadeForm, pct_ms: pctMsForm, valor_total: valorForm,
       parceiro_id: form.parceiro_id || null, observacoes: form.observacoes,
     })
     setSaving(false)
@@ -1154,7 +1162,8 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
 
   const abrirAjuste = (chave: string) => {
     setAjustando(ajustando === chave ? null : chave)
-    setFormAjuste({ data: hojeStr(), saldo: '', observacoes: '' })
+    const ing = ingredientes.find(i => i.chave === chave)
+    setFormAjuste({ data: hojeStr(), saldo: '', pct_ms: ing?.pct_ms != null ? String(ing.pct_ms) : '', observacoes: '' })
     setErroAjuste(null)
   }
 
@@ -1162,7 +1171,7 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
     setErroAjuste(null)
     if (!formAjuste.data || formAjuste.saldo === '') return
     setSavingAjuste(true)
-    const { error } = await ajustarInventario(chave, formAjuste.data, Number(formAjuste.saldo), formAjuste.observacoes)
+    const { error } = await ajustarInventario(chave, formAjuste.data, Number(formAjuste.saldo), formAjuste.pct_ms === '' ? null : Number(formAjuste.pct_ms), formAjuste.observacoes)
     setSavingAjuste(false)
     if (error) { setErroAjuste(error); return }
     setAjustando(null)
@@ -1180,8 +1189,8 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
         {calculando && <span style={{ fontSize: 12, color: '#9e9e9e', display: 'flex', alignItems: 'center', gap: 6 }}><span className="spinner" style={{ width: 12, height: 12 }} />Calculando estoque</span>}
       </div>
       <div style={{ fontSize: 13, color: '#9e9e9e', marginBottom: 12 }}>
-        Saldo = entradas menos o consumo, em kg de matéria natural. O consumo é o fornecido nos lotes com fornecimento registrado e o teórico nos demais lotes cujas dietas usam o ingrediente.
-        O custo médio do estoque passa a ser o preço do ingrediente nas dietas a partir da data de cada entrada.
+        Estoque em kg de matéria seca (MS): cada entrada é convertida pelo % MS informado nela. Saldo = entradas menos o consumo. O consumo é o fornecido nos lotes com fornecimento registrado e o teórico nos demais lotes cujas dietas usam o ingrediente.
+        O custo médio do estoque (R$/kg de MS) passa a ser o preço do ingrediente nas dietas a partir da data de cada entrada.
       </div>
 
       {loading
@@ -1194,7 +1203,7 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
               <table>
                 <thead>
                   <tr>
-                    <th>Ingrediente</th><th>Entradas</th><th>Consumo</th><th>Saldo</th><th>Custo médio/kg</th><th></th>
+                    <th>Ingrediente</th><th>Entradas (MS)</th><th>Consumo (MS)</th><th>Saldo (MS)</th><th>Custo médio/kg MS</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1231,19 +1240,27 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
                             <td colSpan={6} style={{ background: '#fafafa' }}>
                               <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 <div style={{ fontSize: 12, color: '#9e9e9e' }}>
-                                  Informe o saldo contado fisicamente. A partir da data, o saldo parte desse valor; o custo médio não muda.
-                                  {r && ` Saldo teórico hoje: ${fmtNum(r.saldoKg, 0)} kg.`}
+                                  Informe o saldo contado fisicamente, em kg de matéria natural, e o % MS do material contado. A partir da data, o saldo em MS parte desse valor; o custo médio não muda.
+                                  Sem % MS, o saldo contado é tratado como kg de MS.
+                                  {r && ` Saldo teórico hoje: ${fmtNum(r.saldoKg, 0)} kg de MS.`}
                                 </div>
-                                <div className="form-row-3">
+                                <div className="form-row-2">
                                   <div className="form-group">
                                     <label className="form-label">Data da contagem</label>
                                     <input type="date" className="form-input" value={formAjuste.data}
                                       onChange={e => setFormAjuste(f => ({ ...f, data: e.target.value }))} />
                                   </div>
                                   <div className="form-group">
-                                    <label className="form-label">Saldo contado (kg)</label>
+                                    <label className="form-label">Saldo contado (kg natural)</label>
                                     <input type="number" step="0.01" min="0" className="form-input" value={formAjuste.saldo}
                                       onChange={e => setFormAjuste(f => ({ ...f, saldo: e.target.value }))} />
+                                  </div>
+                                </div>
+                                <div className="form-row-2">
+                                  <div className="form-group">
+                                    <label className="form-label">% MS do material</label>
+                                    <input type="number" step="0.1" min="0" max="100" className="form-input" placeholder="100" value={formAjuste.pct_ms}
+                                      onChange={e => setFormAjuste(f => ({ ...f, pct_ms: e.target.value }))} />
                                   </div>
                                   <div className="form-group">
                                     <label className="form-label">Observações</label>
@@ -1267,15 +1284,17 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
                             <td colSpan={6} style={{ background: '#fafafa' }}>
                               <div className="table-wrap" style={{ padding: 8 }}>
                                 <table>
-                                  <thead><tr><th>Data</th><th>Tipo</th><th>Quantidade</th><th>Valor</th><th>R$/kg</th><th>Fornecedor</th><th></th></tr></thead>
+                                  <thead><tr><th>Data</th><th>Tipo</th><th>Quantidade</th><th>% MS</th><th>kg MS</th><th>Valor</th><th>R$/kg MS</th><th>Fornecedor</th><th></th></tr></thead>
                                   <tbody>
                                     {entradasDoIngrediente.map(e => (
                                       <tr key={e.id}>
                                         <td>{fmtData(e.data)}</td>
                                         <td>{ROTULO_TIPO_ENTRADA[e.tipo]}</td>
                                         <td>{e.tipo === 'ajuste' ? `Saldo contado: ${fmtNum(Number(e.quantidade_kg), 0)} kg` : `${fmtNum(Number(e.quantidade_kg), 0)} kg`}</td>
+                                        <td>{e.pct_ms != null ? `${fmtNum(Number(e.pct_ms), 1)}%` : '—'}</td>
+                                        <td>{fmtNum(kgMsDaEntrada(e), 0)} kg</td>
                                         <td>{e.tipo === 'ajuste' ? '—' : fmt(Number(e.valor_total))}</td>
-                                        <td>{e.tipo !== 'ajuste' && Number(e.quantidade_kg) > 0 ? fmt(Number(e.valor_total) / Number(e.quantidade_kg)) : '—'}</td>
+                                        <td>{e.tipo !== 'ajuste' && kgMsDaEntrada(e) > 0 ? fmt(Number(e.valor_total) / kgMsDaEntrada(e)) : '—'}</td>
                                         <td>{e.parceiro_id ? (fornecedorPorId[e.parceiro_id] ?? '—') : '—'}</td>
                                         <td style={{ textAlign: 'right' }}>
                                           <button className="btn btn-ghost btn-sm" style={{ color: '#b91c1c' }} onClick={() => handleExcluir(e)} disabled={calculando}>Excluir</button>
@@ -1302,7 +1321,7 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
           <div className="form-row-2">
             <div className="form-group">
               <label className="form-label">Ingrediente</label>
-              <select className="form-input" value={form.chave} onChange={e => setForm(f => ({ ...f, chave: e.target.value }))} required>
+              <select className="form-input" value={form.chave} onChange={e => escolherIngrediente(e.target.value)} required>
                 <option value="">Selecione</option>
                 {meus.length > 0 && (
                   <optgroup label="Meus ingredientes">
@@ -1325,22 +1344,32 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
           </div>
 
           {ingredienteForm && (
-            <div style={{ fontSize: 12, color: ingredienteForm.pct_ms == null ? '#b91c1c' : 'var(--gray-500)', marginTop: -6 }}>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: -6 }}>
+              Informe a quantidade em kg de matéria natural (como pesada) e o % MS do material desta entrada. O estoque entra em kg de MS.
               {ingredienteForm.pct_ms == null
-                ? 'Ingrediente sem % MS cadastrada: o consumo teórico dele não pode ser calculado. Informe a % MS em Ingredientes.'
-                : `% MS do ingrediente: ${fmtNum(ingredienteForm.pct_ms, 1)}%. Informe a quantidade em kg de matéria natural (como pesada).`}
+                ? ' Ingrediente sem % MS cadastrada: sem % MS na entrada, a quantidade é tratada como kg de MS (100%).'
+                : ` % MS do cadastro: ${fmtNum(ingredienteForm.pct_ms, 1)}%.`}
+              {ingredienteForm.origem === 'ingrediente_produtor' && ' O % MS informado atualiza o cadastro do ingrediente quando esta é a entrada mais recente.'}
             </div>
           )}
 
-          <div className="form-row-3">
+          <div className="form-row-2">
             <div className="form-group">
               <label className="form-label">Data da entrada</label>
               <input type="date" className="form-input" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label className="form-label">Quantidade (kg)</label>
+              <label className="form-label">Quantidade (kg natural)</label>
               <input type="number" step="0.01" min="0" className="form-input" value={form.quantidade_kg}
                 onChange={e => setForm(f => ({ ...f, quantidade_kg: e.target.value }))} required />
+            </div>
+          </div>
+
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label">% MS do material</label>
+              <input type="number" step="0.1" min="0" max="100" className="form-input" placeholder="100" value={form.pct_ms}
+                onChange={e => setForm(f => ({ ...f, pct_ms: e.target.value }))} />
             </div>
             <div className="form-group">
               <label className="form-label">{form.tipo === 'compra' ? 'Valor total (R$)' : 'Custo de produção (R$)'}</label>
@@ -1349,9 +1378,10 @@ function SecaoIngredientes({ pedidoRegistro, versaoEstoque }: { pedidoRegistro: 
             </div>
           </div>
 
-          {quantidadeForm > 0 && form.valor_total !== '' && (
+          {quantidadeForm > 0 && (
             <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: -6 }}>
-              {fmt(valorForm / quantidadeForm)} por kg. Entra no custo médio do estoque a partir da data da entrada.
+              Entra no estoque: {fmtNum(kgMsForm, 0)} kg de MS.
+              {form.valor_total !== '' && kgMsForm > 0 && ` ${fmt(valorForm / quantidadeForm)} por kg natural, ${fmt(valorForm / kgMsForm)} por kg de MS. Entra no custo médio do estoque a partir da data da entrada.`}
             </div>
           )}
 

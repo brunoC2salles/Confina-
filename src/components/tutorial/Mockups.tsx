@@ -852,7 +852,7 @@ const P_COMPRA_ING: Passo[] = [
   { legenda: 'Clique em "Continuar"', alvo: 'cont', clique: true, dur: 1300 },
   { legenda: 'Escolha o ingrediente', alvo: 'ing', clique: true, dur: 1500 },
   { legenda: 'Origem: Compra ou Produção própria', alvo: 'origem', clique: true, dur: 1800 },
-  { legenda: 'Quantidade em kg de matéria natural, como pesada', alvo: 'qtd', dur: 1700 },
+  { legenda: 'Quantidade em kg de matéria natural, como pesada, e o % MS do material', alvo: 'qtd', dur: 1700 },
   { legenda: 'Valor total (na produção própria, o custo de produção)', alvo: 'valor', dur: 1900 },
   { legenda: 'Clique em "Registrar"', alvo: 'salvar', clique: true, dur: 1400 },
   { legenda: 'Entradas, saldo e custo médio atualizados', alvo: 'linha', dur: 3000 },
@@ -869,7 +869,7 @@ export function MockCompras() {
           <>
             <CabCompras ativo={p === 1 ? 'compra' : undefined} />
             <Secao titulo="Ingredientes (ração feita na fazenda)"
-              texto="Saldo = entradas menos o consumo, em kg de matéria natural." />
+              texto="Saldo = entradas menos o consumo, em kg de matéria seca." />
             <div className="tt-card sem-pad">
               <Tabela cols={['Ingrediente', 'Entradas', 'Consumo', 'Saldo', 'Custo médio/kg']} alinhar={['l', 'r', 'r', 'r', 'r']}
                 destaque={p >= 9 ? [0] : []} linhas={[
@@ -887,13 +887,13 @@ export function MockCompras() {
                   <Sel label="Ingrediente" alvo="ing" foco={p === 4} valor={p >= 5 ? 'Milho grão' : undefined} />
                   <Sel label="Origem" alvo="origem" foco={p === 5} valor="Compra" />
                 </Linha>
-                {p >= 5 && <div className="tt-mini">% MS do ingrediente: 88,0%. Informe a quantidade em kg de matéria natural (como pesada).</div>}
+                {p >= 5 && <div className="tt-mini">Informe a quantidade em kg de matéria natural (como pesada) e o % MS do material desta entrada. O estoque entra em kg de MS.</div>}
                 <Linha>
                   <Campo label="Data da entrada">20/11/2026</Campo>
                   <Campo label="Quantidade (kg)" alvo="qtd" foco={p === 6}><Digita texto="8000" ativo={p >= 6} velocidade={110} /></Campo>
                   <Campo label="Valor total (R$)" alvo="valor" foco={p === 7}><Digita texto="7760" ativo={p >= 7} velocidade={110} /></Campo>
                 </Linha>
-                {p >= 8 && <div className="tt-mini">R$ 0,97 por kg. Entra no custo médio do estoque a partir da data da entrada.</div>}
+                {p >= 8 && <div className="tt-mini">R$ 0,97 por kg natural. Entra no custo médio do estoque a partir da data da entrada.</div>}
                 <Sel label="Fornecedor" valor="Cerealista Central" />
                 <Campo label="Observações" vazio="Opcional" />
                 <div className="tt-acoes"><Btn ghost>Cancelar</Btn><Btn alvo="salvar" ativo={p === 8}>Registrar</Btn></div>
@@ -1144,7 +1144,7 @@ export function MockAjusteInventario() {
                   </tr>
                   {p >= 2 && p <= 4 && (
                     <tr><td colSpan={6} style={{ background: '#fafafa', whiteSpace: 'normal' }}>
-                      <div className="tt-mini" style={{ marginBottom: 6 }}>Informe o saldo contado fisicamente. A partir da data, o saldo parte desse valor; o custo médio não muda. Saldo teórico hoje: 8.400 kg.</div>
+                      <div className="tt-mini" style={{ marginBottom: 6 }}>Informe o saldo contado fisicamente, em kg de matéria natural, e o % MS do material contado. A partir da data, o saldo em MS parte desse valor; o custo médio não muda. Saldo teórico hoje: 8.400 kg de MS.</div>
                       <Linha>
                         <Campo label="Data da contagem" alvo="data" foco={p === 2}>25/11/2026</Campo>
                         <Campo label="Saldo contado (kg)" alvo="saldo" foco={p === 3}><Digita texto="8150" ativo={p >= 3} velocidade={120} /></Campo>

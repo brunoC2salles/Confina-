@@ -136,12 +136,12 @@ const SECOES: Secao[] = [
     rota: '/compras', rotaLabel: 'Abrir Compras',
     resumo: 'Na aba Ração de Compras fica tudo da alimentação: o fornecimento de ração aos lotes com o planejado x realizado, as compras de dieta pronta e o estoque de ingredientes da ração feita na fazenda. Medicamentos e Outros têm abas próprias, com o valor rateado entre os animais.',
     dicas: [
-      'Ingrediente: em "+ Registrar Compra", escolha Ingrediente e informe se foi Compra ou Produção própria (com o custo de produção). A quantidade é em kg de matéria natural, como foi pesada.',
-      'O custo médio do estoque passa a ser o preço do ingrediente nas dietas a partir da data de cada entrada.',
+      'Ingrediente: em "+ Registrar Compra", escolha Ingrediente e informe se foi Compra ou Produção própria (com o custo de produção). A quantidade é em kg de matéria natural, como foi pesada, junto com o % MS do material (vem do cadastro e pode ser alterado). O estoque entra em kg de matéria seca.',
+      'O custo médio do estoque (R$/kg de MS) passa a ser o preço do ingrediente nas dietas a partir da data de cada entrada.',
       'Fornecimento: em "+ Registrar Compra", escolha Fornecimento, a dieta e informe o total; os ingredientes vêm pela composição e a divisão entre os lotes é feita pelo consumo previsto de cada um.',
       'Cada fornecimento vale do dia dele até o próximo do mesmo lote e substitui o consumo teórico no custo e na baixa de estoque.',
       'Dieta pronta: crie um grupo com os lotes que dividem a mesma ração e registre as compras dentro dele. O saldo do grupo é controlado em matéria seca.',
-      'O saldo de cada ingrediente é entradas menos consumo. "Ajustar inventário" corrige o saldo com a contagem física, sem mudar o custo médio.',
+      'O saldo de cada ingrediente, em kg de MS, é entradas menos consumo. "Ajustar inventário" corrige o saldo com a contagem física (kg natural e % MS), sem mudar o custo médio.',
     ],
     mockups: [
       { titulo: 'Registrar a compra de um ingrediente', el: <MockCompras /> },

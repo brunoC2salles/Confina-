@@ -424,7 +424,9 @@ export interface ResultadoVendaAnimal {
 // ─── Compras de ingredientes (ração feita na fazenda) ─────────────────────
 // Entrada de estoque de um ingrediente: compra, produção própria (com custo
 // de produção informado) ou ajuste de inventário (quantidade_kg = saldo
-// contado na data, valor_total = 0). Quantidades em kg de matéria natural.
+// contado na data, valor_total = 0). quantidade_kg em kg de matéria natural;
+// pct_ms é a % de matéria seca do material da entrada (null = 100%). O
+// estoque e o custo médio são calculados em base de MS.
 // O custo médio ponderado de cada ingrediente fica em
 // compras_ingrediente_periodos (ver src/lib/custoIngrediente.ts).
 export interface CompraIngrediente {
@@ -435,6 +437,7 @@ export interface CompraIngrediente {
   tipo: 'compra' | 'producao_propria' | 'ajuste'
   data: string
   quantidade_kg: number
+  pct_ms: number | null
   valor_total: number
   parceiro_id: string | null
   observacoes: string | null

@@ -17,7 +17,9 @@ import type { CompraIngrediente } from '@/types'
 
 // ─── Compras de ingredientes (ração feita na fazenda) ─────────────────────
 // Entradas de estoque por ingrediente (compra, produção própria, ajuste de
-// inventário), saldo teórico e custo médio ponderado. A cada entrada criada,
+// inventário), saldo teórico e custo médio ponderado — tudo em base de
+// matéria seca: cada entrada é convertida pelo % MS gravado nela (sem % MS,
+// vale 100%: o kg informado já é MS). A cada entrada criada,
 // excluída ou ajuste, recalcula o kardex do ingrediente e regrava os
 // períodos de custo médio (compras_ingrediente_periodos), que o motor de
 // custo (useLotes.ts) usa para precificar as dietas. Ver custoIngrediente.ts.
@@ -76,6 +78,18 @@ export async function recalcularTodosPeriodosIngrediente(userId: string): Promis
     if (error) return { error: error.message }
   }
   return { error: null }
+}
+
+// kg de MS de uma entrada: quantidade natural x % MS dela (sem % MS, 100%).
+export function kgMsDaEntrada(e: Pick<CompraIngrediente, 'quantidade_kg' | 'pct_ms'>): number {
+  const pct = e.pct_ms != null && Number(e.pct_ms) > 0 ? Number(e.pct_ms) : 100
+  return Number(e.quantidade_kg) * (pct / 100)
+}
+
+function validarPctMs(pct: number | null | undefined): string | null {
+  if (pct == null) return null
+  if (!(pct > 0 && pct <= 100)) return 'A % de matéria seca deve estar entre 0 e 100'
+  return null
 }
 
 function dividirChave(chave: string): { origem: 'insumo_padrao' | 'ingrediente_produtor'; id: string } {
@@ -184,7 +198,7 @@ async function calcularResumos(userId: string, entradas: CompraIngrediente[]): P
   }
 
   // Realizado: ingredientes fornecidos (ração feita na fazenda) baixam do
-  // estoque no dia do fornecimento.
+  // estoque no dia do fornecimento, em kg de MS (kg natural x % MS do item).
   for (const f of fornecimentos) {
     if (f.modo !== 'feita_na_fazenda') continue
     const dia = toDay(f.data)
@@ -193,14 +207,14 @@ async function calcularResumos(userId: string, entradas: CompraIngrediente[]): P
       if (!chaves.has(i.chave)) continue
       chavesEmDieta.add(i.chave)
       const porDia = (consumo[i.chave] ??= {})
-      porDia[dia] = (porDia[dia] ?? 0) + i.kg
+      porDia[dia] = (porDia[dia] ?? 0) + i.kg * (i.pct_ms / 100)
     }
   }
 
   const resultado: Record<string, ResumoIngrediente> = {}
   for (const [chave, lista] of Object.entries(entradasPorChave)) {
     const kardex = calcularKardexIngrediente(
-      lista.map(e => ({ id: e.id, tipo: e.tipo, data: e.data, quantidade_kg: Number(e.quantidade_kg), valor_total: Number(e.valor_total), created_at: e.created_at })),
+      lista.map(e => ({ id: e.id, tipo: e.tipo, data: e.data, quantidade_kg: kgMsDaEntrada(e), valor_total: Number(e.valor_total), created_at: e.created_at })),
       consumo[chave] ?? {},
       hojeDia,
     )
@@ -240,7 +254,7 @@ export function useComprasIngrediente() {
       carregarEntradas(),
       supabase.from('insumos_padrao').select('id, nome, pct_ms, ativo').order('nome'),
       supabase.from('ingredientes_produtor').select('id, nome, pct_ms, ativo').eq('user_id', user.id).order('nome'),
-      supabase.from('parceiros').select('id, nome').eq('user_id', user.id).eq('tipo', 'fornecedor').order('nome'),
+      supabase.from('parceiros').select('id, nome').eq('user_id', user.id).in('tipo', ['fornecedor', 'produtor', 'corretor']).order('nome'),
     ])
     const opcoes: IngredienteOpcao[] = [
       ...((produtorData ?? []) as Array<{ id: string; nome: string; pct_ms: number | null; ativo: boolean }>).map(i => ({
@@ -303,12 +317,15 @@ export function useComprasIngrediente() {
     tipo: Exclude<TipoEntradaIngrediente, 'ajuste'>
     data: string
     quantidade_kg: number
+    pct_ms?: number | null
     valor_total: number
     parceiro_id?: string | null
     observacoes?: string
   }): Promise<{ error: string | null }> => {
     if (!user) return { error: 'Não autenticado' }
     if (!(input.quantidade_kg > 0)) return { error: 'Informe uma quantidade válida' }
+    const erroMs = validarPctMs(input.pct_ms)
+    if (erroMs) return { error: erroMs }
     if (input.tipo === 'compra' && !(input.valor_total > 0)) return { error: 'Informe o valor da compra' }
     if (input.tipo === 'producao_propria' && !(input.valor_total >= 0)) return { error: 'Informe o custo de produção' }
     const { origem, id } = dividirChave(input.chave)
@@ -319,20 +336,47 @@ export function useComprasIngrediente() {
       tipo: input.tipo,
       data: input.data,
       quantidade_kg: input.quantidade_kg,
+      pct_ms: input.pct_ms ?? null,
       valor_total: input.valor_total,
       parceiro_id: input.tipo === 'compra' ? (input.parceiro_id ?? null) : null,
       observacoes: input.observacoes || null,
       user_id: user.id,
     })
     if (error) return { error: error.message }
+    if (origem === 'ingrediente_produtor' && input.pct_ms != null) {
+      const erroCadastro = await atualizarPctMsCadastro(id, input.chave, input.data, input.pct_ms)
+      if (erroCadastro) return { error: erroCadastro }
+    }
     return recalcularIngrediente(input.chave)
   }
 
-  // Ajuste de inventário: grava o saldo contado fisicamente na data. A
-  // partir dela, o saldo parte desse valor; o custo médio não muda.
-  const ajustarInventario = async (chave: string, data: string, saldoContadoKg: number, observacoes?: string): Promise<{ error: string | null }> => {
+  // Ingrediente próprio: o cadastro passa a ter o % MS da entrada mais
+  // recente (compra ou produção própria) — só quando a entrada registrada não
+  // é anterior a outra entrada com % MS do mesmo ingrediente. Insumos padrão
+  // são compartilhados entre usuários e não são alterados.
+  const atualizarPctMsCadastro = async (ingredienteId: string, chave: string, data: string, pctMs: number): Promise<string | null> => {
+    if (!user) return 'Não autenticado'
+    const { data: maisRecente, error: eBusca } = await supabase.from('compras_ingrediente').select('data')
+      .eq('user_id', user.id).eq('ingrediente_produtor_id', ingredienteId)
+      .in('tipo', ['compra', 'producao_propria']).not('pct_ms', 'is', null)
+      .order('data', { ascending: false }).limit(1)
+    if (eBusca) return eBusca.message
+    const ultimaData = (maisRecente ?? [])[0]?.data as string | undefined
+    if (ultimaData && ultimaData > data) return null
+    const { error } = await supabase.from('ingredientes_produtor').update({ pct_ms: pctMs }).eq('id', ingredienteId).eq('user_id', user.id)
+    if (error) return error.message
+    setIngredientes(prev => prev.map(i => i.chave === chave ? { ...i, pct_ms: pctMs } : i))
+    return null
+  }
+
+  // Ajuste de inventário: grava o saldo contado fisicamente na data (kg
+  // natural e % MS do material contado). A partir dela, o saldo em MS parte
+  // desse valor; o custo médio não muda.
+  const ajustarInventario = async (chave: string, data: string, saldoContadoKg: number, pctMs: number | null, observacoes?: string): Promise<{ error: string | null }> => {
     if (!user) return { error: 'Não autenticado' }
     if (!(saldoContadoKg >= 0)) return { error: 'Informe o saldo contado' }
+    const erroMs = validarPctMs(pctMs)
+    if (erroMs) return { error: erroMs }
     const { origem, id } = dividirChave(chave)
     const { error } = await supabase.from('compras_ingrediente').insert({
       origem_ingrediente: origem,
@@ -341,6 +385,7 @@ export function useComprasIngrediente() {
       tipo: 'ajuste',
       data,
       quantidade_kg: saldoContadoKg,
+      pct_ms: pctMs,
       valor_total: 0,
       observacoes: observacoes || null,
       user_id: user.id,
@@ -360,7 +405,7 @@ export function useComprasIngrediente() {
   return { entradas, ingredientes, fornecedores, resumos, loading, calculando, registrarEntrada, ajustarInventario, excluirEntrada, refetch: fetch }
 }
 
-// Custo médio vigente hoje de cada ingrediente com estoque (R$/kg natural) —
+// Custo médio vigente hoje de cada ingrediente com estoque (R$/kg de MS) —
 // usado na tela Dietas para mostrar o custo com o preço do estoque.
 export function usePrecosEstoqueHoje() {
   const { user } = useAuth()
