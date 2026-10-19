@@ -1,7 +1,7 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import {
   useDietas, calcularCustoKgMsLado, calcularCustoDia, getPctMsEfetivo,
-  type ComponenteDieta, type DietaBase, type IngredienteDisponivel, type Dieta,
+  type ComponenteDieta, type DietaBase, type IngredienteBusca, type IngredienteProdutor, type Dieta,
 } from '@/hooks/useDietas'
 import { usePrecosEstoqueHoje } from '@/hooks/useComprasIngrediente'
 import { chaveIngrediente, calcularCustoKgMsComPrecos } from '@/lib/custoIngrediente'
@@ -47,6 +47,9 @@ type CompForm = Omit<ComponenteDieta, 'id' | 'dieta_id' | 'insumo' | 'ingredient
   _nome: string
   _categoria: string
   _pct_ms_base: number | null // pct_ms do cadastro do ingrediente
+  _preco_cadastro: number | null // R$/kg MN do cadastro (ou "Meus preços da base")
+  _novo?: boolean // digitado na dieta, ainda não existe no cadastro (criado ao salvar)
+  _reativar?: boolean // ingrediente próprio inativo escolhido na busca (reativado ao salvar)
 }
 
 interface FormDieta {
@@ -84,12 +87,19 @@ const emptyForm = (): FormDieta => ({
 const somaPct = (comps: CompForm[], tipo: 'concentrado' | 'volumoso') =>
   comps.filter(c => c.tipo === tipo).reduce((s, c) => s + (Number(c.pct_participacao) || 0), 0)
 
-const keyDisp = (i: IngredienteDisponivel) => `${i.origem}:${i.id}`
+const keyDisp = (i: IngredienteBusca) => `${i.origem}:${i.id}`
+
+// Normaliza nome para busca e comparação: sem acentos, minúsculo, espaços simples.
+const normalizarNome = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ')
+
+const keyNovo = (nome: string) => `novo:${normalizarNome(nome)}`
 
 export default function Dietas() {
   const {
-    dietas, dietasBase, ingredientesDisponiveis, loading,
+    dietas, dietasBase, ingredientesBusca, loading,
     criarDieta, atualizarDieta, excluirDieta,
+    criarIngredientesDieta, reativarIngredientes,
   } = useDietas()
   const precosEstoque = usePrecosEstoqueHoje()
 
@@ -106,20 +116,14 @@ export default function Dietas() {
   const dietaDetalhe = dietas.find(d => d.id === showDetalhe)
 
   const dispPorKey = useMemo(() => {
-    const m: Record<string, IngredienteDisponivel> = {}
-    ingredientesDisponiveis.forEach(i => { m[keyDisp(i)] = i })
+    const m: Record<string, IngredienteBusca> = {}
+    ingredientesBusca.forEach(i => { m[keyDisp(i)] = i })
     return m
-  }, [ingredientesDisponiveis])
-
-  const dispPorCategoria = useMemo(() => {
-    const g: Record<string, IngredienteDisponivel[]> = {}
-    ingredientesDisponiveis.forEach(i => { (g[i.categoria] ??= []).push(i) })
-    return g
-  }, [ingredientesDisponiveis])
+  }, [ingredientesBusca])
 
   // ─── Manipulação de componentes ─────────────────────────────────────────────
 
-  const addComponente = useCallback((tipo: 'concentrado' | 'volumoso', ing: IngredienteDisponivel) => {
+  const addComponente = useCallback((tipo: 'concentrado' | 'volumoso', ing: IngredienteBusca) => {
     setForm(f => ({
       ...f,
       componentes: [...f.componentes, {
@@ -127,6 +131,8 @@ export default function Dietas() {
         _nome: ing.nome,
         _categoria: ing.categoria,
         _pct_ms_base: ing.pct_ms,
+        _preco_cadastro: ing.preco_kg_padrao ?? null,
+        _reativar: !ing.ativo,
         tipo,
         origem_ingrediente: ing.origem,
         insumo_id: ing.origem === 'insumo_padrao' ? ing.id : null,
@@ -137,6 +143,40 @@ export default function Dietas() {
       }],
     }))
   }, [])
+
+  // Ingrediente digitado que ainda não existe: entra na dieta e é criado no
+  // cadastro do produtor ao salvar. Se o mesmo nome novo já está na outra
+  // seção, reaproveita a categoria (vira um único ingrediente ao salvar).
+  const addNovo = useCallback((tipo: 'concentrado' | 'volumoso', nome: string) => {
+    setForm(f => {
+      const key = keyNovo(nome)
+      const existente = f.componentes.find(c => c._novo && c._key === key)
+      return {
+        ...f,
+        componentes: [...f.componentes, {
+          _key: key,
+          _nome: existente?._nome ?? nome.trim().replace(/\s+/g, ' '),
+          _categoria: existente?._categoria ?? '',
+          _pct_ms_base: null,
+          _preco_cadastro: null,
+          _novo: true,
+          tipo,
+          origem_ingrediente: 'ingrediente_produtor',
+          insumo_id: null,
+          ingrediente_produtor_id: null,
+          pct_participacao: 0,
+          preco_kg: existente?.preco_kg ?? 0,
+          pct_ms_manual: existente?.pct_ms_manual ?? null,
+        }],
+      }
+    })
+  }, [])
+
+  const setCategoriaNovo = useCallback((key: string, categoria: string) =>
+    setForm(f => ({
+      ...f,
+      componentes: f.componentes.map(c => c._novo && c._key === key ? { ...c, _categoria: categoria } : c),
+    })), [])
 
   const removeComponente = useCallback((idx: number) =>
     setForm(f => ({ ...f, componentes: f.componentes.filter((_, i) => i !== idx) })), [])
@@ -151,12 +191,13 @@ export default function Dietas() {
 
   const carregarTemplate = useCallback((db: DietaBase) => {
     const comps: CompForm[] = (db.ingredientes ?? []).map(ing => {
-      const disp = ingredientesDisponiveis.find(d => d.origem === 'insumo_padrao' && d.id === ing.insumo_id)
+      const disp = ingredientesBusca.find(d => d.origem === 'insumo_padrao' && d.id === ing.insumo_id)
       return {
         _key: disp ? keyDisp(disp) : `insumo_padrao:${ing.insumo_id}`,
         _nome: disp?.nome ?? ing.insumo?.nome ?? '—',
         _categoria: disp?.categoria ?? ing.insumo?.categoria ?? 'concentrado_energetico',
         _pct_ms_base: disp?.pct_ms ?? ing.insumo?.pct_ms ?? null,
+        _preco_cadastro: disp?.preco_kg_padrao ?? ing.insumo?.preco_referencia ?? null,
         tipo: (ing.tipo ?? 'concentrado') as 'concentrado' | 'volumoso',
         origem_ingrediente: 'insumo_padrao',
         insumo_id: ing.insumo_id,
@@ -198,7 +239,7 @@ export default function Dietas() {
       custo_manual_unidade: faltaMs ? 'ton' : f.custo_manual_unidade,
       componentes: comps,
     }))
-  }, [ingredientesDisponiveis])
+  }, [ingredientesBusca])
 
   // ─── Cálculos derivados do form ─────────────────────────────────────────────
 
@@ -276,6 +317,12 @@ export default function Dietas() {
     if (pctVol > 0 && Math.abs(somaVol - 100) > 0.01)
       return `Soma dos % do volumoso deve ser 100 (atual: ${somaVol.toFixed(2)})`
     for (const c of form.componentes) {
+      if (c._novo) {
+        if (!c._nome.trim()) return 'Nome do ingrediente novo obrigatório'
+        if (!c._categoria) return `${c._nome}: escolha a categoria do ingrediente novo`
+        if (c.pct_ms_manual != null && (c.pct_ms_manual <= 0 || c.pct_ms_manual > 100))
+          return `${c._nome}: % MS deve estar entre 0 e 100`
+      }
       if (c.pct_participacao <= 0) return `${c._nome}: % participação deve ser > 0`
       if (c.preco_kg < 0) return `${c._nome}: preço inválido`
       if (!form.custo_manual_ativo) {
@@ -297,6 +344,57 @@ export default function Dietas() {
     const v = validarForm()
     if (v) { setErro(v); return }
     setSaving(true); setErro(null)
+
+    // 1) Ingredientes novos digitados na dieta: cria no cadastro do produtor
+    //    (um por nome, mesmo que esteja nas duas seções) com categoria, % MS e
+    //    preço informados na linha. As linhas passam a apontar para o criado,
+    //    então um novo salvamento após erro não duplica.
+    let comps = form.componentes
+    let extras: IngredienteProdutor[] = []
+    const novosPorKey = new Map<string, CompForm>()
+    comps.forEach(c => { if (c._novo && !novosPorKey.has(c._key)) novosPorKey.set(c._key, c) })
+    if (novosPorKey.size > 0) {
+      const lista = Array.from(novosPorKey.values())
+      const res = await criarIngredientesDieta(lista.map(c => ({
+        nome: c._nome.trim(),
+        categoria: c._categoria,
+        pct_ms: c.pct_ms_manual,
+        preco_kg: Number(c.preco_kg) || 0,
+      })))
+      if (res.error || res.criados.length !== lista.length) {
+        setSaving(false); setErro(res.error ?? 'Não foi possível cadastrar os ingredientes novos'); return
+      }
+      extras = res.criados
+      const criadoPorKey = new Map(lista.map((c, i) => [c._key, res.criados[i]]))
+      comps = comps.map(c => {
+        const cr = c._novo ? criadoPorKey.get(c._key) : undefined
+        if (!cr) return c
+        return {
+          ...c,
+          _novo: false,
+          _key: `ingrediente_produtor:${cr.id}`,
+          _pct_ms_base: cr.pct_ms,
+          _preco_cadastro: cr.preco_kg,
+          origem_ingrediente: 'ingrediente_produtor' as const,
+          insumo_id: null,
+          ingrediente_produtor_id: cr.id,
+          pct_ms_manual: c.pct_ms_manual === cr.pct_ms ? null : c.pct_ms_manual,
+        }
+      })
+      setForm(f => ({ ...f, componentes: comps }))
+    }
+
+    // 2) Ingredientes próprios inativos escolhidos na busca: reativa.
+    const idsReativar = Array.from(new Set(comps
+      .filter(c => c._reativar && c.ingrediente_produtor_id)
+      .map(c => c.ingrediente_produtor_id as string)))
+    if (idsReativar.length > 0) {
+      const r = await reativarIngredientes(idsReativar)
+      if (r.error) { setSaving(false); setErro(r.error); return }
+      comps = comps.map(c => c._reativar ? { ...c, _reativar: false } : c)
+      setForm(f => ({ ...f, componentes: comps }))
+    }
+
     const payload = {
       nome: form.nome.trim(),
       descricao: form.descricao || undefined,
@@ -311,7 +409,7 @@ export default function Dietas() {
       custo_manual_valor: form.custo_manual_ativo ? Number(form.custo_manual_valor) : null,
       custo_manual_unidade: form.custo_manual_ativo ? form.custo_manual_unidade : null,
       vigente_desde: form.vigente_desde,
-      componentes: form.componentes.map(c => ({
+      componentes: comps.map(c => ({
         tipo: c.tipo,
         origem_ingrediente: c.origem_ingrediente,
         insumo_id: c.insumo_id,
@@ -322,8 +420,8 @@ export default function Dietas() {
       })),
     }
     const res = showEditar
-      ? await atualizarDieta(showEditar, payload)
-      : await criarDieta(payload)
+      ? await atualizarDieta(showEditar, payload, extras)
+      : await criarDieta(payload, extras)
     setSaving(false)
     if (res?.error) { setErro(res.error); return }
     setShowNova(false); setShowEditar(null); setForm(emptyForm())
@@ -334,13 +432,14 @@ export default function Dietas() {
     if (!d) return
     const comps: CompForm[] = (d.componentes ?? []).map(c => {
       const disp = c.origem_ingrediente === 'insumo_padrao'
-        ? ingredientesDisponiveis.find(x => x.origem === 'insumo_padrao' && x.id === c.insumo_id)
-        : ingredientesDisponiveis.find(x => x.origem === 'ingrediente_produtor' && x.id === c.ingrediente_produtor_id)
+        ? ingredientesBusca.find(x => x.origem === 'insumo_padrao' && x.id === c.insumo_id)
+        : ingredientesBusca.find(x => x.origem === 'ingrediente_produtor' && x.id === c.ingrediente_produtor_id)
       return {
         _key: disp ? keyDisp(disp) : `${c.origem_ingrediente}:${c.insumo_id ?? c.ingrediente_produtor_id}`,
         _nome: disp?.nome ?? c.insumo?.nome ?? c.ingrediente_produtor?.nome ?? '—',
         _categoria: disp?.categoria ?? c.insumo?.categoria ?? c.ingrediente_produtor?.categoria ?? 'concentrado_energetico',
         _pct_ms_base: disp?.pct_ms ?? c.insumo?.pct_ms ?? c.ingrediente_produtor?.pct_ms ?? null,
+        _preco_cadastro: disp?.preco_kg_padrao ?? null,
         tipo: c.tipo,
         origem_ingrediente: c.origem_ingrediente,
         insumo_id: c.insumo_id ?? null,
@@ -662,11 +761,14 @@ export default function Dietas() {
               titulo={`Concentrado (${pctConc}%)`}
               tipo="concentrado"
               componentes={form.componentes}
-              dispPorCategoria={dispPorCategoria}
+              ingredientes={ingredientesBusca}
               dispPorKey={dispPorKey}
+              precosEstoque={precosEstoque}
               soma={somaConc}
               custoKgMs={custoKgMsConc}
               onAdd={addComponente}
+              onAddNovo={addNovo}
+              onSetCategoriaNovo={setCategoriaNovo}
               onRemove={removeComponente}
               onUpdate={updateComponente}
             />
@@ -678,11 +780,14 @@ export default function Dietas() {
               titulo={`Volumoso (${pctVol}%)`}
               tipo="volumoso"
               componentes={form.componentes}
-              dispPorCategoria={dispPorCategoria}
+              ingredientes={ingredientesBusca}
               dispPorKey={dispPorKey}
+              precosEstoque={precosEstoque}
               soma={somaVol}
               custoKgMs={custoKgMsVol}
               onAdd={addComponente}
+              onAddNovo={addNovo}
+              onSetCategoriaNovo={setCategoriaNovo}
               onRemove={removeComponente}
               onUpdate={updateComponente}
             />
@@ -749,17 +854,20 @@ export default function Dietas() {
 // depender de grid fixo nem de breakpoint específico.
 
 function SecaoIngredientes({
-  titulo, tipo, componentes, dispPorCategoria, dispPorKey, soma, custoKgMs,
-  onAdd, onRemove, onUpdate,
+  titulo, tipo, componentes, ingredientes, dispPorKey, precosEstoque, soma, custoKgMs,
+  onAdd, onAddNovo, onSetCategoriaNovo, onRemove, onUpdate,
 }: {
   titulo: string
   tipo: 'concentrado' | 'volumoso'
   componentes: CompForm[]
-  dispPorCategoria: Record<string, IngredienteDisponivel[]>
-  dispPorKey: Record<string, IngredienteDisponivel>
+  ingredientes: IngredienteBusca[]
+  dispPorKey: Record<string, IngredienteBusca>
+  precosEstoque: Record<string, number>
   soma: number
   custoKgMs: number | null
-  onAdd: (tipo: 'concentrado' | 'volumoso', ing: IngredienteDisponivel) => void
+  onAdd: (tipo: 'concentrado' | 'volumoso', ing: IngredienteBusca) => void
+  onAddNovo: (tipo: 'concentrado' | 'volumoso', nome: string) => void
+  onSetCategoriaNovo: (key: string, categoria: string) => void
   onRemove: (idx: number) => void
   onUpdate: (idx: number, patch: Partial<CompForm>) => void
 }) {
@@ -767,9 +875,14 @@ function SecaoIngredientes({
     .map((c, idx) => ({ c, idx }))
     .filter(x => x.c.tipo === tipo)
 
-  const jaAdicionados = new Set(doTipo.map(x => x.c._key))
-
   const fieldLabelStyle: React.CSSProperties = { fontSize: 10, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2, display: 'block' }
+
+  const chipStyle = (ativo: boolean, desabilitado = false): React.CSSProperties => ({
+    fontSize: 11, padding: '3px 8px', borderRadius: 6, cursor: desabilitado ? 'not-allowed' : 'pointer',
+    border: `1px solid ${ativo ? '#a5d6a7' : 'var(--border)'}`,
+    background: ativo ? 'var(--green-bg)' : '#fff',
+    color: desabilitado ? 'var(--gray-400)' : ativo ? '#2e7d32' : 'var(--gray-600)',
+  })
 
   return (
     <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
@@ -782,23 +895,42 @@ function SecaoIngredientes({
 
       {doTipo.length === 0 ? (
         <div style={{ padding: '10px 14px', background: 'var(--gray-50)', borderRadius: 8, fontSize: 12, color: 'var(--gray-500)', textAlign: 'center' }}>
-          Nenhum ingrediente. Adicione abaixo.
+          Nenhum ingrediente. Digite o nome abaixo para adicionar.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {doTipo.map(({ c, idx }) => {
             const disp = dispPorKey[c._key]
-            const pctMsBase = disp?.pct_ms ?? c._pct_ms_base
+            const pctMsBase = c._novo ? null : (disp?.pct_ms ?? c._pct_ms_base)
             const pctMsAtual = c.pct_ms_manual ?? pctMsBase
             const precisaManual = pctMsBase == null || pctMsBase <= 0
+            // Preço do estoque (R$/kg MS) convertido para matéria natural pelo % MS da linha.
+            const estoqueMs = c._novo ? undefined : precosEstoque[c._key]
+            const estoqueMn = estoqueMs != null && pctMsAtual != null && pctMsAtual > 0
+              ? Number((estoqueMs * pctMsAtual / 100).toFixed(4)) : null
+            const precoCadastro = c._preco_cadastro
+            const igual = (a: number | null) => a != null && Math.abs((Number(c.preco_kg) || 0) - a) < 0.00005
             return (
               <div key={idx} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end', padding: '8px 8px 10px', background: 'var(--gray-50)', borderRadius: 8 }}>
                 <div style={{ flex: '1 1 130px', minWidth: 110 }}>
                   <div style={{ fontSize: 13, fontWeight: 500, overflowWrap: 'break-word' }}>{c._nome}</div>
-                  <div style={{ fontSize: 10, color: 'var(--gray-400)' }}>
-                    {categoriaLabel[c._categoria] ?? c._categoria}
-                    {c.origem_ingrediente === 'ingrediente_produtor' && ' · próprio'}
-                  </div>
+                  {c._novo ? (
+                    <select className="form-input" value={c._categoria}
+                      onChange={e => onSetCategoriaNovo(c._key, e.target.value)}
+                      style={{ fontSize: 12, marginTop: 4, padding: '4px 6px', background: c._categoria ? undefined : '#fff8e1' }}>
+                      <option value="">Categoria</option>
+                      {Object.entries(categoriaLabel).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  ) : (
+                    <div style={{ fontSize: 10, color: 'var(--gray-400)' }}>
+                      {categoriaLabel[c._categoria] ?? c._categoria}
+                      {c.origem_ingrediente === 'ingrediente_produtor' && ' · próprio'}
+                      {c._reativar && ' · inativo, será reativado ao salvar'}
+                    </div>
+                  )}
+                  {c._novo && (
+                    <div style={{ fontSize: 10, color: '#2e7d32', marginTop: 2 }}>Novo · será cadastrado em Ingredientes ao salvar</div>
+                  )}
                 </div>
                 <div style={{ flex: '0 1 76px', minWidth: 68 }}>
                   <label style={fieldLabelStyle}>% Part.</label>
@@ -824,6 +956,23 @@ function SecaoIngredientes({
                 </div>
                 <button type="button" onClick={() => onRemove(idx)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 18, padding: '0 2px 6px', flexShrink: 0 }}>×</button>
+
+                {estoqueMs != null && (
+                  <div style={{ flexBasis: '100%', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 11, color: 'var(--gray-500)' }}>
+                    <span>Preço:</span>
+                    {precoCadastro != null && (
+                      <button type="button" style={chipStyle(igual(precoCadastro))}
+                        onClick={() => onUpdate(idx, { preco_kg: precoCadastro })}>
+                        Cadastro {fmt(precoCadastro)}/kg MN
+                      </button>
+                    )}
+                    <button type="button" disabled={estoqueMn == null} style={chipStyle(igual(estoqueMn), estoqueMn == null)}
+                      onClick={() => { if (estoqueMn != null) onUpdate(idx, { preco_kg: estoqueMn }) }}>
+                      Estoque {estoqueMn != null ? `${fmt(estoqueMn)}/kg MN · ` : ''}{fmt(estoqueMs)}/kg MS
+                    </button>
+                    {estoqueMn == null && <span>informe o % MS para usar o preço do estoque</span>}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -836,29 +985,183 @@ function SecaoIngredientes({
         </div>
       )}
 
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 4 }}>Adicionar ingrediente:</div>
-        {Object.entries(dispPorCategoria).map(([cat, lista]) => {
-          const disponiveis = lista.filter(i => !jaAdicionados.has(keyDisp(i)))
-          if (disponiveis.length === 0) return null
-          return (
-            <div key={cat} style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 10, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 }}>
-                {categoriaLabel[cat] ?? cat}
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {disponiveis.map(ing => (
-                  <button key={keyDisp(ing)} type="button"
-                    style={{ fontSize: 11, padding: '3px 8px', background: 'var(--gray-50)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', color: 'var(--gray-600)' }}
-                    onClick={() => onAdd(tipo, ing)}>
-                    + {ing.nome}{ing.origem === 'ingrediente_produtor' ? ' *' : ''}
-                  </button>
-                ))}
-              </div>
+      <BuscaIngrediente
+        tipo={tipo}
+        componentes={componentes}
+        ingredientes={ingredientes}
+        precosEstoque={precosEstoque}
+        onAdd={ing => onAdd(tipo, ing)}
+        onAddNovo={nome => onAddNovo(tipo, nome)}
+      />
+    </div>
+  )
+}
+
+// ─── Sub-componente: busca de ingrediente por nome ───────────────────────────
+// A partir de 3 letras lista os ingredientes (padrão e próprios, inclusive
+// inativos) cujo nome contém o texto, ignorando acentos e maiúsculas. Se o
+// nome digitado não existe, oferece cadastrar como novo. Nome igual a um
+// existente não pode ser criado de novo: é preciso escolher o existente.
+
+const MIN_LETRAS_BUSCA = 3
+const MAX_SUGESTOES = 8
+
+type Sugestao =
+  | { kind: 'existente'; ing: IngredienteBusca }
+  | { kind: 'pendente'; nome: string; categoria: string }
+  | { kind: 'novo'; nome: string }
+
+function BuscaIngrediente({
+  tipo, componentes, ingredientes, precosEstoque, onAdd, onAddNovo,
+}: {
+  tipo: 'concentrado' | 'volumoso'
+  componentes: CompForm[]
+  ingredientes: IngredienteBusca[]
+  precosEstoque: Record<string, number>
+  onAdd: (ing: IngredienteBusca) => void
+  onAddNovo: (nome: string) => void
+}) {
+  const [texto, setTexto] = useState('')
+  const [aberto, setAberto] = useState(false)
+  const [destaque, setDestaque] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const q = normalizarNome(texto)
+  const buscaAtiva = q.length >= MIN_LETRAS_BUSCA
+
+  const { sugestoes, jaNaSecao } = useMemo(() => {
+    if (!buscaAtiva) return { sugestoes: [] as Sugestao[], jaNaSecao: null as string | null }
+    const keysNaSecao = new Set(componentes.filter(c => c.tipo === tipo).map(c => c._key))
+
+    const existentes = ingredientes
+      .filter(i => !keysNaSecao.has(keyDisp(i)) && normalizarNome(i.nome).includes(q))
+    // ingredientes novos já digitados na outra seção (ainda não salvos)
+    const pendentes = new Map<string, CompForm>()
+    componentes.forEach(c => {
+      if (c._novo && !keysNaSecao.has(c._key) && normalizarNome(c._nome).includes(q) && !pendentes.has(c._key))
+        pendentes.set(c._key, c)
+    })
+
+    const ordem = (nome: string) => (normalizarNome(nome).startsWith(q) ? 0 : 1)
+    const lista: Sugestao[] = [
+      ...existentes.map(ing => ({ kind: 'existente' as const, ing })),
+      ...Array.from(pendentes.values()).map(c => ({ kind: 'pendente' as const, nome: c._nome, categoria: c._categoria })),
+    ].sort((a, b) => {
+      const na = a.kind === 'existente' ? a.ing.nome : a.nome
+      const nb = b.kind === 'existente' ? b.ing.nome : b.nome
+      return ordem(na) - ordem(nb) || na.localeCompare(nb, 'pt-BR')
+    }).slice(0, MAX_SUGESTOES)
+
+    // Nome exato já existe (cadastro ou novo no form)? Então não oferece criar.
+    const exatoCadastro = ingredientes.find(i => normalizarNome(i.nome) === q)
+    const exatoForm = componentes.find(c => c._novo && normalizarNome(c._nome) === q)
+    const exatoNaSecao = (exatoCadastro && keysNaSecao.has(keyDisp(exatoCadastro)))
+      || (exatoForm && keysNaSecao.has(exatoForm._key))
+    if (!exatoCadastro && !exatoForm) lista.push({ kind: 'novo', nome: texto.trim().replace(/\s+/g, ' ') })
+
+    return {
+      sugestoes: lista,
+      jaNaSecao: exatoNaSecao ? (exatoCadastro?.nome ?? exatoForm?._nome ?? null) : null,
+    }
+  }, [buscaAtiva, q, texto, componentes, ingredientes, tipo])
+
+  const escolher = (s: Sugestao) => {
+    if (s.kind === 'existente') onAdd(s.ing)
+    else onAddNovo(s.nome)
+    setTexto(''); setAberto(false); setDestaque(0)
+    inputRef.current?.focus()
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      // nunca envia o formulário da dieta a partir da busca
+      e.preventDefault()
+      if (aberto && sugestoes[destaque]) escolher(sugestoes[destaque])
+      return
+    }
+    if (!aberto || sugestoes.length === 0) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setDestaque(d => Math.min(d + 1, sugestoes.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setDestaque(d => Math.max(d - 1, 0)) }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setAberto(false) }
+  }
+
+  const mostrarLista = aberto && buscaAtiva && (sugestoes.length > 0 || jaNaSecao != null)
+
+  return (
+    <div style={{ marginTop: 10, position: 'relative' }}>
+      <label style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 4, display: 'block' }}>
+        Adicionar ingrediente
+      </label>
+      <input ref={inputRef} className="form-input" type="text" autoComplete="off"
+        placeholder="Digite o nome do ingrediente (mín. 3 letras)"
+        value={texto}
+        onChange={e => { setTexto(e.target.value); setAberto(true); setDestaque(0) }}
+        onFocus={() => setAberto(true)}
+        onBlur={() => setAberto(false)}
+        onKeyDown={onKeyDown}
+        style={{ fontSize: 13 }} />
+
+      {mostrarLista && (
+        <div style={{
+          position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, zIndex: 20,
+          background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
+          boxShadow: '0 6px 18px rgba(0,0,0,0.08)', maxHeight: 280, overflowY: 'auto',
+        }}>
+          {jaNaSecao && (
+            <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--gray-500)', borderBottom: '1px solid var(--border)' }}>
+              "{jaNaSecao}" já está nesta seção.
             </div>
-          )
-        })}
-      </div>
+          )}
+          {sugestoes.map((s, i) => {
+            const ativo = i === destaque
+            const base: React.CSSProperties = {
+              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none',
+              borderBottom: i < sugestoes.length - 1 ? '1px solid var(--gray-100)' : 'none',
+              background: ativo ? 'var(--green-bg)' : '#fff', cursor: 'pointer',
+            }
+            if (s.kind === 'novo') {
+              return (
+                <button key="novo" type="button" style={base}
+                  onMouseDown={e => e.preventDefault()} onMouseEnter={() => setDestaque(i)} onClick={() => escolher(s)}>
+                  <div style={{ fontSize: 13, color: '#2e7d32', fontWeight: 500 }}>+ Cadastrar "{s.nome}"</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Novo ingrediente: informe categoria, % MS e preço na linha</div>
+                </button>
+              )
+            }
+            if (s.kind === 'pendente') {
+              return (
+                <button key={`pend:${s.nome}`} type="button" style={base}
+                  onMouseDown={e => e.preventDefault()} onMouseEnter={() => setDestaque(i)} onClick={() => escolher(s)}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{s.nome}</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>
+                    Novo nesta dieta{s.categoria ? ` · ${categoriaLabel[s.categoria] ?? s.categoria}` : ''}
+                  </div>
+                </button>
+              )
+            }
+            const ing = s.ing
+            const estoque = precosEstoque[keyDisp(ing)]
+            return (
+              <button key={keyDisp(ing)} type="button" style={base}
+                onMouseDown={e => e.preventDefault()} onMouseEnter={() => setDestaque(i)} onClick={() => escolher(s)}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>
+                  {ing.nome}
+                  <span style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 400 }}>
+                    {' '}· {categoriaLabel[ing.categoria] ?? ing.categoria}
+                    {ing.origem === 'ingrediente_produtor' ? ' · próprio' : ''}
+                    {!ing.ativo ? ' · inativo' : ''}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>
+                  MS {ing.pct_ms != null ? `${ing.pct_ms}%` : 'não informado'}
+                  {' · '}Cadastro {fmt(ing.preco_kg_padrao ?? 0)}/kg MN
+                  {estoque != null ? ` · Estoque ${fmt(estoque)}/kg MS` : ''}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

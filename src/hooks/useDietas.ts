@@ -32,6 +32,13 @@ export interface IngredienteDisponivel {
   preco_kg_padrao: number
 }
 
+// Ingrediente para a busca por nome na criação/edição de dietas. Inclui os
+// ingredientes próprios inativos (reativados ao salvar a dieta) e, nos
+// insumos padrão, o preço do produtor ("Meus preços da base") quando existe.
+export interface IngredienteBusca extends IngredienteDisponivel {
+  ativo: boolean
+}
+
 export interface ComponenteDieta {
   id?: string
   dieta_id?: string
@@ -139,7 +146,8 @@ export function useDietas() {
   const [dietas, setDietas] = useState<Dieta[]>([])
   const [dietasBase, setDietasBase] = useState<DietaBase[]>([])
   const [insumosPadrao, setInsumosPadrao] = useState<InsumoPadrao[]>([])
-  const [ingredientesProdutor, setIngredientesProdutor] = useState<IngredienteProdutor[]>([])
+  const [ingredientesProdutorTodos, setIngredientesProdutorTodos] = useState<IngredienteProdutor[]>([])
+  const [precosProdutor, setPrecosProdutor] = useState<Array<{ insumo_id: string; preco_kg: number }>>([])
   const [loading, setLoading] = useState(true)
 
   const fetchInsumosPadrao = useCallback(async () => {
@@ -151,10 +159,13 @@ export function useDietas() {
 
   const fetchIngredientesProdutor = useCallback(async () => {
     if (!user) return
-    const { data } = await supabase
-      .from('ingredientes_produtor').select('*')
-      .eq('user_id', user.id).eq('ativo', true).order('categoria').order('nome')
-    setIngredientesProdutor(data ?? [])
+    const [{ data }, { data: pr }] = await Promise.all([
+      supabase.from('ingredientes_produtor').select('*')
+        .eq('user_id', user.id).order('categoria').order('nome'),
+      supabase.from('precos_produtor').select('insumo_id, preco_kg').eq('user_id', user.id),
+    ])
+    setIngredientesProdutorTodos(data ?? [])
+    setPrecosProdutor(pr ?? [])
   }, [user])
 
   const fetchDietasBase = useCallback(async () => {
@@ -203,6 +214,8 @@ export function useDietas() {
     fetchDietas()
   }, [fetchInsumosPadrao, fetchIngredientesProdutor, fetchDietasBase, fetchDietas])
 
+  const ingredientesProdutor = ingredientesProdutorTodos.filter(i => i.ativo)
+
   const ingredientesDisponiveis: IngredienteDisponivel[] = [
     ...insumosPadrao.map(i => ({
       origem: 'insumo_padrao' as const,
@@ -215,6 +228,50 @@ export function useDietas() {
       pct_ms: i.pct_ms, preco_kg_padrao: i.preco_kg,
     })),
   ]
+
+  const precoProdutorPorInsumo: Record<string, number> = {}
+  for (const p of precosProdutor) precoProdutorPorInsumo[p.insumo_id] = Number(p.preco_kg)
+
+  const ingredientesBusca: IngredienteBusca[] = [
+    ...insumosPadrao.map(i => ({
+      origem: 'insumo_padrao' as const,
+      id: i.id, nome: i.nome, categoria: i.categoria, pct_ms: i.pct_ms,
+      preco_kg_padrao: precoProdutorPorInsumo[i.id] ?? i.preco_referencia ?? 0,
+      ativo: true,
+    })),
+    ...ingredientesProdutorTodos.map(i => ({
+      origem: 'ingrediente_produtor' as const,
+      id: i.id, nome: i.nome, categoria: i.categoria,
+      pct_ms: i.pct_ms, preco_kg_padrao: i.preco_kg,
+      ativo: i.ativo,
+    })),
+  ]
+
+  // Cria os ingredientes novos digitados na dieta (no cadastro do produtor)
+  // e devolve as linhas criadas, na mesma ordem.
+  const criarIngredientesDieta = async (novos: Array<{
+    nome: string; categoria: string; pct_ms: number | null; preco_kg: number
+  }>): Promise<{ error: string | null; criados: IngredienteProdutor[] }> => {
+    if (!user) return { error: 'Não autenticado', criados: [] }
+    if (novos.length === 0) return { error: null, criados: [] }
+    const { data, error } = await supabase.from('ingredientes_produtor')
+      .insert(novos.map(n => ({ ...n, user_id: user.id, ativo: true })))
+      .select()
+    if (error) return { error: error.message, criados: [] }
+    const criados = (data ?? []) as IngredienteProdutor[]
+    const porNome = new Map(criados.map(c => [c.nome, c]))
+    await fetchIngredientesProdutor()
+    return { error: null, criados: novos.map(n => porNome.get(n.nome)).filter((c): c is IngredienteProdutor => !!c) }
+  }
+
+  // Reativa ingredientes próprios inativos escolhidos na dieta.
+  const reativarIngredientes = async (ids: string[]) => {
+    if (ids.length === 0) return { error: null }
+    const { error } = await supabase.from('ingredientes_produtor').update({ ativo: true }).in('id', ids)
+    if (error) return { error: error.message }
+    await fetchIngredientesProdutor()
+    return { error: null }
+  }
 
   const criarDieta = async (input: {
     nome: string
@@ -230,7 +287,7 @@ export function useDietas() {
     custo_manual_valor?: number | null
     custo_manual_unidade?: 'kg' | 'ton' | null
     componentes: Array<Omit<ComponenteDieta, 'id' | 'dieta_id' | 'insumo' | 'ingrediente_produtor'>>
-  }) => {
+  }, extras?: IngredienteProdutor[]) => {
     if (!user) return { error: 'Não autenticado' }
 
     const componentesComRef = input.componentes.map(c => ({
@@ -239,7 +296,7 @@ export function useDietas() {
         ? insumosPadrao.find(i => i.id === c.insumo_id) ?? null
         : null,
       ingrediente_produtor: c.origem_ingrediente === 'ingrediente_produtor'
-        ? ingredientesProdutor.find(i => i.id === c.ingrediente_produtor_id) ?? null
+        ? [...ingredientesProdutorTodos, ...(extras ?? [])].find(i => i.id === c.ingrediente_produtor_id) ?? null
         : null,
     })) as ComponenteDieta[]
 
@@ -313,7 +370,7 @@ export function useDietas() {
     custo_manual_unidade?: 'kg' | 'ton' | null
     vigente_desde: string
     componentes: Array<Omit<ComponenteDieta, 'id' | 'dieta_id' | 'insumo' | 'ingrediente_produtor'>>
-  }) => {
+  }, extras?: IngredienteProdutor[]) => {
     if (!user) return { error: 'Não autenticado' }
 
     // Custo antigo e a versão de histórico em aberto são lidos frescos do banco
@@ -344,7 +401,7 @@ export function useDietas() {
         ? insumosPadrao.find(i => i.id === c.insumo_id) ?? null
         : null,
       ingrediente_produtor: c.origem_ingrediente === 'ingrediente_produtor'
-        ? ingredientesProdutor.find(i => i.id === c.ingrediente_produtor_id) ?? null
+        ? [...ingredientesProdutorTodos, ...(extras ?? [])].find(i => i.id === c.ingrediente_produtor_id) ?? null
         : null,
     })) as ComponenteDieta[]
 
@@ -440,10 +497,11 @@ export function useDietas() {
 
   return {
     dietas, dietasBase, insumosPadrao, ingredientesProdutor,
-    ingredientesDisponiveis, templates,
+    ingredientesDisponiveis, ingredientesBusca, templates,
     loading,
     fetchDietas, fetchDietasBase, fetchInsumosPadrao, fetchIngredientesProdutor,
     criarDieta, atualizarDieta, excluirDieta,
+    criarIngredientesDieta, reativarIngredientes,
     calcularCustoDia,
   }
 }
