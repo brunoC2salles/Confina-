@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { getPctMsEfetivo, type Dieta, type IngredienteDisponivel } from '@/hooks/useDietas'
 import { fmt } from '@/lib/calculations'
 import {
-  num, custoKgMsDieta, custoLadoKgMs, validarDieta, dietaVazia,
+  num, custoKgMsDieta, custoLadoKgMs, validarDieta, dietaVazia, permitePasto, pastoAtivo,
   type SimCiclo, type SimDieta, type SimComponente, type TipoCicloSim,
 } from '@/lib/simulador'
 
@@ -69,8 +69,10 @@ export function CicloCard({
   const setDieta = (patch: Partial<SimDieta>) => onChange({ ...ciclo, dieta: { ...ciclo.dieta, ...patch } })
 
   const usaCabecaDia = ciclo.tipo === 'pastagem' && ciclo.custoModo === 'cabeca_dia'
-  const custoMs = custoKgMsDieta(ciclo.dieta)
-  const erroDieta = usaCabecaDia ? null : validarDieta(ciclo.dieta)
+  const comPasto = pastoAtivo(ciclo.dieta, ciclo.tipo)
+  const mostraPasto = permitePasto(ciclo.tipo) && num(ciclo.dieta.pct_volumoso) > 0
+  const custoMs = custoKgMsDieta(ciclo.dieta, comPasto)
+  const erroDieta = usaCabecaDia ? null : validarDieta(ciclo.dieta, comPasto)
 
   const usarDietaCadastrada = (id: string) => {
     const d = dietas.find(x => x.id === id)
@@ -151,7 +153,7 @@ export function CicloCard({
               <strong>Dieta</strong>
               {ciclo.dieta.origemNome && <span style={{ color: 'var(--text-3)' }}> · cópia de {ciclo.dieta.origemNome}</span>}
               <span style={{ color: 'var(--text-2)' }}>
-                {' '}· {num(ciclo.dieta.pct_consumo_pv_ms)}% PV · {num(ciclo.dieta.pct_concentrado)}% conc / {num(ciclo.dieta.pct_volumoso)}% vol
+                {' '}· {num(ciclo.dieta.pct_consumo_pv_ms)}% PV · {num(ciclo.dieta.pct_concentrado)}% conc / {num(ciclo.dieta.pct_volumoso)}% vol{comPasto ? ' (pasto)' : ''}
                 {custoMs != null && <> · <strong style={{ color: 'var(--green)' }}>{fmt(custoMs)}/kg MS</strong></>}
               </span>
               {erroDieta && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 2 }}>{erroDieta}</div>}
@@ -174,7 +176,41 @@ export function CicloCard({
               )}
             </div>
           </div>
-          {dietaAberta && !ciclo.dieta.origemNome && <EditorDieta dieta={ciclo.dieta} ingredientes={ingredientes} onChange={setDieta} gmdCiclo={num(ciclo.gmd)} />}
+          {ciclo.dieta.origemNome && mostraPasto && (
+            <div style={{ marginTop: 12 }}>
+              <PastoControle dieta={ciclo.dieta} onChange={setDieta} />
+            </div>
+          )}
+          {dietaAberta && !ciclo.dieta.origemNome && <EditorDieta dieta={ciclo.dieta} ingredientes={ingredientes} onChange={setDieta} gmdCiclo={num(ciclo.gmd)} mostraPasto={mostraPasto} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Volumoso por pasto (ciclos misto/pastagem) ────────────────────────────
+
+function PastoControle({ dieta, onChange }: {
+  dieta: SimDieta
+  onChange: (patch: Partial<SimDieta>) => void
+}) {
+  const ativo = !!dieta.pasto_ativo
+  const fieldLabel: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: 'var(--text-2)', marginBottom: 4, display: 'block' }
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      <div>
+        <label style={fieldLabel}>Volumoso ({num(dieta.pct_volumoso)}%)</label>
+        <div className="pill-wrap" style={{ marginBottom: 0 }}>
+          <button type="button" className={`pill${ativo ? ' active' : ''}`} onClick={() => onChange({ pasto_ativo: true })}>Pasto (R$/kg MS)</button>
+          <button type="button" className={`pill${!ativo ? ' active' : ''}`} onClick={() => onChange({ pasto_ativo: false })}>Ingredientes</button>
+        </div>
+      </div>
+      {ativo && (
+        <div style={{ flex: '0 1 200px' }}>
+          <label style={fieldLabel}>Custo do pasto (R$/kg MS)</label>
+          <input className="form-input" type="number" min="0" step="0.0001" placeholder="0" value={dieta.pasto_custo_kg_ms ?? ''}
+            onChange={e => onChange({ pasto_custo_kg_ms: e.target.value })}
+            style={{ background: (dieta.pasto_custo_kg_ms ?? '').trim() === '' ? '#fff8e1' : undefined }} />
         </div>
       )}
     </div>
@@ -183,14 +219,16 @@ export function CicloCard({
 
 // ─── Editor da dieta do ciclo (mesmos campos da criação de dietas) ─────────
 
-function EditorDieta({ dieta, ingredientes, onChange, gmdCiclo }: {
+function EditorDieta({ dieta, ingredientes, onChange, gmdCiclo, mostraPasto }: {
   dieta: SimDieta
   ingredientes: IngredienteDisponivel[]
   onChange: (patch: Partial<SimDieta>) => void
   gmdCiclo: number
+  mostraPasto: boolean
 }) {
   const pc = num(dieta.pct_concentrado)
   const pv = num(dieta.pct_volumoso)
+  const comPasto = mostraPasto && !!dieta.pasto_ativo
   const fieldLabel: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: 'var(--text-2)', marginBottom: 4, display: 'block' }
 
   const porCategoria = useMemo(() => {
@@ -247,7 +285,7 @@ function EditorDieta({ dieta, ingredientes, onChange, gmdCiclo }: {
       <div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
           <input type="checkbox" checked={dieta.custo_manual_ativo} onChange={e => onChange({ custo_manual_ativo: e.target.checked })} />
-          Usar custo manual (preço geral da ração)
+          {comPasto ? 'Usar custo manual do concentrado' : 'Usar custo manual (preço geral da ração)'}
         </label>
         {dieta.custo_manual_ativo && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginTop: 8 }}>
@@ -268,9 +306,16 @@ function EditorDieta({ dieta, ingredientes, onChange, gmdCiclo }: {
         )}
       </div>
 
+      {mostraPasto && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          <PastoControle dieta={dieta} onChange={onChange} />
+        </div>
+      )}
+
       {!dieta.custo_manual_ativo && (['concentrado', 'volumoso'] as const).map(tipo => {
         const pct = tipo === 'concentrado' ? pc : pv
         if (pct <= 0) return null
+        if (tipo === 'volumoso' && comPasto) return null
         const doTipo = dieta.componentes.map((c, idx) => ({ c, idx })).filter(x => x.c.tipo === tipo)
         const soma = doTipo.reduce((s, x) => s + num(x.c.pct_participacao), 0)
         const jaAdicionados = new Set(doTipo.map(x => x.c.key))

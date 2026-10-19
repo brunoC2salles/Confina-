@@ -43,6 +43,11 @@ export interface SimDieta {
   custo_manual_valor: string
   custo_manual_unidade: 'kg' | 'ton'
   componentes: SimComponente[]
+  // Volumoso por pasto (só ciclos misto/pastagem): em vez dos ingredientes do
+  // volumoso, um custo único em R$/kg de MS. Ausente em simulações antigas.
+  // Com pasto ativo, o custo manual vale só para o concentrado.
+  pasto_ativo?: boolean
+  pasto_custo_kg_ms?: string
 }
 
 export interface SimCiclo {
@@ -167,24 +172,36 @@ export function duplicarCenario(c: SimCenario, nome: string): SimCenario {
   return copia
 }
 
+// ─── Pasto no volumoso ──────────────────────────────────────────────────────
+
+export function permitePasto(tipo: TipoCicloSim): boolean {
+  return tipo === 'misto' || tipo === 'pastagem'
+}
+
+export function pastoAtivo(d: SimDieta, tipo: TipoCicloSim): boolean {
+  return permitePasto(tipo) && !!d.pasto_ativo && num(d.pct_volumoso) > 0
+}
+
 // ─── Custo por kg de MS da dieta ────────────────────────────────────────────
 // Mesma fórmula de calcularCustoKgMs (useDietas.ts). Só valida o lado
 // (concentrado/volumoso) que tem participação maior que zero.
 
-export function validarDieta(d: SimDieta): string | null {
+export function validarDieta(d: SimDieta, comPasto = false): string | null {
   const pcpv = num(d.pct_consumo_pv_ms)
   if (pcpv <= 0 || pcpv > 10) return '% consumo do PV em MS deve ser maior que 0 e no máximo 10'
   const pc = num(d.pct_concentrado)
   const pv = num(d.pct_volumoso)
   if (Math.abs(pc + pv - 100) > 0.01) return '% concentrado + % volumoso deve somar 100'
   if (pc > 0 && pv > 0 && !vazio(d.gmd_concentrado) && num(d.gmd_concentrado) <= 0) return 'GMD do concentrado deve ser maior que 0'
+  if (comPasto && (vazio(d.pasto_custo_kg_ms) || num(d.pasto_custo_kg_ms) < 0)) return 'Informe o custo do pasto (R$/kg MS)'
   if (d.custo_manual_ativo) {
-    if (num(d.custo_manual_valor) <= 0) return 'Informe o custo manual da ração'
+    if ((!comPasto || pc > 0) && num(d.custo_manual_valor) <= 0) return 'Informe o custo manual da ração'
     return null
   }
   for (const tipo of ['concentrado', 'volumoso'] as const) {
     const pct = tipo === 'concentrado' ? pc : pv
     if (pct <= 0) continue
+    if (tipo === 'volumoso' && comPasto) continue
     const comps = d.componentes.filter(c => c.tipo === tipo)
     if (comps.length === 0) return `Adicione ingredientes ao ${tipo}`
     const soma = comps.reduce((s, c) => s + num(c.pct_participacao), 0)
@@ -210,7 +227,22 @@ export function custoLadoKgMs(d: SimDieta, tipo: 'concentrado' | 'volumoso'): nu
   return soma
 }
 
-export function custoKgMsDieta(d: SimDieta): number | null {
+export function custoKgMsDieta(d: SimDieta, comPasto = false): number | null {
+  if (comPasto) {
+    const pc = num(d.pct_concentrado)
+    const pv = num(d.pct_volumoso)
+    let cc: number | null = 0
+    if (pc > 0) {
+      if (d.custo_manual_ativo) {
+        const v = num(d.custo_manual_valor)
+        cc = v > 0 ? (d.custo_manual_unidade === 'ton' ? v / 1000 : v) : null
+      } else {
+        cc = custoLadoKgMs(d, 'concentrado')
+      }
+    }
+    if (cc == null) return null
+    return cc * (pc / 100) + num(d.pasto_custo_kg_ms) * (pv / 100)
+  }
   if (d.custo_manual_ativo) {
     const v = num(d.custo_manual_valor)
     if (v <= 0) return null
@@ -319,9 +351,10 @@ export function calcularCenario(partida: SimPartida, c: SimCenario): ResultadoCe
     if (usaCabecaDia) {
       if (num(ci.custoCabecaDia) < 0 || vazio(ci.custoCabecaDia)) erros.push(`${rotulo}: informe o custo por cabeça/dia`)
     } else {
-      const erroDieta = validarDieta(ci.dieta)
+      const comPasto = pastoAtivo(ci.dieta, ci.tipo)
+      const erroDieta = validarDieta(ci.dieta, comPasto)
       if (erroDieta) erros.push(`${rotulo}: ${erroDieta}`)
-      custoKgMs = custoKgMsDieta(ci.dieta)
+      custoKgMs = custoKgMsDieta(ci.dieta, comPasto)
       pctConsumo = num(ci.dieta.pct_consumo_pv_ms)
       pctConc = num(ci.dieta.pct_concentrado)
       const pctVol = num(ci.dieta.pct_volumoso)
