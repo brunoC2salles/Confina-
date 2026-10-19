@@ -8,6 +8,7 @@ import './tutorial.css'
 import {
   MockIngredientes, MockDietas, MockLotes, MockAnimais, MockCsv,
   MockImportarLote, MockPesagens, MockCompras, MockFornecimento, MockDietaPronta, MockAjusteInventario, MockComparativo, MockRanking, MockParceiros,
+  MockSimulador,
 } from '@/components/tutorial/Mockups'
 
 interface Secao {
@@ -36,10 +37,14 @@ const SECOES: Secao[] = [
   {
     id: 'dietas', titulo: 'Criar dietas', curto: 'Dietas',
     rota: '/dietas', rotaLabel: 'Abrir Dietas',
-    resumo: 'Monte as dietas de cada fase. Você pode partir de um template base, que já traz ingredientes e parâmetros prontos para ajustar, ou criar uma dieta do zero.',
+    resumo: 'Monte as dietas de cada fase. Crie do zero digitando o nome dos ingredientes, ou parta de um template base, que já traz ingredientes e parâmetros prontos para ajustar.',
     dicas: [
-      'Para usar um template, abra a aba "Templates base" e clique em "Usar como base". Para criar do zero, use "+ Nova dieta".',
+      'Para criar do zero, use "+ Nova dieta". Para usar um template, abra a aba "Templates base" e clique em "Usar como base".',
       'Informe GMD esperado, consumo diário (% do peso vivo em MS) e a divisão entre concentrado e volumoso.',
+      'Para adicionar um ingrediente, digite pelo menos 3 letras do nome em "Adicionar ingrediente". A lista mostra os ingredientes da base e os seus, com % MS e preço do cadastro. Na base padrão, vale o seu preço de "Meus preços da base", quando informado.',
+      'Se o ingrediente não existe, clique em "Cadastrar": escolha a categoria e informe % MS e preço na linha. Ele é cadastrado em Ingredientes quando a dieta é salva. Um nome que já existe não pode ser cadastrado de novo: escolha o existente.',
+      'Quando o ingrediente tem estoque em Compras, escolha entre o preço do cadastro e o custo médio do estoque, convertido de R$/kg de MS para R$/kg de matéria natural pelo % MS da linha.',
+      'Ingrediente seu que estava inativo aparece na busca e é reativado ao salvar a dieta. Alterar % MS ou preço dentro da dieta vale só para ela; o cadastro do ingrediente não muda.',
       'Quando o preço da ração mudar, registre o novo valor com "Novo preço válido a partir de": o histórico de custo é preservado.',
       'Depois de criada, a dieta pode ser escolhida em cada ciclo do lote. Para mudar no meio do ciclo, use "Trocar dieta" dentro do lote.',
     ],
@@ -136,7 +141,9 @@ const SECOES: Secao[] = [
     rota: '/compras', rotaLabel: 'Abrir Compras',
     resumo: 'Na aba Ração de Compras fica tudo da alimentação: o fornecimento de ração aos lotes com o planejado x realizado, as compras de dieta pronta e o estoque de ingredientes da ração feita na fazenda. Medicamentos e Outros têm abas próprias, com o valor rateado entre os animais.',
     dicas: [
-      'Ingrediente: em "+ Registrar Compra", escolha Ingrediente e informe se foi Compra ou Produção própria (com o custo de produção). A quantidade é em kg de matéria natural, como foi pesada, junto com o % MS do material (vem do cadastro e pode ser alterado). O estoque entra em kg de matéria seca.',
+      'Ingrediente: em "+ Registrar Compra", escolha Ingrediente e informe se foi Compra ou Produção própria (com o custo de produção). A quantidade é em kg de matéria natural, como foi pesada, junto com o % MS do material (vem do cadastro e pode ser alterado; sem % MS, a quantidade é tratada como kg de MS). O estoque entra em kg de matéria seca.',
+      'Nos seus ingredientes, o % MS informado atualiza o cadastro quando a entrada é a mais recente. Os ingredientes da base padrão não mudam.',
+      'O campo Fornecedor aceita parceiros do tipo Fornecedor, Produtor ou Corretor em todas as compras: dieta pronta, medicamentos, outros e ingrediente (neste, quando a origem é Compra).',
       'O custo médio do estoque (R$/kg de MS) passa a ser o preço do ingrediente nas dietas a partir da data de cada entrada.',
       'Fornecimento: em "+ Registrar Compra", escolha Fornecimento, a dieta e informe o total; os ingredientes vêm pela composição e a divisão entre os lotes é feita pelo consumo previsto de cada um.',
       'Cada fornecimento vale do dia dele até o próximo do mesmo lote e substitui o consumo teórico no custo e na baixa de estoque.',
@@ -149,6 +156,21 @@ const SECOES: Secao[] = [
       { titulo: 'Comprar dieta pronta para um grupo de lotes', el: <MockDietaPronta /> },
       { titulo: 'Ajustar o inventário de um ingrediente', el: <MockAjusteInventario /> },
     ],
+  },
+  {
+    id: 'simulador', titulo: 'Simular caminhos', curto: 'Simulador',
+    rota: '/simulador', rotaLabel: 'Abrir Simulador',
+    resumo: 'Antes de decidir, monte caminhos do ponto de partida até a venda e compare o custo de cada um. Cada simulação tem um ponto de partida comum e um ou mais caminhos, cada um com seus ciclos e dietas.',
+    dicas: [
+      'Em "+ Nova simulação", defina o ponto de partida: informe à mão ou use "Puxar de um lote" e "Carregar dados de hoje" para trazer animais ativos, peso médio projetado no dia, valor médio de compra e custo já incorrido. Os valores podem ser ajustados.',
+      'Cada caminho é uma sequência de ciclos. Em cada ciclo informe tipo (confinamento, pastagem ou misto), dias, GMD esperado e mão de obra + estrutura em R$ por kg produzido.',
+      'A dieta do ciclo pode ser copiada de uma dieta cadastrada ou montada à mão. A cópia é independente: alterar no simulador não muda o cadastro da dieta.',
+      'Em ciclos de pastagem ou misto, o volumoso pode ser pasto, com custo em R$/kg de MS. Na pastagem também dá para usar um custo fixo por cabeça/dia.',
+      'Use "+ Novo caminho" ou "Duplicar caminho" para testar alternativas. O comparativo mostra dias, peso final, GMD e custos de cada caminho lado a lado.',
+      'Lucro, margem e retorno aparecem só depois de "Mostrar projeção de lucro" e da venda (R$/kg vivo) informada no caminho. A escolha fica salva com a simulação.',
+      'Clique em "Salvar" para guardar a simulação e voltar a ela depois.',
+    ],
+    mockups: [{ el: <MockSimulador /> }],
   },
 ]
 
@@ -185,7 +207,7 @@ export default function Tutorial() {
     <div className="page tut-page">
       <header className="tut-cab">
         <h1>Tutorial de uso</h1>
-        <p>Dez passos, na ordem em que a plataforma funciona melhor.</p>
+        <p>Onze passos, na ordem em que a plataforma funciona melhor.</p>
       </header>
 
       <div className="tut-hero">
