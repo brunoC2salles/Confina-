@@ -203,7 +203,7 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
         </div>
       </div>
 
-      <PartidaCard partida={dados.partida} onChange={setPartida} />
+      <PartidaCard partida={dados.partida} onChange={setPartida} mostrarMsConc={Object.values(resultados).some(r => r.concMnEstimada)} />
 
       <ComparativoCaminhos cenarios={dados.cenarios} resultados={resultados} ativoId={cenarioAtivo?.id ?? ''} onSelecionar={setCenarioAtivoId}
         mostrarLucro={mostrarLucro} onAlternarLucro={() => setDados({ ...dados, mostrarLucro: !mostrarLucro })} />
@@ -290,7 +290,7 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
 
 // ─── Ponto de partida ───────────────────────────────────────────────────────
 
-function PartidaCard({ partida, onChange }: { partida: SimPartida; onChange: (p: Partial<SimPartida>) => void }) {
+function PartidaCard({ partida, onChange, mostrarMsConc }: { partida: SimPartida; onChange: (p: Partial<SimPartida>) => void; mostrarMsConc: boolean }) {
   const { user } = useAuth()
   const { calcularEmLote } = useCustoEngine()
   const [lotes, setLotes] = useState<Array<{ id: string; nome_lote: string }>>([])
@@ -403,6 +403,12 @@ function PartidaCard({ partida, onChange }: { partida: SimPartida; onChange: (p:
           <label style={fieldLabel}>Custo já incorrido (R$/cabeça)</label>
           <input className="form-input" type="number" step="0.01" value={partida.custoAnteriorPorCabeca} onChange={e => onChange({ custoAnteriorPorCabeca: e.target.value })} />
         </div>
+        {mostrarMsConc && (
+          <div>
+            <label style={fieldLabel} title="Usada para converter o concentrado de MS (matéria seca) para MN (matéria natural) nas dietas sem ingredientes do concentrado cadastrados.">% MS do concentrado (dietas sem ingredientes)</label>
+            <input className="form-input" type="number" step="0.1" value={partida.pctMsConcentrado ?? String(PCT_MS_CONCENTRADO_PADRAO)} onChange={e => onChange({ pctMsConcentrado: e.target.value })} />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -412,7 +418,7 @@ function PartidaCard({ partida, onChange }: { partida: SimPartida; onChange: (p:
 
 function notaConc(r: ResultadoCenario, linha: 'mn' | 'ms' | 'custo'): string | null {
   const partes: string[] = []
-  if (linha === 'mn' && r.concMnEstimada) partes.push(`Estimado com ${PCT_MS_CONCENTRADO_PADRAO}% de MS: há dieta sem ingredientes do concentrado cadastrados.`)
+  if (linha === 'mn' && r.concMnEstimada) partes.push(`Estimado com ${fmtNum(r.pctMsConcentradoUsada, 1)}% de MS, editável no ponto de partida: há dieta sem ingredientes do concentrado cadastrados.`)
   if (linha === 'custo' && r.custoConcDietaToda) partes.push('Inclui o volumoso: há dieta com custo manual da dieta inteira, sem como separar o concentrado.')
   if (r.ciclosCabecaDia > 0) partes.push(r.ciclosCabecaDia === 1 ? 'Não inclui 1 ciclo de pastagem com custo por cabeça/dia (sem dieta).' : `Não inclui ${r.ciclosCabecaDia} ciclos de pastagem com custo por cabeça/dia (sem dieta).`)
   return partes.length > 0 ? partes.join(' ') : null
@@ -426,10 +432,11 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
   mostrarLucro: boolean
   onAlternarLucro: () => void
 }) {
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
   const validos = cenarios.map(c => resultados[c.id]).filter(r => r && r.erros.length === 0 && r.lucroCabeca != null)
   const melhorId = mostrarLucro && validos.length >= 2 ? validos.reduce((a, b) => (b.lucroCabeca! > a.lucroCabeca! ? b : a)).cenarioId : null
 
-  type Linha = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean; lucro?: boolean; dica?: string; nota?: (r: ResultadoCenario) => string | null }
+  type Linha = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean; lucro?: boolean; dica?: string; nota?: (r: ResultadoCenario) => string | null; id?: string; pai?: string }
   const ou = (v: number | null, f: (n: number) => string) => v == null ? '—' : f(v)
   const todas: Linha[] = [
     { rotulo: 'Dias totais', valor: r => String(r.diasTotais) },
@@ -440,12 +447,14 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
     { rotulo: 'Investimento inicial', valor: r => fmt(r.investimentoInicial) },
     { rotulo: 'Custo dos ciclos', valor: r => fmt(r.custoCiclos) },
     { rotulo: 'Custo total', valor: r => fmt(r.custoTotal) },
-    { rotulo: 'Concentrado consumido (MN)', valor: r => `${fmtNum(r.concentradoMnKg, 0)} kg`, nota: r => notaConc(r, 'mn'), dica: 'Concentrado na matéria natural, como é comprado e colocado no cocho. Convertido da matéria seca pela % MS dos ingredientes do concentrado.' },
-    { rotulo: 'Concentrado consumido (MS)', valor: r => `${fmtNum(r.concentradoMsKg, 0)} kg`, nota: r => notaConc(r, 'ms'), dica: 'Concentrado em matéria seca: consumo diário (peso x % de consumo do PV em MS) x % de concentrado da dieta, somado em todos os ciclos.' },
-    { rotulo: 'Desembolso com concentrado', valor: r => fmt(r.custoConcentrado), nota: r => notaConc(r, 'custo'), dica: 'Concentrado consumido (MS) x custo do kg de MS do concentrado da dieta.' },
-    { rotulo: 'Concentrado consumido (MN), lote', valor: r => `${fmtNum(r.concentradoMnKg * r.qtdAnimais, 0)} kg`, nota: r => notaConc(r, 'mn'), dica: 'Concentrado por cabeça (MN) x quantidade de animais.' },
-    { rotulo: 'Concentrado consumido (MS), lote', valor: r => `${fmtNum(r.concentradoMsKg * r.qtdAnimais, 0)} kg`, nota: r => notaConc(r, 'ms'), dica: 'Concentrado por cabeça (MS) x quantidade de animais.' },
-    { rotulo: 'Desembolso com concentrado, lote', valor: r => fmt(r.custoConcentrado * r.qtdAnimais), nota: r => notaConc(r, 'custo'), dica: 'Desembolso por cabeça x quantidade de animais.' },
+    { id: 'conc', rotulo: 'Concentrado consumido do lote, MN (matéria natural)', valor: r => `${fmtNum(r.concentradoMnKg * r.qtdAnimais, 0)} kg`, nota: r => notaConc(r, 'mn'), dica: 'Total de concentrado do lote na matéria natural, como é comprado e colocado no cocho. Expanda para ver por animal e em matéria seca.' },
+    { pai: 'conc', rotulo: 'MN (matéria natural), lote', valor: r => `${fmtNum(r.concentradoMnKg * r.qtdAnimais, 0)} kg`, nota: r => notaConc(r, 'mn'), dica: 'Concentrado por animal em MN (matéria natural) x quantidade de animais.' },
+    { pai: 'conc', rotulo: 'MN (matéria natural), por animal', valor: r => `${fmtNum(r.concentradoMnKg, 0)} kg`, nota: r => notaConc(r, 'mn'), dica: 'Concentrado na matéria natural, como é comprado e colocado no cocho. Convertido da matéria seca pela % MS dos ingredientes do concentrado.' },
+    { pai: 'conc', rotulo: 'MS (matéria seca), lote', valor: r => `${fmtNum(r.concentradoMsKg * r.qtdAnimais, 0)} kg`, nota: r => notaConc(r, 'ms'), dica: 'Concentrado por animal em MS (matéria seca) x quantidade de animais.' },
+    { pai: 'conc', rotulo: 'MS (matéria seca), por animal', valor: r => `${fmtNum(r.concentradoMsKg, 0)} kg`, nota: r => notaConc(r, 'ms'), dica: 'Concentrado em matéria seca: consumo diário (peso x % de consumo do PV em MS) x % de concentrado da dieta, somado em todos os ciclos.' },
+    { id: 'desemb', rotulo: 'Desembolso com concentrado do lote', valor: r => fmt(r.custoConcentrado * r.qtdAnimais), nota: r => notaConc(r, 'custo'), dica: 'Total gasto com concentrado no lote. Expanda para ver por animal.' },
+    { pai: 'desemb', rotulo: 'Lote', valor: r => fmt(r.custoConcentrado * r.qtdAnimais), nota: r => notaConc(r, 'custo'), dica: 'Desembolso por animal x quantidade de animais.' },
+    { pai: 'desemb', rotulo: 'Por animal', valor: r => fmt(r.custoConcentrado), nota: r => notaConc(r, 'custo'), dica: 'Concentrado consumido em MS (matéria seca) x custo do kg de MS do concentrado da dieta.' },
     { rotulo: 'Receita líquida', valor: r => ou(r.receitaLiquida, fmt), lucro: true },
     { rotulo: 'Lucro por cabeça', valor: r => ou(r.lucroCabeca, fmt), cor: r => corValor(r.lucroCabeca), destaque: true, lucro: true },
     { rotulo: 'Lucro total', valor: r => ou(r.lucroTotal, fmt), cor: r => corValor(r.lucroTotal), destaque: true, lucro: true },
@@ -453,7 +462,8 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
     { rotulo: 'Retorno sobre o investimento', valor: r => ou(r.roiPct, v => `${fmtNum(1 + v / 100, 2)}x`), cor: r => corValor(r.roiPct), lucro: true, dica: 'Quanto volta para cada R$ 1,00 investido. Cálculo: receita líquida dividida pelo custo total (compra, custo anterior e custo dos ciclos). Acima de 1,00x há lucro; abaixo de 1,00x, prejuízo. Ex.: 1,25x significa que cada R$ 1,00 investido voltou R$ 1,25.' },
     { rotulo: 'Lucro por @ de carcaça', valor: r => ou(r.lucroPorArroba, fmt), cor: r => corValor(r.lucroPorArroba), lucro: true },
   ]
-  const linhas = mostrarLucro ? todas : todas.filter(l => !l.lucro)
+  const linhas = todas.filter(l => (mostrarLucro || !l.lucro) && (!l.pai || expandidos.has(l.pai)))
+  const alternar = (id: string) => setExpandidos(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   return (
     <div className="card" style={{ padding: 0 }}>
@@ -480,8 +490,9 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
           </thead>
           <tbody>
             {linhas.map(l => (
-              <tr key={l.rotulo}>
-                <td style={{ fontWeight: l.destaque ? 600 : 400, whiteSpace: 'nowrap' }}>
+              <tr key={`${l.pai ?? ''}${l.rotulo}`} style={l.id ? { cursor: 'pointer' } : undefined} onClick={l.id ? () => alternar(l.id!) : undefined}>
+                <td style={{ fontWeight: l.destaque ? 600 : 400, whiteSpace: 'nowrap', paddingLeft: l.pai ? 32 : undefined, color: l.pai ? 'var(--text-2)' : undefined }}>
+                  {l.id && <span aria-hidden style={{ display: 'inline-block', width: 14, fontWeight: 600, color: 'var(--text-3)' }}>{expandidos.has(l.id) ? '−' : '+'}</span>}
                   {l.rotulo}
                   {l.dica && <span title={l.dica} aria-label={l.dica} style={{ cursor: 'help', marginLeft: 2, color: 'var(--text-3)' }}>*</span>}
                 </td>

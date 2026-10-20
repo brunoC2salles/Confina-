@@ -13,7 +13,8 @@
 //    concentrado = GMD do concentrado da dieta (sem ele, o GMD do ciclo) nos
 //    dias em que a dieta tem concentrado — mesma base da Conversão do app.
 //  - concentrado em matéria natural = MS / % MS ponderada dos ingredientes do
-//    concentrado (participação em base MS); sem ingredientes, usa 88% de MS.
+//    concentrado (participação em base MS); sem ingredientes, usa a % MS do
+//    concentrado do ponto de partida (padrão 88%).
 //  - desembolso com concentrado = concentrado (MS) x custo do kg de MS do
 //    concentrado; com custo manual da dieta inteira (sem pasto e com volumoso),
 //    não dá para separar o concentrado e entra o custo da alimentação toda.
@@ -91,6 +92,9 @@ export interface SimPartida {
   compraModo: 'kg' | 'cabeca'
   compraValor: string
   custoAnteriorPorCabeca: string
+  // % MS do concentrado para dietas sem ingredientes do concentrado (conversão
+  // MS para MN). Ausente em simulações antigas: vale PCT_MS_CONCENTRADO_PADRAO.
+  pctMsConcentrado?: string
 }
 
 export interface SimDados {
@@ -317,6 +321,7 @@ export interface ResultadoCenario {
   concMnEstimada: boolean
   custoConcDietaToda: boolean
   ciclosCabecaDia: number // ciclos sem dieta (pastagem por cabeça/dia), fora do concentrado
+  pctMsConcentradoUsada: number // % MS aplicada às dietas sem ingredientes do concentrado
   precoLiquidoKg: number | null
   receitaBruta: number | null
   deducoes: number | null
@@ -339,6 +344,9 @@ export function calcularCenario(partida: SimPartida, c: SimCenario): ResultadoCe
 
   const compra = partida.compraModo === 'kg' ? pesoInicial * num(partida.compraValor) : num(partida.compraValor)
   const investimentoInicial = compra + num(partida.custoAnteriorPorCabeca)
+
+  const pctMsConcPadrao = vazio(partida.pctMsConcentrado) ? PCT_MS_CONCENTRADO_PADRAO : num(partida.pctMsConcentrado)
+  let usaMsConcPadrao = false
 
   const precoKg = num(c.venda.precoKg)
   const pctDed = num(c.venda.pctComissao) + num(c.venda.pctEncargo)
@@ -384,8 +392,9 @@ export function calcularCenario(partida: SimPartida, c: SimCenario): ResultadoCe
         if (compsConc.length > 0 && compsConc.every(x => num(x.pct_ms) > 0)) {
           fatorMn = compsConc.reduce((s, x) => s + (num(x.pct_participacao) / 100) / (num(x.pct_ms) / 100), 0)
         } else {
-          fatorMn = 100 / PCT_MS_CONCENTRADO_PADRAO
+          fatorMn = pctMsConcPadrao > 0 ? 100 / pctMsConcPadrao : 0
           concMnEstimada = true
+          usaMsConcPadrao = true
         }
         if (ci.dieta.custo_manual_ativo) {
           const v = num(ci.dieta.custo_manual_valor)
@@ -448,6 +457,8 @@ export function calcularCenario(partida: SimPartida, c: SimCenario): ResultadoCe
     })
   })
 
+  if (usaMsConcPadrao && (pctMsConcPadrao <= 0 || pctMsConcPadrao > 100)) erros.push('Ponto de partida: % MS do concentrado deve ser maior que 0 e no máximo 100')
+
   const ganhoTotal = peso - pesoInicial
   const custoCiclos = ciclos.reduce((s, x) => s + x.custoTotal, 0)
   const custoTotal = investimentoInicial + custoCiclos
@@ -469,6 +480,7 @@ export function calcularCenario(partida: SimPartida, c: SimCenario): ResultadoCe
     concMnEstimada: ciclos.some(x => x.concMnEstimada),
     custoConcDietaToda: ciclos.some(x => x.custoConcDietaToda),
     ciclosCabecaDia: ciclos.filter(x => x.consumoMsKg == null).length,
+    pctMsConcentradoUsada: pctMsConcPadrao,
     precoLiquidoKg, receitaBruta, deducoes, receitaLiquida, lucroCabeca,
     lucroTotal: lucroCabeca != null ? lucroCabeca * qtd : null,
     margemPct: lucroCabeca != null && receitaLiquida != null && receitaLiquida > 0 ? (lucroCabeca / receitaLiquida) * 100 : null,
