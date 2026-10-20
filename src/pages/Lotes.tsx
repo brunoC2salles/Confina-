@@ -1,5 +1,5 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import {
   useLotes, useAnimaisDoLote, useCustoEngine, useVendas, useCustosOperacionais, useCompras,
   useMovimentacoesLote, buscarPorIds,
@@ -575,11 +575,15 @@ function ModalAdicionarAnimais({
   const [sexoIndividual, setSexoIndividual] = useState<'' | 'M' | 'F'>('')
 
   const temPeso2 = linhas.some(l => l.peso2 != null)
+  // Linhas com peso 0 = pendentes (faixa gerada sem peso padrão)
+  const qtdSemPeso = linhas.filter(l => !(l.peso > 0)).length
+  const pesoInputsRef = useRef<(HTMLInputElement | null)[]>([])
 
   const gerarFaixa = () => {
-    const ini = Number(faixaInicio), fim = Number(faixaFim), peso = Number(pesoFaixa)
+    const ini = Number(faixaInicio), fim = Number(faixaFim)
     if (!ini || !fim || fim < ini) { setErro('Faixa inválida'); return }
-    if (!peso || peso <= 0) { setErro('Informe o peso padrão'); return }
+    const peso = pesoFaixa.trim() === '' ? 0 : Number(pesoFaixa)
+    if (pesoFaixa.trim() !== '' && (!peso || peso <= 0)) { setErro('Peso padrão inválido'); return }
     if (fim - ini + 1 > 2000) { setErro('Faixa muito grande (máximo 2000 de uma vez)'); return }
     const novas: LinhaAnimalInput[] = []
     for (let n = ini; n <= fim; n++) novas.push({ brinco: String(n), peso, peso2: null, sexo: sexoFaixa || null })
@@ -621,6 +625,7 @@ function ModalAdicionarAnimais({
 
   const confirmar = async () => {
     if (linhas.length === 0) { setErro('Adicione ao menos um animal'); return }
+    if (qtdSemPeso > 0) { setErro(`${qtdSemPeso} animal(is) sem peso na lista — preencha o peso de todos antes de cadastrar`); return }
     const brincos = new Set<string>()
     for (const l of linhas) {
       if (brincos.has(l.brinco)) { setErro(`Brinco "${l.brinco}" duplicado na lista`); return }
@@ -712,8 +717,8 @@ function ModalAdicionarAnimais({
               <input className="form-input" type="number" value={faixaFim} onChange={e => setFaixaFim(e.target.value)} placeholder="400" />
             </div>
             <div className="form-group" style={{ flex: 1 }}>
-              <label className="form-label">Peso padrão (kg)</label>
-              <input className="form-input" type="number" step="0.1" value={pesoFaixa} onChange={e => setPesoFaixa(e.target.value)} placeholder="200" />
+              <label className="form-label">Peso padrão (opcional)</label>
+              <input className="form-input" type="number" step="0.1" value={pesoFaixa} onChange={e => setPesoFaixa(e.target.value)} placeholder="Em branco" />
             </div>
             <div className="form-group" style={{ flex: 1 }}>
               <label className="form-label">Sexo (opcional)</label>
@@ -765,7 +770,10 @@ function ModalAdicionarAnimais({
         {linhas.length > 0 && (
           <div>
             <div className="flex-between" style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{linhas.length} animal(is) na lista</div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>
+                {linhas.length} animal(is) na lista
+                {qtdSemPeso > 0 && <span style={{ color: '#b45309', fontWeight: 600 }}> · {qtdSemPeso} sem peso</span>}
+              </div>
               <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
                 Peso total (1ª pesagem): <strong>{fmtNum(pesoTotal, 0)} kg</strong> · Valor total: <strong>{fmt(valorTotal)}</strong>
               </div>
@@ -774,13 +782,25 @@ function ModalAdicionarAnimais({
               <table>
                 <thead><tr><th>Código</th><th>Brinco</th><th>Peso 1 (kg)</th><th>Peso 2 (kg)</th><th>Sexo</th><th style={{ width: 40 }}></th></tr></thead>
                 <tbody>
-                  {linhas.map((l, idx) => (
-                    <tr key={idx}>
+                  {linhas.map((l, idx) => {
+                    const semPeso = !(l.peso > 0)
+                    return (
+                    <tr key={idx} style={semPeso ? { background: '#fff8e1' } : undefined}>
                       <td>{lote.prefixo}{l.brinco}</td>
                       <td>{l.brinco}</td>
                       <td>
-                        <input className="form-input" type="number" step="0.1" value={l.peso}
-                          onChange={e => atualizarPesoLinha(idx, Number(e.target.value))} style={{ maxWidth: 100, fontSize: 13 }} />
+                        <input className="form-input" type="number" step="0.1" value={semPeso ? '' : l.peso}
+                          ref={el => { pesoInputsRef.current[idx] = el }}
+                          onChange={e => atualizarPesoLinha(idx, Number(e.target.value))}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              const prox = pesoInputsRef.current[idx + 1]
+                              if (prox) { prox.focus(); prox.select() }
+                            }
+                          }}
+                          placeholder="kg"
+                          style={{ maxWidth: 100, fontSize: 13, ...(semPeso ? { borderColor: '#f59e0b' } : {}) }} />
                       </td>
                       <td>
                         <input className="form-input" type="number" step="0.1" value={l.peso2 ?? ''}
@@ -798,7 +818,8 @@ function ModalAdicionarAnimais({
                         <button onClick={() => removerLinha(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 16 }}>×</button>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
