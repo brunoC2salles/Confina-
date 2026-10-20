@@ -717,8 +717,8 @@ function ModalAdicionarAnimais({
               <input className="form-input" type="number" value={faixaFim} onChange={e => setFaixaFim(e.target.value)} placeholder="400" />
             </div>
             <div className="form-group" style={{ flex: 1 }}>
-              <label className="form-label">Peso padrão (opcional)</label>
-              <input className="form-input" type="number" step="0.1" value={pesoFaixa} onChange={e => setPesoFaixa(e.target.value)} placeholder="Em branco" />
+              <label className="form-label">Peso padrão</label>
+              <input className="form-input" type="number" step="0.1" value={pesoFaixa} onChange={e => setPesoFaixa(e.target.value)} placeholder="Opcional" />
             </div>
             <div className="form-group" style={{ flex: 1 }}>
               <label className="form-label">Sexo (opcional)</label>
