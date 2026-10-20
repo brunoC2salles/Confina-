@@ -917,7 +917,7 @@ function SecaoIngredientes({
                   {c._novo ? (
                     <select className="form-input" value={c._categoria}
                       onChange={e => onSetCategoriaNovo(c._key, e.target.value)}
-                      style={{ fontSize: 12, marginTop: 4, padding: '4px 6px', background: c._categoria ? undefined : '#fff8e1' }}>
+                      style={{ fontSize: 13, marginTop: 4, background: c._categoria ? undefined : '#fff8e1' }}>
                       <option value="">Categoria</option>
                       {Object.entries(categoriaLabel).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
@@ -927,9 +927,6 @@ function SecaoIngredientes({
                       {c.origem_ingrediente === 'ingrediente_produtor' && ' · próprio'}
                       {c._reativar && ' · inativo, será reativado ao salvar'}
                     </div>
-                  )}
-                  {c._novo && (
-                    <div style={{ fontSize: 10, color: '#2e7d32', marginTop: 2 }}>Novo · será cadastrado em Ingredientes ao salvar</div>
                   )}
                 </div>
                 <div style={{ flex: '0 1 76px', minWidth: 68 }}>
@@ -956,6 +953,10 @@ function SecaoIngredientes({
                 </div>
                 <button type="button" onClick={() => onRemove(idx)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9e9e9e', fontSize: 18, padding: '0 2px 6px', flexShrink: 0 }}>×</button>
+
+                {c._novo && (
+                  <div style={{ flexBasis: '100%', fontSize: 10, color: '#2e7d32', marginTop: -4 }}>Novo · será cadastrado em Ingredientes ao salvar</div>
+                )}
 
                 {estoqueMs != null && (
                   <div style={{ flexBasis: '100%', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 11, color: 'var(--gray-500)' }}>
