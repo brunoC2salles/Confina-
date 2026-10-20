@@ -421,7 +421,7 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
   const validos = cenarios.map(c => resultados[c.id]).filter(r => r && r.erros.length === 0 && r.lucroCabeca != null)
   const melhorId = mostrarLucro && validos.length >= 2 ? validos.reduce((a, b) => (b.lucroCabeca! > a.lucroCabeca! ? b : a)).cenarioId : null
 
-  type Linha = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean; lucro?: boolean }
+  type Linha = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean; lucro?: boolean; dica?: string }
   const ou = (v: number | null, f: (n: number) => string) => v == null ? '—' : f(v)
   const todas: Linha[] = [
     { rotulo: 'Dias totais', valor: r => String(r.diasTotais) },
@@ -436,7 +436,7 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
     { rotulo: 'Lucro por cabeça', valor: r => ou(r.lucroCabeca, fmt), cor: r => corValor(r.lucroCabeca), destaque: true, lucro: true },
     { rotulo: 'Lucro total', valor: r => ou(r.lucroTotal, fmt), cor: r => corValor(r.lucroTotal), destaque: true, lucro: true },
     { rotulo: 'Margem', valor: r => ou(r.margemPct, v => `${fmtNum(v, 1)}%`), cor: r => corValor(r.margemPct), lucro: true },
-    { rotulo: 'Retorno sobre o investimento', valor: r => ou(r.roiPct, v => `${fmtNum(v, 1)}%`), cor: r => corValor(r.roiPct), lucro: true },
+    { rotulo: 'Retorno sobre o investimento', valor: r => ou(r.roiPct, v => `${fmtNum(1 + v / 100, 2)}x`), cor: r => corValor(r.roiPct), lucro: true, dica: 'Quanto volta para cada R$ 1,00 investido. Cálculo: receita líquida dividida pelo custo total (compra, custo anterior e custo dos ciclos). Acima de 1,00x há lucro; abaixo de 1,00x, prejuízo. Ex.: 1,25x significa que cada R$ 1,00 investido voltou R$ 1,25.' },
     { rotulo: 'Lucro por @ de carcaça', valor: r => ou(r.lucroPorArroba, fmt), cor: r => corValor(r.lucroPorArroba), lucro: true },
   ]
   const linhas = mostrarLucro ? todas : todas.filter(l => !l.lucro)
@@ -467,7 +467,10 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
           <tbody>
             {linhas.map(l => (
               <tr key={l.rotulo}>
-                <td style={{ fontWeight: l.destaque ? 600 : 400, whiteSpace: 'nowrap' }}>{l.rotulo}</td>
+                <td style={{ fontWeight: l.destaque ? 600 : 400, whiteSpace: 'nowrap' }}>
+                  {l.rotulo}
+                  {l.dica && <span title={l.dica} aria-label={l.dica} style={{ cursor: 'help', marginLeft: 2, color: 'var(--text-3)' }}>*</span>}
+                </td>
                 {cenarios.map(c => {
                   const r = resultados[c.id]
                   if (!r || r.erros.length > 0) return <td key={c.id} style={{ color: 'var(--text-3)' }}>{l === linhas[0] ? 'Dados incompletos' : ''}</td>
