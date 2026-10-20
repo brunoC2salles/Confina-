@@ -12,6 +12,11 @@
 //  - concentrado consumido = consumo x % concentrado; ganho atribuído ao
 //    concentrado = GMD do concentrado da dieta (sem ele, o GMD do ciclo) nos
 //    dias em que a dieta tem concentrado — mesma base da Conversão do app.
+//  - concentrado em matéria natural = MS / % MS ponderada dos ingredientes do
+//    concentrado (participação em base MS); sem ingredientes, usa 88% de MS.
+//  - desembolso com concentrado = concentrado (MS) x custo do kg de MS do
+//    concentrado; com custo manual da dieta inteira (sem pasto e com volumoso),
+//    não dá para separar o concentrado e entra o custo da alimentação toda.
 // Ciclo de pastagem pode, em vez de dieta, usar um custo fixo por cabeça/dia.
 // Mão de obra + estrutura entra como R$ por kg produzido no ciclo.
 //
@@ -102,6 +107,7 @@ export function lucroVisivel(d: SimDados): boolean {
 }
 
 export const ARROBA_KG = 15
+export const PCT_MS_CONCENTRADO_PADRAO = 88
 export const RENDIMENTO_PADRAO_SIM = '54'
 
 export function novoId(): string {
@@ -270,6 +276,10 @@ export interface ResultadoCiclo {
   gmd: number
   consumoMsKg: number | null // null = ciclo com custo por cabeça/dia (sem consumo)
   consumoConcentradoKg: number
+  consumoConcentradoMnKg: number
+  custoConcentrado: number
+  concMnEstimada: boolean // % MS padrão usada por falta de ingredientes
+  custoConcDietaToda: boolean // custo manual da dieta inteira (inclui volumoso)
   conversao: number | null
   custoKgMs: number | null
   custoAlimentacao: number
@@ -301,6 +311,12 @@ export interface ResultadoCenario {
   custoCiclos: number
   custoTotal: number
   custoMedioKgProduzido: number | null
+  concentradoMsKg: number // por cabeça, soma dos ciclos
+  concentradoMnKg: number
+  custoConcentrado: number
+  concMnEstimada: boolean
+  custoConcDietaToda: boolean
+  ciclosCabecaDia: number // ciclos sem dieta (pastagem por cabeça/dia), fora do concentrado
   precoLiquidoKg: number | null
   receitaBruta: number | null
   deducoes: number | null
@@ -348,6 +364,10 @@ export function calcularCenario(partida: SimPartida, c: SimCenario): ResultadoCe
     let pctConsumo = 0
     let pctConc = 0
     let gmdConc = gmd
+    let fatorMn = 0
+    let concMnEstimada = false
+    let custoConcKgMs = 0
+    let custoConcDietaToda = false
     if (usaCabecaDia) {
       if (num(ci.custoCabecaDia) < 0 || vazio(ci.custoCabecaDia)) erros.push(`${rotulo}: informe o custo por cabeça/dia`)
     } else {
@@ -359,6 +379,23 @@ export function calcularCenario(partida: SimPartida, c: SimCenario): ResultadoCe
       pctConc = num(ci.dieta.pct_concentrado)
       const pctVol = num(ci.dieta.pct_volumoso)
       gmdConc = pctVol <= 0 ? gmd : (vazio(ci.dieta.gmd_concentrado) ? gmd : num(ci.dieta.gmd_concentrado))
+      if (pctConc > 0) {
+        const compsConc = ci.dieta.componentes.filter(x => x.tipo === 'concentrado')
+        if (compsConc.length > 0 && compsConc.every(x => num(x.pct_ms) > 0)) {
+          fatorMn = compsConc.reduce((s, x) => s + (num(x.pct_participacao) / 100) / (num(x.pct_ms) / 100), 0)
+        } else {
+          fatorMn = 100 / PCT_MS_CONCENTRADO_PADRAO
+          concMnEstimada = true
+        }
+        if (ci.dieta.custo_manual_ativo) {
+          const v = num(ci.dieta.custo_manual_valor)
+          const vKg = ci.dieta.custo_manual_unidade === 'ton' ? v / 1000 : v
+          if (comPasto || pctVol <= 0) custoConcKgMs = vKg
+          else custoConcDietaToda = true
+        } else {
+          custoConcKgMs = custoLadoKgMs(ci.dieta, 'concentrado') ?? 0
+        }
+      }
     }
 
     const pesoIni = peso
@@ -399,6 +436,10 @@ export function calcularCenario(partida: SimPartida, c: SimCenario): ResultadoCe
       pesoInicial: pesoIni, pesoFinal: peso, ganho, gmd,
       consumoMsKg: usaCabecaDia ? null : consumo,
       consumoConcentradoKg: consumoConc,
+      consumoConcentradoMnKg: consumoConc * fatorMn,
+      custoConcentrado: custoConcDietaToda ? custoAlim : consumoConc * custoConcKgMs,
+      concMnEstimada: consumoConc > 0 && concMnEstimada,
+      custoConcDietaToda: consumoConc > 0 && custoConcDietaToda,
       conversao: consumoConc > 0 && ganhoConc > 0 ? consumoConc / ganhoConc : null,
       custoKgMs: usaCabecaDia ? null : custoKgMs,
       custoAlimentacao: custoAlim, custoEstrutura, custoTotal,
@@ -422,6 +463,12 @@ export function calcularCenario(partida: SimPartida, c: SimCenario): ResultadoCe
     gmdMedio: diaGlobal > 0 ? ganhoTotal / diaGlobal : 0,
     investimentoInicial, custoCiclos, custoTotal,
     custoMedioKgProduzido: ganhoTotal > 0 ? custoCiclos / ganhoTotal : null,
+    concentradoMsKg: ciclos.reduce((s, x) => s + x.consumoConcentradoKg, 0),
+    concentradoMnKg: ciclos.reduce((s, x) => s + x.consumoConcentradoMnKg, 0),
+    custoConcentrado: ciclos.reduce((s, x) => s + x.custoConcentrado, 0),
+    concMnEstimada: ciclos.some(x => x.concMnEstimada),
+    custoConcDietaToda: ciclos.some(x => x.custoConcDietaToda),
+    ciclosCabecaDia: ciclos.filter(x => x.consumoMsKg == null).length,
     precoLiquidoKg, receitaBruta, deducoes, receitaLiquida, lucroCabeca,
     lucroTotal: lucroCabeca != null ? lucroCabeca * qtd : null,
     margemPct: lucroCabeca != null && receitaLiquida != null && receitaLiquida > 0 ? (lucroCabeca / receitaLiquida) * 100 : null,

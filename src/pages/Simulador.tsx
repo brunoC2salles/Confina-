@@ -9,7 +9,7 @@ import { CicloCard } from '@/components/simulador/CicloCard'
 import { ResultadoCaminho } from '@/components/simulador/ResultadoCaminho'
 import { fmt, fmtNum } from '@/lib/calculations'
 import {
-  calcularCenario, cicloVazio, cenarioVazio, dadosIniciais, duplicarCenario, lucroVisivel,
+  calcularCenario, cicloVazio, cenarioVazio, dadosIniciais, duplicarCenario, lucroVisivel, PCT_MS_CONCENTRADO_PADRAO,
   type SimDados, type SimCenario, type SimPartida, type ResultadoCenario,
 } from '@/lib/simulador'
 
@@ -410,6 +410,14 @@ function PartidaCard({ partida, onChange }: { partida: SimPartida; onChange: (p:
 
 // ─── Comparativo dos caminhos ───────────────────────────────────────────────
 
+function notaConc(r: ResultadoCenario, linha: 'mn' | 'ms' | 'custo'): string | null {
+  const partes: string[] = []
+  if (linha === 'mn' && r.concMnEstimada) partes.push(`Estimado com ${PCT_MS_CONCENTRADO_PADRAO}% de MS: há dieta sem ingredientes do concentrado cadastrados.`)
+  if (linha === 'custo' && r.custoConcDietaToda) partes.push('Inclui o volumoso: há dieta com custo manual da dieta inteira, sem como separar o concentrado.')
+  if (r.ciclosCabecaDia > 0) partes.push(r.ciclosCabecaDia === 1 ? 'Não inclui 1 ciclo de pastagem com custo por cabeça/dia (sem dieta).' : `Não inclui ${r.ciclosCabecaDia} ciclos de pastagem com custo por cabeça/dia (sem dieta).`)
+  return partes.length > 0 ? partes.join(' ') : null
+}
+
 function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, mostrarLucro, onAlternarLucro }: {
   cenarios: SimCenario[]
   resultados: Record<string, ResultadoCenario>
@@ -421,7 +429,7 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
   const validos = cenarios.map(c => resultados[c.id]).filter(r => r && r.erros.length === 0 && r.lucroCabeca != null)
   const melhorId = mostrarLucro && validos.length >= 2 ? validos.reduce((a, b) => (b.lucroCabeca! > a.lucroCabeca! ? b : a)).cenarioId : null
 
-  type Linha = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean; lucro?: boolean; dica?: string }
+  type Linha = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean; lucro?: boolean; dica?: string; nota?: (r: ResultadoCenario) => string | null }
   const ou = (v: number | null, f: (n: number) => string) => v == null ? '—' : f(v)
   const todas: Linha[] = [
     { rotulo: 'Dias totais', valor: r => String(r.diasTotais) },
@@ -432,6 +440,12 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
     { rotulo: 'Investimento inicial', valor: r => fmt(r.investimentoInicial) },
     { rotulo: 'Custo dos ciclos', valor: r => fmt(r.custoCiclos) },
     { rotulo: 'Custo total', valor: r => fmt(r.custoTotal) },
+    { rotulo: 'Concentrado consumido (MN)', valor: r => `${fmtNum(r.concentradoMnKg, 0)} kg`, nota: r => notaConc(r, 'mn'), dica: 'Concentrado na matéria natural, como é comprado e colocado no cocho. Convertido da matéria seca pela % MS dos ingredientes do concentrado.' },
+    { rotulo: 'Concentrado consumido (MS)', valor: r => `${fmtNum(r.concentradoMsKg, 0)} kg`, nota: r => notaConc(r, 'ms'), dica: 'Concentrado em matéria seca: consumo diário (peso x % de consumo do PV em MS) x % de concentrado da dieta, somado em todos os ciclos.' },
+    { rotulo: 'Desembolso com concentrado', valor: r => fmt(r.custoConcentrado), nota: r => notaConc(r, 'custo'), dica: 'Concentrado consumido (MS) x custo do kg de MS do concentrado da dieta.' },
+    { rotulo: 'Concentrado consumido (MN), lote', valor: r => `${fmtNum(r.concentradoMnKg * r.qtdAnimais, 0)} kg`, nota: r => notaConc(r, 'mn'), dica: 'Concentrado por cabeça (MN) x quantidade de animais.' },
+    { rotulo: 'Concentrado consumido (MS), lote', valor: r => `${fmtNum(r.concentradoMsKg * r.qtdAnimais, 0)} kg`, nota: r => notaConc(r, 'ms'), dica: 'Concentrado por cabeça (MS) x quantidade de animais.' },
+    { rotulo: 'Desembolso com concentrado, lote', valor: r => fmt(r.custoConcentrado * r.qtdAnimais), nota: r => notaConc(r, 'custo'), dica: 'Desembolso por cabeça x quantidade de animais.' },
     { rotulo: 'Receita líquida', valor: r => ou(r.receitaLiquida, fmt), lucro: true },
     { rotulo: 'Lucro por cabeça', valor: r => ou(r.lucroCabeca, fmt), cor: r => corValor(r.lucroCabeca), destaque: true, lucro: true },
     { rotulo: 'Lucro total', valor: r => ou(r.lucroTotal, fmt), cor: r => corValor(r.lucroTotal), destaque: true, lucro: true },
@@ -445,7 +459,7 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
     <div className="card" style={{ padding: 0 }}>
       <div className="flex-between" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>
-          Comparativo dos caminhos <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-3)' }}>· valores por cabeça{mostrarLucro ? ', exceto lucro total' : ''}</span>
+          Comparativo dos caminhos <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-3)' }}>· valores por cabeça, exceto os do lote{mostrarLucro ? ' e o lucro total' : ''}</span>
         </div>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onAlternarLucro}>
           {mostrarLucro ? 'Ocultar projeção de lucro' : 'Mostrar projeção de lucro'}
@@ -475,7 +489,10 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
                   const r = resultados[c.id]
                   if (!r || r.erros.length > 0) return <td key={c.id} style={{ color: 'var(--text-3)' }}>{l === linhas[0] ? 'Dados incompletos' : ''}</td>
                   return (
-                    <td key={c.id} style={{ whiteSpace: 'nowrap', fontWeight: l.destaque ? 600 : 400, color: l.cor?.(r) }}>{l.valor(r)}</td>
+                    <td key={c.id} style={{ whiteSpace: 'nowrap', fontWeight: l.destaque ? 600 : 400, color: l.cor?.(r) }}>
+                      {l.valor(r)}
+                      {(() => { const n = l.nota?.(r); return n ? <span title={n} aria-label={n} style={{ cursor: 'help', marginLeft: 2, color: 'var(--text-3)' }}>*</span> : null })()}
+                    </td>
                   )
                 })}
               </tr>
