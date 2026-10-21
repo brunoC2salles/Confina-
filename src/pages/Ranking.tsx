@@ -396,13 +396,16 @@ export default function Ranking() {
             value={topN} onChange={e => setTopN(e.target.value)}
           />
         </div>
-        <button
-          className="btn btn-primary"
-          disabled={!podeExportar}
-          onClick={() => window.print()}
-        >
-          Exportar PDF{qtdSelecionados > 0 ? ` (${qtdSelecionados})` : ''}
-        </button>
+        <div className="form-group">
+          <label className="form-label" style={{ visibility: 'hidden' }}>Exportar</label>
+          <button
+            className="btn btn-primary"
+            disabled={!podeExportar}
+            onClick={() => window.print()}
+          >
+            Exportar PDF{qtdSelecionados > 0 ? ` (${qtdSelecionados})` : ''}
+          </button>
+        </div>
       </div>
 
       {lotes.length > 0 && (
