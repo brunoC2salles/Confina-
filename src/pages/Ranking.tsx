@@ -27,6 +27,9 @@ const TITULOS_RANKING: Record<Criterio, { desc: string; asc: string }> = {
 
 const hojeStr = () => new Date().toISOString().split('T')[0]
 
+type Sexo = 'M' | 'F' | null
+const rotuloSexo = (s: Sexo) => s === 'M' ? 'Macho' : s === 'F' ? 'Fêmea' : '—'
+
 // Ordenação numérica natural do brinco (texto), ex: "9" antes de "10".
 const compararBrincoNatural = (a: string, b: string) =>
   (a ?? '').localeCompare(b ?? '', 'pt-BR', { numeric: true, sensitivity: 'base' })
@@ -38,6 +41,7 @@ interface LinhaAtivo {
   loteId: string
   loteNome: string
   cicloAtual: number
+  sexo: Sexo
   fornecedorId: string | null
   fornecedorNome: string
   pesoEntrada: number
@@ -57,6 +61,7 @@ interface LinhaVendido {
   brinco: string
   loteId: string | null
   loteNome: string
+  sexo: Sexo
   fornecedorId: string | null
   fornecedorNome: string
   data: string
@@ -80,7 +85,16 @@ export default function Ranking() {
   const nomeFornecedor = useCallback((id: string | null) => id ? (parceiros.find(p => p.id === id)?.nome ?? '—') : 'Não informado', [parceiros])
 
   const [tab, setTab] = useState<'ativos' | 'vendidos'>('ativos')
-  const [loteFiltro, setLoteFiltro] = useState('todos')
+  // Filtro por lote: vazio = todos os lotes; vários lotes podem ser marcados.
+  const [lotesFiltro, setLotesFiltro] = useState<Set<string>>(new Set())
+  const toggleLoteFiltro = (id: string) => {
+    setLotesFiltro(prev => {
+      const novo = new Set(prev)
+      if (novo.has(id)) novo.delete(id); else novo.add(id)
+      return novo
+    })
+  }
+  const [sexoFiltro, setSexoFiltro] = useState<'todos' | 'M' | 'F'>('todos')
   const [fornecedorFiltro, setFornecedorFiltro] = useState('todos')
   // Filtro por ciclo (só aba Ativos): vazio = todos os ciclos. Usa o ciclo
   // vigente de cada animal (animais.ciclo_atual); só filtra, não recalcula.
@@ -121,10 +135,10 @@ export default function Ranking() {
     if (!user) return
     setLoadingAtivos(true)
     const { data: animaisData } = await supabase
-      .from('animais').select('id, codigo, brinco, peso_entrada, valor_compra, lote_atual_id, data_entrada, ciclo_atual')
+      .from('animais').select('id, codigo, brinco, peso_entrada, valor_compra, lote_atual_id, data_entrada, ciclo_atual, sexo')
       .eq('user_id', user.id).eq('status', 'ativo')
 
-    const lista = (animaisData ?? []) as Array<{ id: string; codigo: string; brinco: string; peso_entrada: number; valor_compra: number; lote_atual_id: string; data_entrada: string; ciclo_atual: number }>
+    const lista = (animaisData ?? []) as Array<{ id: string; codigo: string; brinco: string; peso_entrada: number; valor_compra: number; lote_atual_id: string; data_entrada: string; ciclo_atual: number; sexo: Sexo }>
     if (lista.length === 0) { setAtivos([]); setLoadingAtivos(false); return }
 
     const [custos, custosVarData, fornecedorPorAnimal] = await Promise.all([
@@ -150,6 +164,7 @@ export default function Ranking() {
         animal_id: a.id, codigo: a.codigo, brinco: a.brinco,
         loteId: a.lote_atual_id, loteNome: lotes.find(l => l.id === a.lote_atual_id)?.nome_lote ?? '—',
         cicloAtual: a.ciclo_atual,
+        sexo: a.sexo ?? null,
         fornecedorId, fornecedorNome: nomeFornecedor(fornecedorId),
         pesoEntrada: a.peso_entrada, pesoAtual, ganho,
         diasConfinamento: r?.diasConfinamento ?? 0,
@@ -166,7 +181,7 @@ export default function Ranking() {
     setLoadingVendidos(true)
     const { data: movsData } = await supabase
       .from('movimentacoes_animais')
-      .select('animal_id, data, peso, custo_atribuido, lucro, lote_origem_id, animais(codigo, brinco, peso_entrada)')
+      .select('animal_id, data, peso, custo_atribuido, lucro, lote_origem_id, animais(codigo, brinco, peso_entrada, sexo)')
       .eq('user_id', user.id).not('lucro', 'is', null)
       .in('tipo', ['saida_venda', 'saida_abate', 'saida_transferencia', 'saida_morte'])
 
@@ -193,6 +208,7 @@ export default function Ranking() {
           animal_id: m.animal_id, codigo: m.animais.codigo, brinco: m.animais.brinco,
           loteId: m.lote_origem_id ?? null,
           loteNome: m.lote_origem_id ? (nomePorLote[m.lote_origem_id] ?? '—') : '—',
+          sexo: (m.animais.sexo ?? null) as Sexo,
           fornecedorId, fornecedorNome: nomeFornecedor(fornecedorId),
           data: m.data, pesoEntrada, pesoVenda: m.peso, ganho, rendPct,
           custoAtribuido: m.custo_atribuido ?? 0, custoPorKg, lucro: m.lucro ?? 0,
@@ -223,11 +239,15 @@ export default function Ranking() {
   const passaFiltroFornecedor = (fornecedorId: string | null) =>
     fornecedorFiltro === 'todos' || (fornecedorFiltro === 'nao_informado' ? fornecedorId == null : fornecedorId === fornecedorFiltro)
 
+  const passaFiltroLote = (loteId: string | null) =>
+    lotesFiltro.size === 0 || (loteId != null && lotesFiltro.has(loteId))
+  const passaFiltroSexo = (sexo: Sexo) => sexoFiltro === 'todos' || sexo === sexoFiltro
+
   const ativosFiltrados = ativosComLucro.filter(a =>
-    (loteFiltro === 'todos' || a.loteId === loteFiltro) && passaFiltroFornecedor(a.fornecedorId)
+    passaFiltroLote(a.loteId) && passaFiltroFornecedor(a.fornecedorId) && passaFiltroSexo(a.sexo)
     && (ciclosFiltro.size === 0 || ciclosFiltro.has(a.cicloAtual)))
   const vendidosFiltrados = vendidos.filter(v =>
-    (loteFiltro === 'todos' || v.loteId === loteFiltro) && passaFiltroFornecedor(v.fornecedorId))
+    passaFiltroLote(v.loteId) && passaFiltroFornecedor(v.fornecedorId) && passaFiltroSexo(v.sexo))
 
   const criteriosDisponiveis = tab === 'ativos'
     ? CRITERIOS.filter(c => c.value !== 'lucro' || preco)
@@ -322,6 +342,10 @@ export default function Ranking() {
   const ciclosPdf = tab === 'ativos' && ciclosFiltroOrdenados.length > 0
     ? `${ciclosFiltroOrdenados.length === 1 ? 'Ciclo' : 'Ciclos'} ${ciclosFiltroOrdenados.join(', ')}`
     : null
+  const nomesLotesFiltro = lotes.filter(l => lotesFiltro.has(l.id)).map(l => l.nome_lote)
+  const lotesPdf = nomesLotesFiltro.length > 0
+    ? `${nomesLotesFiltro.length === 1 ? 'Lote' : 'Lotes'} ${nomesLotesFiltro.join(', ')}`
+    : null
   const qtdSelecionados = tab === 'ativos' ? selecionadosAtivos.size : selecionadosVendidos.size
   const podeExportar = qtdSelecionados > 0
 
@@ -335,11 +359,12 @@ export default function Ranking() {
       </div>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
-        <div className="form-group" style={{ minWidth: 200 }}>
-          <label className="form-label">Filtrar por lote</label>
-          <select className="form-input" value={loteFiltro} onChange={e => setLoteFiltro(e.target.value)}>
-            <option value="todos">Todos os lotes</option>
-            {lotes.map(l => <option key={l.id} value={l.id}>{l.nome_lote}</option>)}
+        <div className="form-group" style={{ minWidth: 160 }}>
+          <label className="form-label">Filtrar por sexo</label>
+          <select className="form-input" value={sexoFiltro} onChange={e => setSexoFiltro(e.target.value as 'todos' | 'M' | 'F')}>
+            <option value="todos">Todos</option>
+            <option value="M">Macho</option>
+            <option value="F">Fêmea</option>
           </select>
         </div>
         <div className="form-group" style={{ minWidth: 200 }}>
@@ -377,6 +402,26 @@ export default function Ranking() {
           Exportar PDF{qtdSelecionados > 0 ? ` (${qtdSelecionados})` : ''}
         </button>
       </div>
+
+      {lotes.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+            Marque um ou mais lotes para ver só os animais deles. Sem marcar nenhum, aparecem todos os lotes.
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="form-label" style={{ margin: 0 }}>Filtrar por lote:</span>
+            {lotes.map(l => (
+              <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', padding: '4px 10px', borderRadius: 20, border: '1px solid var(--border)', background: lotesFiltro.has(l.id) ? 'var(--green-bg)' : '#fff' }}>
+                <input type="checkbox" checked={lotesFiltro.has(l.id)} onChange={() => toggleLoteFiltro(l.id)} />
+                {l.nome_lote}
+              </label>
+            ))}
+            {lotesFiltro.size > 0 && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setLotesFiltro(new Set())}>Limpar seleção</button>
+            )}
+          </div>
+        </div>
+      )}
 
       {tab === 'ativos' && ciclosDisponiveis.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
@@ -437,7 +482,7 @@ export default function Ranking() {
                   <th style={{ width: 36 }}>
                     <input type="checkbox" checked={todosAtivosVisiveisSelecionados} onChange={toggleSelecionarTodosAtivos} />
                   </th>
-                  <th>#</th><th>Código</th><th>Lote</th><th>Fornecedor</th><th>Peso atual</th><th>Ganho de peso</th>
+                  <th>#</th><th>Código</th><th>Lote</th><th>Sexo</th><th>Fornecedor</th><th>Peso atual</th><th>Ganho de peso</th>
                   <th>Custo/kg ganho</th><th>Lucro projetado</th>
                 </tr>
               </thead>
@@ -450,6 +495,7 @@ export default function Ranking() {
                     <td>{idx + 1}</td>
                     <td><strong>{a.codigo}</strong></td>
                     <td>{a.loteNome}</td>
+                    <td>{rotuloSexo(a.sexo)}</td>
                     <td>{a.fornecedorNome}</td>
                     <td>{fmtNum(a.pesoAtual, 1)} kg</td>
                     <td>{fmtNum(a.ganho, 1)} kg</td>
@@ -472,7 +518,7 @@ export default function Ranking() {
                   <th style={{ width: 36 }}>
                     <input type="checkbox" checked={todosVendidosVisiveisSelecionados} onChange={toggleSelecionarTodosVendidos} />
                   </th>
-                  <th>#</th><th>Código</th><th>Lote de origem</th><th>Fornecedor</th><th>Data</th><th>Peso na venda</th>
+                  <th>#</th><th>Código</th><th>Lote de origem</th><th>Sexo</th><th>Fornecedor</th><th>Data</th><th>Peso na venda</th>
                   <th>Ganho de peso</th><th>Custo/kg ganho</th><th>Lucro</th>
                 </tr>
               </thead>
@@ -485,6 +531,7 @@ export default function Ranking() {
                     <td>{idx + 1}</td>
                     <td><strong>{v.codigo}</strong></td>
                     <td>{v.loteNome}</td>
+                    <td>{rotuloSexo(v.sexo)}</td>
                     <td>{v.fornecedorNome}</td>
                     <td>{v.data}</td>
                     <td>{fmtNum(v.pesoVenda, 1)} kg</td>
@@ -504,6 +551,7 @@ export default function Ranking() {
         <RankingPdfImprimivel
           titulo={tituloPdf}
           ciclos={ciclosPdf}
+          lotesTexto={lotesPdf}
           tab={tab}
           ativos={ativosParaPdf}
           vendidos={vendidosParaPdf}
@@ -518,10 +566,11 @@ export default function Ranking() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function RankingPdfImprimivel({
-  titulo, ciclos, tab, ativos, vendidos,
+  titulo, ciclos, lotesTexto, tab, ativos, vendidos,
 }: {
   titulo: string
   ciclos: string | null
+  lotesTexto: string | null
   tab: 'ativos' | 'vendidos'
   ativos: LinhaAtivo[]
   vendidos: LinhaVendido[]
@@ -534,7 +583,7 @@ function RankingPdfImprimivel({
 
       <h1 style={{ fontSize: 18, fontWeight: 700, textAlign: 'center', marginBottom: 4 }}>{titulo}</h1>
       <p style={{ fontSize: 12, textAlign: 'center', color: '#555', marginBottom: 28 }}>
-        Emitido em {fmtData(new Date().toISOString().split('T')[0])}{ciclos ? ` · ${ciclos}` : ''} · Ordenado por brinco
+        Emitido em {fmtData(new Date().toISOString().split('T')[0])}{lotesTexto ? ` · ${lotesTexto}` : ''}{ciclos ? ` · ${ciclos}` : ''} · Ordenado por brinco
       </p>
 
       {tab === 'ativos' ? (
@@ -544,6 +593,7 @@ function RankingPdfImprimivel({
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Brinco</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Código</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Lote</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Sexo</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Fornecedor</th>
               <th style={{ textAlign: 'right', padding: '4px 6px' }}>Peso atual</th>
               <th style={{ textAlign: 'right', padding: '4px 6px' }}>Ganho de peso</th>
@@ -557,6 +607,7 @@ function RankingPdfImprimivel({
                 <td style={{ padding: '4px 6px' }}>{a.brinco}</td>
                 <td style={{ padding: '4px 6px' }}>{a.codigo}</td>
                 <td style={{ padding: '4px 6px' }}>{a.loteNome}</td>
+                <td style={{ padding: '4px 6px' }}>{rotuloSexo(a.sexo)}</td>
                 <td style={{ padding: '4px 6px' }}>{a.fornecedorNome}</td>
                 <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(a.pesoAtual, 1)} kg</td>
                 <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(a.ganho, 1)} kg</td>
@@ -573,6 +624,7 @@ function RankingPdfImprimivel({
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Brinco</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Código</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Lote de origem</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Sexo</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Fornecedor</th>
               <th style={{ textAlign: 'left', padding: '4px 6px' }}>Data</th>
               <th style={{ textAlign: 'right', padding: '4px 6px' }}>Peso na venda</th>
@@ -587,6 +639,7 @@ function RankingPdfImprimivel({
                 <td style={{ padding: '4px 6px' }}>{v.brinco}</td>
                 <td style={{ padding: '4px 6px' }}>{v.codigo}</td>
                 <td style={{ padding: '4px 6px' }}>{v.loteNome}</td>
+                <td style={{ padding: '4px 6px' }}>{rotuloSexo(v.sexo)}</td>
                 <td style={{ padding: '4px 6px' }}>{v.fornecedorNome}</td>
                 <td style={{ padding: '4px 6px' }}>{v.data}</td>
                 <td style={{ textAlign: 'right', padding: '4px 6px' }}>{fmtNum(v.pesoVenda, 1)} kg</td>
