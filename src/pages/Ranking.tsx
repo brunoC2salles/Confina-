@@ -94,7 +94,7 @@ export default function Ranking() {
       return novo
     })
   }
-  const [sexoFiltro, setSexoFiltro] = useState<'todos' | 'M' | 'F'>('todos')
+  const [sexoFiltro, setSexoFiltro] = useState<'todos' | 'M' | 'F' | 'nao_informado'>('todos')
   const [fornecedorFiltro, setFornecedorFiltro] = useState('todos')
   // Filtro por ciclo (só aba Ativos): vazio = todos os ciclos. Usa o ciclo
   // vigente de cada animal (animais.ciclo_atual); só filtra, não recalcula.
@@ -241,7 +241,8 @@ export default function Ranking() {
 
   const passaFiltroLote = (loteId: string | null) =>
     lotesFiltro.size === 0 || (loteId != null && lotesFiltro.has(loteId))
-  const passaFiltroSexo = (sexo: Sexo) => sexoFiltro === 'todos' || sexo === sexoFiltro
+  const passaFiltroSexo = (sexo: Sexo) =>
+    sexoFiltro === 'todos' || (sexoFiltro === 'nao_informado' ? sexo == null : sexo === sexoFiltro)
 
   const ativosFiltrados = ativosComLucro.filter(a =>
     passaFiltroLote(a.loteId) && passaFiltroFornecedor(a.fornecedorId) && passaFiltroSexo(a.sexo)
@@ -361,10 +362,11 @@ export default function Ranking() {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
         <div className="form-group" style={{ minWidth: 160 }}>
           <label className="form-label">Filtrar por sexo</label>
-          <select className="form-input" value={sexoFiltro} onChange={e => setSexoFiltro(e.target.value as 'todos' | 'M' | 'F')}>
+          <select className="form-input" value={sexoFiltro} onChange={e => setSexoFiltro(e.target.value as 'todos' | 'M' | 'F' | 'nao_informado')}>
             <option value="todos">Todos</option>
             <option value="M">Macho</option>
             <option value="F">Fêmea</option>
+            <option value="nao_informado">Não informado</option>
           </select>
         </div>
         <div className="form-group" style={{ minWidth: 200 }}>
