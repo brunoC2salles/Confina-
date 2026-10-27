@@ -9,7 +9,7 @@ import type {
 } from '@/types'
 import {
   calcularAnimalNaData, construirPeriodosDeMovimentacoes, gerarCodigoAnimal,
-  encontrarLoteAtivo, toDay, projetarPesoPorDia, cicloNumeroDoAnimalNoDia, dietaVigenteDoAnimalNoDia,
+  encontrarLoteAtivo, toDay, projetarPesoPorDia, cicloNumeroDoAnimalNoDia, dietaVigenteDoAnimalNoDia, calcularGmdRealCiclo,
   type PeriodoLote, type CicloInfo, type DietaInfo, type ResultadoAnimalNaData, type CustoOperacionalInfo,
   type CustoRacaoRealPorDia, type CustoRacaoRealDiaInfo, type CicloAnimalEvento, type TrocaDietaCiclo,
 } from '@/lib/custoAnimal'
@@ -198,11 +198,24 @@ async function inserirPesagensNaTroca(
 
 // ─── Hook: lotes (lista + CRUD) ────────────────────────────────────────────────
 
+// Resumo exibido no card de cada lote. gmdRealCiclo: média do GMD real do
+// ciclo atual do lote (desde o início do ciclo até a última pesagem de cada
+// animal — ver calcularGmdRealCiclo), só entre os animais ativos pesados
+// nesse ciclo; null quando nenhum foi pesado no ciclo.
+export interface ResumoLote {
+  qtdAtiva: number
+  pesoMedioEntrada: number
+  dataEntradaMin: string | null
+  dataEntradaMax: string | null
+  gmdRealCiclo: number | null
+  qtdPesadosCiclo: number
+}
+
 export function useLotes() {
   const { user } = useAuth()
   const [lotes, setLotes] = useState<Lote[]>([])
   const [ciclosPorLote, setCiclosPorLote] = useState<Record<string, CicloLote[]>>({})
-  const [resumo, setResumo] = useState<Record<string, { qtdAtiva: number; pesoMedioEntrada: number; dataEntradaMin: string | null; dataEntradaMax: string | null }>>({})
+  const [resumo, setResumo] = useState<Record<string, ResumoLote>>({})
   // Quantos animais ativos de cada lote estão em cada número de ciclo — igual
   // a { [numero]: qtd }. Num lote sem avanço parcial, tem uma única chave
   // (o ciclo_atual do lote); com avanço parcial, pode ter mais de uma —
@@ -242,8 +255,8 @@ export function useLotes() {
       const { data: animaisData } = await supabase
         .from('animais').select('lote_atual_id, peso_entrada, status, data_entrada, ciclo_atual')
         .eq('user_id', user.id).in('lote_atual_id', ids)
-      const res: Record<string, { qtdAtiva: number; pesoMedioEntrada: number; dataEntradaMin: string | null; dataEntradaMax: string | null }> = {}
-      for (const id of ids) res[id] = { qtdAtiva: 0, pesoMedioEntrada: 0, dataEntradaMin: null, dataEntradaMax: null }
+      const res: Record<string, ResumoLote> = {}
+      for (const id of ids) res[id] = { qtdAtiva: 0, pesoMedioEntrada: 0, dataEntradaMin: null, dataEntradaMax: null, gmdRealCiclo: null, qtdPesadosCiclo: 0 }
       const somaPeso: Record<string, number> = {}
       const distribuicao: Record<string, Record<number, number>> = {}
       for (const a of (animaisData ?? []) as Array<{ lote_atual_id: string; peso_entrada: number; status: string; data_entrada: string | null; ciclo_atual: number }>) {
@@ -261,6 +274,50 @@ export function useLotes() {
       }
       for (const id of ids) {
         if (res[id].qtdAtiva > 0) res[id].pesoMedioEntrada = somaPeso[id] / res[id].qtdAtiva
+      }
+
+      // GMD real do ciclo atual, por lote ativo (card do lote)
+      const idsAtivos = listaLotes.filter(l => l.status === 'ativo').map(l => l.id)
+      if (idsAtivos.length > 0) {
+        const animaisAtivos = await buscarTudoPaginado<{ id: string; lote_atual_id: string; peso_entrada: number; data_entrada: string }>((from, to) =>
+          supabase.from('animais').select('id, lote_atual_id, peso_entrada, data_entrada')
+            .eq('user_id', user.id).eq('status', 'ativo').in('lote_atual_id', idsAtivos).range(from, to))
+        const idsAnimais = animaisAtivos.map(a => a.id)
+        const [pesagensGmd, movsGmd, eventosGmd] = await Promise.all([
+          buscarPorIds<{ animal_id: string; data: string; peso: number }>(idsAnimais, (idsChunk, from, to) =>
+            supabase.from('pesagens').select('animal_id, data, peso').in('animal_id', idsChunk).range(from, to)),
+          buscarPorIds<{ animal_id: string; tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>(idsAnimais, (idsChunk, from, to) =>
+            supabase.from('movimentacoes_animais').select('animal_id, tipo, lote_origem_id, lote_destino_id, data').in('animal_id', idsChunk).range(from, to)),
+          buscarPorIds<{ animal_id: string; lote_id: string; ciclo_numero: number; ciclo_numero_anterior: number | null; data: string }>(idsAnimais, (idsChunk, from, to) =>
+            supabase.from('animais_ciclo_eventos').select('animal_id, lote_id, ciclo_numero, ciclo_numero_anterior, data').in('animal_id', idsChunk).range(from, to)),
+        ])
+        const pesagensPorAnimal: Record<string, Array<{ data: string; peso: number }>> = {}
+        for (const p of pesagensGmd) (pesagensPorAnimal[p.animal_id] ??= []).push({ data: p.data, peso: p.peso })
+        const movsPorAnimal: Record<string, Array<{ tipo: string; lote_origem_id: string | null; lote_destino_id: string | null; data: string }>> = {}
+        for (const m of movsGmd) (movsPorAnimal[m.animal_id] ??= []).push(m)
+        const eventosPorAnimal: Record<string, CicloAnimalEvento[]> = {}
+        for (const e of eventosGmd) {
+          (eventosPorAnimal[e.animal_id] ??= []).push({ lote_id: e.lote_id, ciclo_numero: e.ciclo_numero, ciclo_numero_anterior: e.ciclo_numero_anterior, data: e.data })
+        }
+        const ciclosInfo = (ciclosData ?? []) as CicloInfo[]
+        const cicloAtualPorLote: Record<string, number> = {}
+        for (const l of listaLotes) cicloAtualPorLote[l.id] = l.ciclo_atual
+        const hoje = new Date().toISOString().slice(0, 10)
+        const somaGmd: Record<string, number> = {}
+        for (const a of animaisAtivos) {
+          const g = calcularGmdRealCiclo(
+            { peso_entrada: a.peso_entrada, data_entrada: a.data_entrada },
+            pesagensPorAnimal[a.id] ?? [],
+            construirPeriodosDeMovimentacoes(movsPorAnimal[a.id] ?? []),
+            ciclosInfo, eventosPorAnimal[a.id] ?? [], hoje,
+          )
+          if (!g || g.lote_id !== a.lote_atual_id || g.ciclo_numero !== cicloAtualPorLote[a.lote_atual_id]) continue
+          somaGmd[a.lote_atual_id] = (somaGmd[a.lote_atual_id] ?? 0) + g.gmd
+          res[a.lote_atual_id].qtdPesadosCiclo += 1
+        }
+        for (const id of idsAtivos) {
+          if (res[id].qtdPesadosCiclo > 0) res[id].gmdRealCiclo = somaGmd[id] / res[id].qtdPesadosCiclo
+        }
       }
       setResumo(res)
       setDistribuicaoCiclos(distribuicao)

@@ -449,6 +449,91 @@ function construirIncrementosDiarios(
   return { incrementoPorDia, anchorPorDia }
 }
 
+// ─── GMD real do ciclo (desde o início do ciclo até a última pesagem) ──────────
+// Mede, para um animal, o ganho real no ciclo em que caiu a última pesagem:
+// do primeiro dia em que ele esteve nesse lote/ciclo (trecho contínuo que
+// termina na véspera da última pesagem) até a última pesagem. O peso no
+// início do ciclo vem da mesma suavização entre pesagens reais usada pelo
+// motor (construirIncrementosDiarios) — real quando há pesagem nesse dia,
+// interpolado entre duas pesagens reais quando não há. Depois da última
+// pesagem, o motor projeta os dias desse mesmo lote/ciclo com este GMD
+// (decisão de 2026-10-27) — dias de outro ciclo/lote continuam no GMD
+// esperado do ciclo, e animal sem pesagem no ciclo também (retorna null).
+// O gmd_esperado do ciclo não é alterado.
+export interface GmdRealCicloResultado {
+  lote_id: string
+  ciclo_numero: number
+  gmd: number
+  dias: number
+  diaInicio: number
+  diaUltimaPesagem: number
+}
+
+function medirGmdRealCiclo(
+  diaEntrada: number,
+  incrementoPorDia: Map<number, number>,
+  anchorPorDia: Map<number, number>,
+  periodos: PeriodoLote[],
+  ciclos: CicloInfo[],
+  eventosCiclo: CicloAnimalEvento[],
+): GmdRealCicloResultado | null {
+  if (anchorPorDia.size === 0) return null
+  const diaUltimaPesagem = Math.max(...Array.from(anchorPorDia.keys()))
+  const chaveNoDia = (dia: number): { lote_id: string; numero: number } | null => {
+    const periodo = encontrarLoteAtivo(dia, periodos)
+    if (!periodo) return null
+    const ciclo = encontrarCicloAtivoParaAnimal(periodo.lote_id, dia, ciclos, eventosCiclo)
+    return ciclo ? { lote_id: periodo.lote_id, numero: ciclo.numero } : null
+  }
+  const ref = chaveNoDia(diaUltimaPesagem - 1)
+  if (!ref) return null
+  let soma = 0
+  let dias = 0
+  let dia = diaUltimaPesagem - 1
+  while (dia >= diaEntrada) {
+    const k = chaveNoDia(dia)
+    if (!k || k.lote_id !== ref.lote_id || k.numero !== ref.numero) break
+    soma += incrementoPorDia.get(dia) ?? 0
+    dias++
+    dia--
+  }
+  if (dias === 0) return null
+  return {
+    lote_id: ref.lote_id, ciclo_numero: ref.numero,
+    gmd: soma / dias, dias, diaInicio: dia + 1, diaUltimaPesagem,
+  }
+}
+
+// Versão exportada: considera todas as pesagens até `dataLimite` inclusive
+// (usada no card do lote, com dataLimite = hoje).
+export function calcularGmdRealCiclo(
+  animal: { peso_entrada: number; data_entrada: string },
+  pesagens: PesagemPonto[],
+  periodos: PeriodoLote[],
+  ciclos: CicloInfo[],
+  eventosCiclo: CicloAnimalEvento[],
+  dataLimite: string,
+): GmdRealCicloResultado | null {
+  const diaEntrada = toDay(animal.data_entrada)
+  const pesagensOrdenadas = [...pesagens].sort((a, b) => toDay(a.data) - toDay(b.data))
+  const { incrementoPorDia, anchorPorDia } = construirIncrementosDiarios(
+    diaEntrada, toDay(dataLimite) + 1, animal.peso_entrada, pesagensOrdenadas,
+  )
+  return medirGmdRealCiclo(diaEntrada, incrementoPorDia, anchorPorDia, periodos, ciclos, eventosCiclo)
+}
+
+// Incremento do dia quando nenhuma pesagem real cobre o dia: GMD real do
+// ciclo se o dia é do mesmo lote/ciclo medido e posterior à última pesagem;
+// senão o GMD esperado do ciclo vigente.
+function gmdProjecaoNoDia(
+  dia: number, loteId: string | null, ciclo: CicloInfo | null, gmdReal: GmdRealCicloResultado | null,
+): number {
+  if (gmdReal && ciclo && loteId === gmdReal.lote_id && ciclo.numero === gmdReal.ciclo_numero && dia >= gmdReal.diaUltimaPesagem) {
+    return gmdReal.gmd
+  }
+  return ciclo?.gmd_esperado ?? 0
+}
+
 // ─── Cálculo principal ──────────────────────────────────────────────────────────
 
 export function calcularAnimalNaData(
@@ -485,6 +570,7 @@ export function calcularAnimalNaData(
   const { incrementoPorDia, anchorPorDia } = construirIncrementosDiarios(
     diaEntrada, diaAlvo, animal.peso_entrada, pesagensOrdenadas,
   )
+  const gmdRealCiclo = medirGmdRealCiclo(diaEntrada, incrementoPorDia, anchorPorDia, periodos, ciclos, eventosCiclo)
 
   // ─── Dias vividos em cada lote (até diaAlvo) ───────────────────────────────
   // Usado para ratear cada lançamento de custo operacional igualmente por dia
@@ -558,9 +644,12 @@ export function calcularAnimalNaData(
 
     const pesoAntes = peso
     // Incremento do dia: fatia suavizada de uma pesagem real futura (ver
-    // bloco de suavização acima), senão a projeção normal pelo GMD esperado
-    // do ciclo vigente (sem pesagem real nenhuma cobrindo este dia ainda).
-    const incremento = incrementoPorDia.has(dia) ? incrementoPorDia.get(dia)! : (dia > diaEntrada ? gmd : 0)
+    // bloco de suavização acima), senão a projeção pelo GMD real do ciclo
+    // (após a última pesagem, mesmo lote/ciclo) ou pelo GMD esperado do
+    // ciclo vigente (ver gmdProjecaoNoDia).
+    const incremento = incrementoPorDia.has(dia)
+      ? incrementoPorDia.get(dia)!
+      : (dia > diaEntrada ? gmdProjecaoNoDia(dia, periodo?.lote_id ?? null, ciclo, gmdRealCiclo) : 0)
     peso += incremento
     // Assina exatamente o valor real quando o próximo dia é uma pesagem —
     // evita deriva de arredondamento acumulada ao longo do intervalo suavizado.
@@ -769,14 +858,16 @@ export function projetarPesoPorDia(
   const { incrementoPorDia, anchorPorDia } = construirIncrementosDiarios(
     diaEntrada, diaFinalExclusivo, animal.peso_entrada, pesagensOrdenadas,
   )
+  const gmdRealCiclo = medirGmdRealCiclo(diaEntrada, incrementoPorDia, anchorPorDia, periodos, ciclos, eventosCiclo)
   let peso = animal.peso_entrada
 
   for (let dia = diaEntrada; dia < diaFinalExclusivo; dia++) {
     const periodo = encontrarLoteAtivo(dia, periodos)
     const ciclo = periodo ? encontrarCicloAtivoParaAnimal(periodo.lote_id, dia, ciclos, eventosCiclo) : null
-    const gmd = ciclo?.gmd_esperado ?? 0
 
-    const incremento = incrementoPorDia.has(dia) ? incrementoPorDia.get(dia)! : (dia > diaEntrada ? gmd : 0)
+    const incremento = incrementoPorDia.has(dia)
+      ? incrementoPorDia.get(dia)!
+      : (dia > diaEntrada ? gmdProjecaoNoDia(dia, periodo?.lote_id ?? null, ciclo, gmdRealCiclo) : 0)
     peso += incremento
     if (anchorPorDia.has(dia + 1)) peso = anchorPorDia.get(dia + 1)!
     if (dia >= diaInicial) resultado[dia] = peso

@@ -116,7 +116,7 @@ export default function Lotes() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
           {listaAtual.map(lote => {
-            const r = resumo[lote.id] ?? { qtdAtiva: 0, pesoMedioEntrada: 0, dataEntradaMin: null, dataEntradaMax: null }
+            const r = resumo[lote.id] ?? { qtdAtiva: 0, pesoMedioEntrada: 0, dataEntradaMin: null, dataEntradaMax: null, gmdRealCiclo: null, qtdPesadosCiclo: 0 }
             const ciclos = ciclosPorLote[lote.id] ?? []
             const cicloAtual = ciclos.find(c => c.numero === lote.ciclo_atual)
             return (
@@ -150,7 +150,10 @@ export default function Lotes() {
                 </div>
                 {cicloAtual && lote.status === 'ativo' && (
                   <div style={{ fontSize: 12, color: '#9e9e9e' }}>
-                    {cicloAtual.nome}{cicloAtual.gmd_esperado ? ` · GMD ${cicloAtual.gmd_esperado} kg/dia` : ''}
+                    {cicloAtual.nome}
+                    {r.gmdRealCiclo != null
+                      ? <> · GMD real <strong style={{ color: 'var(--gray-700)' }}>{fmtNum(r.gmdRealCiclo, 3)} kg/dia</strong> ({r.qtdPesadosCiclo} pesado{r.qtdPesadosCiclo === 1 ? '' : 's'}){cicloAtual.gmd_esperado ? ` · esperado ${fmtNum(Number(cicloAtual.gmd_esperado), 3)} kg/dia` : ''}</>
+                      : (cicloAtual.gmd_esperado ? ` · GMD esperado ${fmtNum(Number(cicloAtual.gmd_esperado), 3)} kg/dia` : '')}
                   </div>
                 )}
                 {lote.status === 'encerrado' && lote.motivo_encerramento === 'venda' && (
