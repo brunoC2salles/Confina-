@@ -415,12 +415,34 @@ function resolverCustoKgMsNoDia(dia: number, dietaInfo: DietaInfo): number | nul
 // permite ao chamador assinar o peso exatamente ao valor real no dia da
 // pesagem, evitando deriva de arredondamento acumulada ao longo do intervalo
 // suavizado.
+//
+// Intervalo que atravessa troca de ciclo (decisão de 2026-10-27): os dias de
+// cada ciclo posterior ao do início do intervalo ganham o GMD esperado
+// daquele ciclo — o ciclo novo começa independente dos anteriores — e o
+// restante do ganho real do intervalo fica, em partes iguais por dia, nos
+// dias do ciclo em que o intervalo começou. Sem `resolverCiclo`, divide igual
+// por dia em todo o intervalo (comportamento anterior).
+type ResolvedorCiclo = (dia: number) => { chave: string | null; gmdEsperado: number }
+
+function criarResolvedorCiclo(
+  periodos: PeriodoLote[], ciclos: CicloInfo[], eventosCiclo: CicloAnimalEvento[],
+): ResolvedorCiclo {
+  return (dia: number) => {
+    const periodo = encontrarLoteAtivo(dia, periodos)
+    if (!periodo) return { chave: null, gmdEsperado: 0 }
+    const ciclo = encontrarCicloAtivoParaAnimal(periodo.lote_id, dia, ciclos, eventosCiclo)
+    if (!ciclo) return { chave: null, gmdEsperado: 0 }
+    return { chave: `${periodo.lote_id}#${ciclo.numero}`, gmdEsperado: Number(ciclo.gmd_esperado ?? 0) }
+  }
+}
+
 function construirIncrementosDiarios(
   diaEntrada: number,
   diaLimiteExclusivo: number,
   pesoEntrada: number,
   pesagensOrdenadas: PesagemPonto[],
-): { incrementoPorDia: Map<number, number>; anchorPorDia: Map<number, number> } {
+  resolverCiclo?: ResolvedorCiclo,
+): { incrementoPorDia: Map<number, number>; anchorPorDia: Map<number, number>; pesoInicial: number } {
   const anchorPorDia = new Map<number, number>()
   for (const p of pesagensOrdenadas) {
     const d = toDay(p.data)
@@ -437,25 +459,43 @@ function construirIncrementosDiarios(
     incrementoPorDia.set(diaEntrada, pesagemNaEntrada.peso - pesoEntrada)
     anchorPeso = pesagemNaEntrada.peso
   }
+  const pesoInicial = anchorPeso
   for (const d of Array.from(anchorPorDia.keys()).sort((a, b) => a - b)) {
     const diasIntervalo = d - anchorDia
     if (diasIntervalo > 0) {
-      const ganhoPorDia = (anchorPorDia.get(d)! - anchorPeso) / diasIntervalo
-      for (let k = anchorDia; k < d; k++) incrementoPorDia.set(k, ganhoPorDia)
+      const ganhoTotal = anchorPorDia.get(d)! - anchorPeso
+      if (resolverCiclo) {
+        const chaveInicio = resolverCiclo(anchorDia).chave
+        const diasResto: number[] = []
+        let somaEsperado = 0
+        for (let k = anchorDia; k < d; k++) {
+          const r = resolverCiclo(k)
+          if (r.chave !== null && r.chave !== chaveInicio) {
+            incrementoPorDia.set(k, r.gmdEsperado)
+            somaEsperado += r.gmdEsperado
+          } else {
+            diasResto.push(k)
+          }
+        }
+        const restoPorDia = (ganhoTotal - somaEsperado) / diasResto.length
+        for (const k of diasResto) incrementoPorDia.set(k, restoPorDia)
+      } else {
+        const ganhoPorDia = ganhoTotal / diasIntervalo
+        for (let k = anchorDia; k < d; k++) incrementoPorDia.set(k, ganhoPorDia)
+      }
     }
     anchorDia = d
     anchorPeso = anchorPorDia.get(d)!
   }
-  return { incrementoPorDia, anchorPorDia }
+  return { incrementoPorDia, anchorPorDia, pesoInicial }
 }
 
 // ─── GMD real do ciclo (desde o início do ciclo até a última pesagem) ──────────
 // Mede, para um animal, o ganho real no ciclo em que caiu a última pesagem:
-// do primeiro dia em que ele esteve nesse lote/ciclo (trecho contínuo que
-// termina na véspera da última pesagem) até a última pesagem. O peso no
-// início do ciclo vem da mesma suavização entre pesagens reais usada pelo
-// motor (construirIncrementosDiarios) — real quando há pesagem nesse dia,
-// interpolado entre duas pesagens reais quando não há. Depois da última
+// entre o primeiro ponto real dentro desse lote/ciclo (pesagem, ou a entrada
+// do animal se ela ocorreu no ciclo) e a última pesagem. Pesagem anterior ao
+// início do ciclo não conta — sem duas pesagens no ciclo, vale o esperado
+// (regra de 2026-10-27). Depois da última
 // pesagem, o motor projeta os dias desse mesmo lote/ciclo com este GMD
 // (decisão de 2026-10-27) — dias de outro ciclo/lote continuam no GMD
 // esperado do ciclo, e animal sem pesagem no ciclo também (retorna null).
@@ -471,36 +511,37 @@ export interface GmdRealCicloResultado {
 
 function medirGmdRealCiclo(
   diaEntrada: number,
-  incrementoPorDia: Map<number, number>,
+  pesoInicial: number,
   anchorPorDia: Map<number, number>,
   periodos: PeriodoLote[],
   ciclos: CicloInfo[],
   eventosCiclo: CicloAnimalEvento[],
 ): GmdRealCicloResultado | null {
   if (anchorPorDia.size === 0) return null
-  const diaUltimaPesagem = Math.max(...Array.from(anchorPorDia.keys()))
-  const chaveNoDia = (dia: number): { lote_id: string; numero: number } | null => {
-    const periodo = encontrarLoteAtivo(dia, periodos)
-    if (!periodo) return null
-    const ciclo = encontrarCicloAtivoParaAnimal(periodo.lote_id, dia, ciclos, eventosCiclo)
-    return ciclo ? { lote_id: periodo.lote_id, numero: ciclo.numero } : null
-  }
-  const ref = chaveNoDia(diaUltimaPesagem - 1)
-  if (!ref) return null
-  let soma = 0
-  let dias = 0
-  let dia = diaUltimaPesagem - 1
-  while (dia >= diaEntrada) {
-    const k = chaveNoDia(dia)
-    if (!k || k.lote_id !== ref.lote_id || k.numero !== ref.numero) break
-    soma += incrementoPorDia.get(dia) ?? 0
-    dias++
-    dia--
-  }
-  if (dias === 0) return null
+  const resolver = criarResolvedorCiclo(periodos, ciclos, eventosCiclo)
+  const diasPesagem = Array.from(anchorPorDia.keys()).sort((a, b) => a - b)
+  const diaUltimaPesagem = diasPesagem[diasPesagem.length - 1]
+  const chaveRef = resolver(diaUltimaPesagem - 1).chave
+  if (!chaveRef) return null
+  // Início do trecho contínuo do animal nesse lote/ciclo
+  let inicioCiclo = diaUltimaPesagem - 1
+  while (inicioCiclo - 1 >= diaEntrada && resolver(inicioCiclo - 1).chave === chaveRef) inicioCiclo--
+  // Primeiro ponto real (entrada ou pesagem) dentro do ciclo: só pesagens
+  // feitas no ciclo contam — pesagem anterior ao ciclo não entra (regra de
+  // 2026-10-27: duas pesagens dentro do ciclo).
+  const pontos: Array<{ dia: number; peso: number }> = [
+    { dia: diaEntrada, peso: pesoInicial },
+    ...diasPesagem.map(d => ({ dia: d, peso: anchorPorDia.get(d)! })),
+  ]
+  const primeiro = pontos.find(p => p.dia >= inicioCiclo && p.dia < diaUltimaPesagem)
+  if (!primeiro) return null
+  const dias = diaUltimaPesagem - primeiro.dia
+  if (dias <= 0) return null
+  const [loteId, numero] = chaveRef.split('#')
   return {
-    lote_id: ref.lote_id, ciclo_numero: ref.numero,
-    gmd: soma / dias, dias, diaInicio: dia + 1, diaUltimaPesagem,
+    lote_id: loteId, ciclo_numero: Number(numero),
+    gmd: (anchorPorDia.get(diaUltimaPesagem)! - primeiro.peso) / dias,
+    dias, diaInicio: primeiro.dia, diaUltimaPesagem,
   }
 }
 
@@ -516,10 +557,10 @@ export function calcularGmdRealCiclo(
 ): GmdRealCicloResultado | null {
   const diaEntrada = toDay(animal.data_entrada)
   const pesagensOrdenadas = [...pesagens].sort((a, b) => toDay(a.data) - toDay(b.data))
-  const { incrementoPorDia, anchorPorDia } = construirIncrementosDiarios(
+  const { anchorPorDia, pesoInicial } = construirIncrementosDiarios(
     diaEntrada, toDay(dataLimite) + 1, animal.peso_entrada, pesagensOrdenadas,
   )
-  return medirGmdRealCiclo(diaEntrada, incrementoPorDia, anchorPorDia, periodos, ciclos, eventosCiclo)
+  return medirGmdRealCiclo(diaEntrada, pesoInicial, anchorPorDia, periodos, ciclos, eventosCiclo)
 }
 
 // Incremento do dia quando nenhuma pesagem real cobre o dia: GMD real do
@@ -567,10 +608,11 @@ export function calcularAnimalNaData(
 
   // ─── Suaviza o salto de uma pesagem real (ver comentário completo em
   // construirIncrementosDiarios, compartilhado com projetarPesoPorDia) ──────
-  const { incrementoPorDia, anchorPorDia } = construirIncrementosDiarios(
+  const { incrementoPorDia, anchorPorDia, pesoInicial } = construirIncrementosDiarios(
     diaEntrada, diaAlvo, animal.peso_entrada, pesagensOrdenadas,
+    criarResolvedorCiclo(periodos, ciclos, eventosCiclo),
   )
-  const gmdRealCiclo = medirGmdRealCiclo(diaEntrada, incrementoPorDia, anchorPorDia, periodos, ciclos, eventosCiclo)
+  const gmdRealCiclo = medirGmdRealCiclo(diaEntrada, pesoInicial, anchorPorDia, periodos, ciclos, eventosCiclo)
 
   // ─── Dias vividos em cada lote (até diaAlvo) ───────────────────────────────
   // Usado para ratear cada lançamento de custo operacional igualmente por dia
@@ -855,10 +897,11 @@ export function projetarPesoPorDia(
   if (diaFinalExclusivo <= diaEntrada) return resultado
 
   const pesagensOrdenadas = [...pesagens].sort((a, b) => toDay(a.data) - toDay(b.data))
-  const { incrementoPorDia, anchorPorDia } = construirIncrementosDiarios(
+  const { incrementoPorDia, anchorPorDia, pesoInicial } = construirIncrementosDiarios(
     diaEntrada, diaFinalExclusivo, animal.peso_entrada, pesagensOrdenadas,
+    criarResolvedorCiclo(periodos, ciclos, eventosCiclo),
   )
-  const gmdRealCiclo = medirGmdRealCiclo(diaEntrada, incrementoPorDia, anchorPorDia, periodos, ciclos, eventosCiclo)
+  const gmdRealCiclo = medirGmdRealCiclo(diaEntrada, pesoInicial, anchorPorDia, periodos, ciclos, eventosCiclo)
   let peso = animal.peso_entrada
 
   for (let dia = diaEntrada; dia < diaFinalExclusivo; dia++) {
