@@ -64,6 +64,9 @@ interface LinhaPorCiclo {
   // geral precisa das somas, não da média das conversões de cada lote).
   consumoConcSoma: number
   ganhoConcentradoSoma: number
+  // Soma do ganho usado no GMD (esperado na etapa vigente sem GMD real
+  // válido — ver EtapaResultado.gmdUsaEsperado) — só pra linha de média.
+  ganhoGmdSoma: number
 }
 
 // ─── Dados brutos de cada venda já registrada (uma linha por animal vendido,
@@ -325,7 +328,7 @@ export default function Comparativo() {
     if (ciclosSelecionados.size === 0) return []
 
     const grupos: Record<string, {
-      qtd: number; diasSoma: number; ganhoSoma: number
+      qtd: number; diasSoma: number; ganhoSoma: number; ganhoGmdSoma: number
       consumoConcSoma: number; ganhoConcentradoSoma: number
       custoAlimSoma: number; custoOpSoma: number
     }> = {}
@@ -337,11 +340,12 @@ export default function Comparativo() {
       const etapas = Object.values(r.porEtapa).filter(e => ciclosSelecionados.has(e.numero))
       if (etapas.length === 0) continue
 
-      const g = grupos[a.lote_atual_id] ??= { qtd: 0, diasSoma: 0, ganhoSoma: 0, consumoConcSoma: 0, ganhoConcentradoSoma: 0, custoAlimSoma: 0, custoOpSoma: 0 }
+      const g = grupos[a.lote_atual_id] ??= { qtd: 0, diasSoma: 0, ganhoSoma: 0, ganhoGmdSoma: 0, consumoConcSoma: 0, ganhoConcentradoSoma: 0, custoAlimSoma: 0, custoOpSoma: 0 }
       g.qtd += 1
       for (const e of etapas) {
         g.diasSoma += e.dias
         g.ganhoSoma += e.ganhoPeso
+        g.ganhoGmdSoma += e.gmdUsaEsperado ? e.ganhoEsperado : e.ganhoPeso
         g.consumoConcSoma += e.consumoConcentradoKg
         g.ganhoConcentradoSoma += e.ganhoPesoConcentrado
         g.custoAlimSoma += e.custoAlimentacao
@@ -354,7 +358,7 @@ export default function Comparativo() {
       qtd: g.qtd,
       diasMedio: g.qtd > 0 ? g.diasSoma / g.qtd : 0,
       ganhoMedio: g.qtd > 0 ? g.ganhoSoma / g.qtd : 0,
-      gmdMedio: g.diasSoma > 0 ? g.ganhoSoma / g.diasSoma : 0,
+      gmdMedio: g.diasSoma > 0 ? g.ganhoGmdSoma / g.diasSoma : 0,
       // Conversão = kg concentrado / kg ganho ATRIBUÍDO ao concentrado (ver
       // mesma decisão na tabela de lotes ativos, acima).
       conversao: (g.consumoConcSoma > 0 && g.ganhoConcentradoSoma > 0) ? g.consumoConcSoma / g.ganhoConcentradoSoma : null,
@@ -363,6 +367,7 @@ export default function Comparativo() {
       custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
       consumoConcSoma: g.consumoConcSoma,
       ganhoConcentradoSoma: g.ganhoConcentradoSoma,
+      ganhoGmdSoma: g.ganhoGmdSoma,
     }))
   }, [animaisAtivosRaw, resultadosAtivos, ciclosSelecionados, nomePorLote, fornecedorPorAnimalAtivos, passaFiltroFornecedor])
 
@@ -372,8 +377,9 @@ export default function Comparativo() {
   // animais foi bifurcado em vários lotes ao longo do caminho.
   const totalPorCiclo = useMemo(() => {
     if (linhasPorCiclo.length < 2) return null
-    let qtd = 0, diasSoma = 0, ganhoSoma = 0, custoAlimSoma = 0, custoOpSoma = 0, consumoConcSoma = 0, ganhoConcentradoSoma = 0
+    let qtd = 0, diasSoma = 0, ganhoSoma = 0, ganhoGmdSoma = 0, custoAlimSoma = 0, custoOpSoma = 0, consumoConcSoma = 0, ganhoConcentradoSoma = 0
     for (const l of linhasPorCiclo) {
+      ganhoGmdSoma += l.ganhoGmdSoma
       qtd += l.qtd
       diasSoma += l.diasMedio * l.qtd
       ganhoSoma += l.ganhoMedio * l.qtd
@@ -386,7 +392,7 @@ export default function Comparativo() {
       qtd,
       diasMedio: qtd > 0 ? diasSoma / qtd : 0,
       ganhoMedio: qtd > 0 ? ganhoSoma / qtd : 0,
-      gmdMedio: diasSoma > 0 ? ganhoSoma / diasSoma : 0,
+      gmdMedio: diasSoma > 0 ? ganhoGmdSoma / diasSoma : 0,
       conversao: (consumoConcSoma > 0 && ganhoConcentradoSoma > 0) ? consumoConcSoma / ganhoConcentradoSoma : null,
       custoAlimMedio: qtd > 0 ? custoAlimSoma / qtd : 0,
       custoOpMedio: qtd > 0 ? custoOpSoma / qtd : 0,

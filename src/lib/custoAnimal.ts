@@ -231,6 +231,12 @@ export interface EtapaResultado {
   ganhoPesoConcentrado: number
   custoAlimentacao: number
   custoOperacional: number
+  // Soma do GMD esperado do ciclo nos dias da etapa, e se o GMD exibido da
+  // etapa deve usar esse esperado (ciclo atual do animal ainda sem GMD real
+  // válido — ver medirGmdRealCiclo e MIN_DIAS_GMD_REAL). O peso/ganho real
+  // (ganhoPeso) continua sendo usado para peso, custos e custo/kg.
+  ganhoEsperado: number
+  gmdUsaEsperado: boolean
 }
 
 export interface MovimentoRelevante {
@@ -547,6 +553,8 @@ export interface GmdRealCicloResultado {
   diaUltimaPesagem: number
 }
 
+export const MIN_DIAS_GMD_REAL = 28
+
 function medirGmdRealCiclo(
   diaEntrada: number,
   diaLimiteExclusivo: number,
@@ -569,6 +577,9 @@ function medirGmdRealCiclo(
   if (diaEntradaCiclo === null || diaEntradaCiclo >= diaUltimaPesagem) return null
   const pesoNoDia = (dia: number) => pesagensOrdenadas.find(p => toDay(p.data) === dia)!.peso
   const dias = diaUltimaPesagem - diaEntradaCiclo
+  // Adaptação à dieta: a segunda pesagem só indica GMD real com pelo menos
+  // MIN_DIAS_GMD_REAL dias após a pesagem de entrada (decisão de 2026-10-27).
+  if (dias < MIN_DIAS_GMD_REAL) return null
   const [loteId, numero] = chaveRef.split('#')
   return {
     lote_id: loteId, ciclo_numero: Number(numero),
@@ -695,7 +706,7 @@ export function calcularAnimalNaData(
       porEtapa[chave] = {
         lote_id: loteId, numero, tipoCiclo,
         dias: 0, ganhoPeso: 0, consumoRacaoKg: 0, consumoConcentradoKg: 0, ganhoPesoConcentrado: 0,
-        custoAlimentacao: 0, custoOperacional: 0,
+        custoAlimentacao: 0, custoOperacional: 0, ganhoEsperado: 0, gmdUsaEsperado: false,
       }
     }
     return porEtapa[chave]
@@ -729,7 +740,10 @@ export function calcularAnimalNaData(
     if (tipoCiclo === 'pastagem') ganhoPesoPastagem += ganhoHoje
     else if (tipoCiclo === 'misto') ganhoPesoMisto += ganhoHoje
     else ganhoPesoConfinamento += ganhoHoje
-    if (etapa) etapa.ganhoPeso += ganhoHoje
+    if (etapa) {
+      etapa.ganhoPeso += ganhoHoje
+      etapa.ganhoEsperado += Number(ciclo?.gmd_esperado ?? 0)
+    }
 
     const dietaIdDia = periodo && ciclo
       ? resolverDietaIdNoDia(periodo.lote_id, ciclo.numero, dia, ciclo.dieta_id, trocasDieta)
@@ -842,6 +856,18 @@ export function calcularAnimalNaData(
           if (etapa) etapa.custoOperacional += custoDoAnimal
         }
       }
+    }
+  }
+
+  // Etapa vigente do animal (véspera de dataAlvo) sem GMD real válido no
+  // ciclo: o GMD exibido dessa etapa usa o esperado do ciclo.
+  {
+    const periodoAtual = encontrarLoteAtivo(diaAlvo - 1, periodos)
+    const cicloAtual = periodoAtual ? encontrarCicloAtivoParaAnimal(periodoAtual.lote_id, diaAlvo - 1, ciclos, eventosCiclo) : null
+    if (periodoAtual && cicloAtual) {
+      const etapaAtual = porEtapa[`${periodoAtual.lote_id}#${cicloAtual.numero}`]
+      const temReal = gmdRealCiclo != null && gmdRealCiclo.lote_id === periodoAtual.lote_id && gmdRealCiclo.ciclo_numero === cicloAtual.numero
+      if (etapaAtual && !temReal) etapaAtual.gmdUsaEsperado = true
     }
   }
 
