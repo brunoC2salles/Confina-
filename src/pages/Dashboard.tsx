@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLotes } from '@/hooks/useLotes'
-import { supabase } from '@/lib/supabase'
+import { carregarMetricasPainel } from '@/core/analises'
 import { Modal } from '@/components/common/UI'
 import { fmt, fmtNum } from '@/lib/calculations'
 
@@ -38,38 +38,7 @@ export default function Dashboard() {
       setLoadMetricas(true)
       setErroMetricas(null)
       try {
-        const [{ data: animais, error: e1 }, { data: saidas, error: e2 }, { count: qtdVendidos, error: e3 }] = await Promise.all([
-          supabase.from('animais').select('peso_entrada, valor_compra').eq('user_id', user.id).eq('status', 'ativo'),
-          supabase.from('saidas_grupo').select('receita_liquida, custo_compra_total, custo_alimentacao_total, custos_variaveis_total, custos_fixos_rateados, lucro_total, custo_alimentacao_pastagem_total, custo_alimentacao_confinamento_total, custo_alimentacao_misto_total, custo_operacional_pastagem_total, custo_operacional_confinamento_total, custo_operacional_misto_total, ganho_peso_pastagem_total, ganho_peso_confinamento_total, ganho_peso_misto_total').eq('user_id', user.id),
-          supabase.from('movimentacoes_animais').select('id', { count: 'exact', head: true }).eq('user_id', user.id).not('saida_grupo_id', 'is', null),
-        ])
-        if (e1) throw e1
-        if (e2) throw e2
-        if (e3) throw e3
-
-        const as_ = animais ?? []
-        const ss = saidas ?? []
-        const totalAnimais = as_.length
-        const pesoMedioGeral = totalAnimais > 0 ? as_.reduce((t, a) => t + a.peso_entrada, 0) / totalAnimais : 0
-        const valorCompraTotal = as_.reduce((t, a) => t + a.valor_compra, 0)
-
-        const receitaTotal = ss.reduce((t, s) => t + (s.receita_liquida ?? 0), 0)
-        const custoTotal = ss.reduce((t, s) => t +
-          (s.custo_compra_total ?? 0) + (s.custo_alimentacao_total ?? 0) +
-          (s.custos_variaveis_total ?? 0) + (s.custos_fixos_rateados ?? 0), 0)
-        const lucroTotal = ss.reduce((t, s) => t + (s.lucro_total ?? 0), 0)
-
-        const custoPastagemTotal = ss.reduce((t, s) => t + (s.custo_alimentacao_pastagem_total ?? 0) + (s.custo_operacional_pastagem_total ?? 0), 0)
-        const custoConfinamentoTotal = ss.reduce((t, s) => t + (s.custo_alimentacao_confinamento_total ?? 0) + (s.custo_operacional_confinamento_total ?? 0), 0)
-        const custoMistoTotal = ss.reduce((t, s) => t + (s.custo_alimentacao_misto_total ?? 0) + (s.custo_operacional_misto_total ?? 0), 0)
-        const ganhoPastagemTotal = ss.reduce((t, s) => t + (s.ganho_peso_pastagem_total ?? 0), 0)
-        const ganhoConfinamentoTotal = ss.reduce((t, s) => t + (s.ganho_peso_confinamento_total ?? 0), 0)
-        const ganhoMistoTotal = ss.reduce((t, s) => t + (s.ganho_peso_misto_total ?? 0), 0)
-
-        setMetricas({
-          totalAnimais, pesoMedioGeral, receitaTotal, custoTotal, lucroTotal, qtdVendidos: qtdVendidos ?? 0, valorCompraTotal,
-          custoPastagemTotal, custoConfinamentoTotal, custoMistoTotal, ganhoPastagemTotal, ganhoConfinamentoTotal, ganhoMistoTotal,
-        })
+        setMetricas(await carregarMetricasPainel(user.id))
       } catch {
         setErroMetricas('Não foi possível carregar as métricas. Verifique sua conexão.')
       } finally {

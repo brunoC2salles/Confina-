@@ -25,11 +25,11 @@
 import {
   toDay, projetarPesoPorDia, encontrarLoteAtivo, dietaVigenteDoAnimalNoDia,
   type PeriodoLote, type CicloInfo, type PesagemPonto, type CicloAnimalEvento, type TrocaDietaCiclo,
-} from './custoAnimal'
+} from './custoAnimal.js'
 import {
   periodoIngredienteNoDia, precosEstoqueNoDia, calcularCustoKgMsComPrecos, fracaoMsComponente,
   type DietaComposicaoInfo, type PeriodoCustoIngredienteInfo,
-} from './custoIngrediente'
+} from './custoIngrediente.js'
 
 export type ModoFornecimento = 'mistura_pronta' | 'feita_na_fazenda'
 

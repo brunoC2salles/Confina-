@@ -26,10 +26,10 @@
 // Todo cálculo aqui é derivado sob demanda a partir do histórico (mesma
 // filosofia de custoAnimal.ts) — nada de estado acumulado incorretamente.
 
-import { toDay, projetarPesoPorDia, encontrarLoteAtivo, dietaVigenteDoAnimalNoDia } from './custoAnimal'
+import { toDay, projetarPesoPorDia, encontrarLoteAtivo, dietaVigenteDoAnimalNoDia } from './custoAnimal.js'
 import type {
   PeriodoLote, CicloInfo, PesagemPonto, CicloAnimalEvento, CustoRacaoRealDiaInfo, TrocaDietaCiclo,
-} from './custoAnimal'
+} from './custoAnimal.js'
 
 // ─── Tipos de entrada (formato mínimo, independente do schema do Supabase) ────
 

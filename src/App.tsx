@@ -23,6 +23,7 @@ import Configuracoes from '@/pages/Configuracoes'
 import CalculadoraConfinamento from '@/pages/CalculadoraConfinamento'
 import Consultoria from '@/pages/Consultoria'
 import Tutorial from '@/pages/Tutorial'
+import OAuthConsentimento from '@/pages/OAuthConsentimento'
 
 export default function App() {
   return (
@@ -36,6 +37,8 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/esqueci-senha" element={<EsqueciSenha />} />
           <Route path="/redefinir-senha" element={<RedefinirSenha />} />
+          {/* Autorização OAuth do servidor MCP (Claude / ChatGPT) */}
+          <Route path="/oauth/consentimento" element={<OAuthConsentimento />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="fazenda-hoje" element={<FazendaHoje />} />

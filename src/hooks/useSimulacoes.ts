@@ -1,23 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import type { SimDados } from '@/lib/simulador'
+import * as core from '@/core/cadastros'
+import type { Simulacao } from '@/core/cadastros'
 
-export interface Simulacao {
-  id: string
-  nome: string
-  dados: SimDados
-  created_at: string
-  updated_at: string
-}
+export type { Simulacao } from '@/core/cadastros'
 
-// Tabela ainda não criada no banco (SQL de supabase/simulacoes.sql não rodado).
-function erroTabelaAusente(e: { code?: string; message?: string } | null): boolean {
-  if (!e) return false
-  const msg = e.message ?? ''
-  return e.code === '42P01' || e.code === 'PGRST205' || (/simulacoes/.test(msg) && /(does not exist|could not find)/i.test(msg))
-}
-
+// Operações em src/core/cadastros.ts (compartilhado com o servidor MCP).
 export function useSimulacoes() {
   const { user } = useAuth()
   const [simulacoes, setSimulacoes] = useState<Simulacao[]>([])
@@ -27,11 +16,9 @@ export function useSimulacoes() {
   const fetchSimulacoes = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from('simulacoes').select('id, nome, dados, created_at, updated_at')
-      .eq('user_id', user.id).order('updated_at', { ascending: false })
-    setTabelaAusente(erroTabelaAusente(error))
-    setSimulacoes((data ?? []) as Simulacao[])
+    const r = await core.listarSimulacoes(user.id)
+    setTabelaAusente(r.tabelaAusente)
+    setSimulacoes(r.simulacoes)
     setLoading(false)
   }, [user])
 
@@ -39,26 +26,21 @@ export function useSimulacoes() {
 
   const criarSimulacao = async (nome: string, dados: SimDados) => {
     if (!user) return { error: 'Não autenticado', id: null as string | null }
-    const { data, error } = await supabase.from('simulacoes')
-      .insert({ nome, dados, user_id: user.id }).select('id').single()
-    if (error) return { error: error.message, id: null }
-    await fetchSimulacoes()
-    return { error: null, id: (data as { id: string }).id }
+    const res = await core.criarSimulacao(user.id, nome, dados)
+    if (!res.error) await fetchSimulacoes()
+    return res
   }
 
   const salvarSimulacao = async (id: string, nome: string, dados: SimDados) => {
-    const { error } = await supabase.from('simulacoes')
-      .update({ nome, dados, updated_at: new Date().toISOString() }).eq('id', id)
-    if (error) return { error: error.message }
-    await fetchSimulacoes()
-    return { error: null }
+    const res = await core.salvarSimulacao(id, nome, dados)
+    if (!res.error) await fetchSimulacoes()
+    return res
   }
 
   const excluirSimulacao = async (id: string) => {
-    const { error } = await supabase.from('simulacoes').delete().eq('id', id)
-    if (error) return { error: error.message }
-    await fetchSimulacoes()
-    return { error: null }
+    const res = await core.excluirSimulacao(id)
+    if (!res.error) await fetchSimulacoes()
+    return res
   }
 
   return { simulacoes, loading, tabelaAusente, criarSimulacao, salvarSimulacao, excluirSimulacao }

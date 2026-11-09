@@ -1,91 +1,21 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { useLotes, useCustoEngine, buscarPorIds, buscarFornecedorPorAnimal } from '@/hooks/useLotes'
+import { useLotes } from '@/hooks/useLotes'
 import { useFaixas } from '@/hooks/useFaixas'
 import { useParceiros } from '@/hooks/useHooks'
-import { supabase } from '@/lib/supabase'
+import {
+  carregarDadosAtivosComparativo, agregarComparativoAtivos, agregarComparativoPorCiclo, totalComparativoPorCiclo,
+  carregarVendidosComparativo, agregarComparativoVendidos, totalComparativoAtivos, totalComparativoVendidos,
+  type LinhaComparativoAtivo, type LinhaComparativoVendido, type LinhaComparativoCiclo, type VendidoComparativoRaw,
+  type DadosAtivosComparativo,
+} from '@/core/analises'
 import { PageHeader, EmptyState } from '@/components/common/UI'
-import { fmt, fmtNum, obterRendimento, obterBonus } from '@/lib/calculations'
-import type { ResultadoAnimalNaData } from '@/lib/custoAnimal'
+import { fmt, fmtNum } from '@/lib/calculations'
 
-const hojeStr = () => new Date().toISOString().split('T')[0]
-// Chave de agrupamento sentinela para animais sem fornecedor (parceiro_id)
-// vinculado à compra — nunca colide com um UUID real de parceiro.
-const SEM_FORNECEDOR = '__sem_fornecedor__'
-
-// ─── Linha: lotes (ou fornecedores, conforme agrupamento) com animais ainda
-// ativos (peso/GMD/custo atuais, lucro é projeção) ───────────────────────
-interface LinhaAtivo {
-  grupoId: string
-  grupoNome: string
-  status: string
-  qtd: number
-  pesoMedio: number
-  gmdMedio: number
-  conversao: number | null
-  custoPorKg: number | null
-  valorCompraTotal: number
-  custoAcumuladoTotal: number
-  lucroProjetado: number | null
-  margemProjetada: number | null
-}
-
-// ─── Linha: lotes ou fornecedores com vendas já registradas (dados realizados,
-// não projetados) ─────────────────────────────────────────────────────────
-interface LinhaVendido {
-  grupoId: string
-  grupoNome: string
-  qtd: number
-  pesoMedioVenda: number
-  gmdMedio: number
-  conversao: number | null
-  custoPorKg: number | null
-  lucroTotal: number
-  margemPct: number | null
-  lucroPorAnimal: number
-}
-
-// ─── Linha: custo médio por ciclo, agregando os ciclos selecionados pelo
-// produtor (ex: só o ciclo 2, ou ciclo 1+2 juntos) — só para lotes com
-// animais ativos, já que a quebra por etapa (porEtapa) só existe no
-// cálculo em tempo real do motor, não em vendas já liquidadas. ───
-interface LinhaPorCiclo {
-  loteId: string
-  loteNome: string
-  qtd: number
-  diasMedio: number
-  ganhoMedio: number
-  gmdMedio: number
-  conversao: number | null
-  custoAlimMedio: number
-  custoOpMedio: number
-  custoPorKg: number | null
-  // Somas brutas de concentrado — só pra linha de média ponderada (conversão
-  // geral precisa das somas, não da média das conversões de cada lote).
-  consumoConcSoma: number
-  ganhoConcentradoSoma: number
-  // Soma do ganho usado no GMD (esperado na etapa vigente sem GMD real
-  // válido — ver EtapaResultado.gmdUsaEsperado) — só pra linha de média.
-  ganhoGmdSoma: number
-}
-
-// ─── Dados brutos de cada venda já registrada (uma linha por animal vendido,
-// sem agregar) — a agregação por lote ou por fornecedor acontece no useMemo
-// `vendidos`, mesma lógica usada para animaisAtivosRaw/`ativos`. ───────────
-interface VendidoRaw {
-  animal_id: string
-  loteOrigemId: string
-  fornecedorId: string | null
-  data: string
-  pesoEntrada: number
-  dataEntrada: string
-  peso: number
-  consumoConcKg: number
-  ganhoConcentradoKg: number
-  custoAtribuido: number
-  lucro: number
-  valor: number
-}
+type LinhaAtivo = LinhaComparativoAtivo
+type LinhaVendido = LinhaComparativoVendido
+type LinhaPorCiclo = LinhaComparativoCiclo
+type VendidoRaw = VendidoComparativoRaw
 
 type SortDir = 'asc' | 'desc'
 interface SortState<T> { key: keyof T; dir: SortDir }
@@ -129,7 +59,6 @@ function SortableTh<T>({ label, columnKey, sort, onSort }: {
 export default function Comparativo() {
   const { user } = useAuth()
   const { lotes, ciclosPorLote } = useLotes()
-  const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
   const { parceiros } = useParceiros()
   // Mesmo critério usado em Lotes.tsx para o seletor de fornecedor da leva.
@@ -204,10 +133,7 @@ export default function Comparativo() {
   // A agregação em si (por lote, ou por ciclo selecionado) acontece nos
   // useMemo abaixo — assim trocar a seleção de ciclos ou o preço esperado
   // não exige nova consulta ao banco, só reprocessa o que já foi buscado.
-  const [animaisAtivosRaw, setAnimaisAtivosRaw] = useState<Array<{ id: string; peso_entrada: number; valor_compra: number; lote_atual_id: string }>>([])
-  const [resultadosAtivos, setResultadosAtivos] = useState<Record<string, ResultadoAnimalNaData>>({})
-  const [custosVarAtivos, setCustosVarAtivos] = useState<Record<string, number>>({})
-  const [fornecedorPorAnimalAtivos, setFornecedorPorAnimalAtivos] = useState<Record<string, string | null>>({})
+  const [dadosAtivos, setDadosAtivos] = useState<DadosAtivosComparativo>({ animais: [], resultados: {}, custosVar: {}, fornecedorPorAnimal: {} })
 
   // ─── Lotes com animais ativos: peso/GMD/custo são o estado atual; lucro e
   // margem só aparecem se um preço esperado for informado (projeção, igual à
@@ -215,108 +141,17 @@ export default function Comparativo() {
   const carregarAtivos = useCallback(async () => {
     if (!user) return
     setLoadingAtivos(true)
-    const { data: animaisData } = await supabase
-      .from('animais').select('id, peso_entrada, valor_compra, lote_atual_id')
-      .eq('user_id', user.id).eq('status', 'ativo')
-
-    const lista = (animaisData ?? []) as Array<{ id: string; peso_entrada: number; valor_compra: number; lote_atual_id: string }>
-    if (lista.length === 0) {
-      setAnimaisAtivosRaw([]); setResultadosAtivos({}); setCustosVarAtivos({}); setFornecedorPorAnimalAtivos({}); setLoadingAtivos(false)
-      return
-    }
-
-    const [resultados, custosVarData, fornecedorPorAnimal] = await Promise.all([
-      calcularEmLote(lista.map(a => a.id), hojeStr()),
-      buscarPorIds<{ animal_id: string; valor: number }>(lista.map(a => a.id), (idsChunk, from, to) =>
-        supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).range(from, to)),
-      buscarFornecedorPorAnimal(lista.map(a => a.id)),
-    ])
-    const custosVarPorAnimal: Record<string, number> = {}
-    for (const c of custosVarData) {
-      custosVarPorAnimal[c.animal_id] = (custosVarPorAnimal[c.animal_id] ?? 0) + c.valor
-    }
-
-    setAnimaisAtivosRaw(lista)
-    setResultadosAtivos(resultados)
-    setCustosVarAtivos(custosVarPorAnimal)
-    setFornecedorPorAnimalAtivos(fornecedorPorAnimal)
+    setDadosAtivos(await carregarDadosAtivosComparativo(user.id))
     setLoadingAtivos(false)
-  }, [user, calcularEmLote])
+  }, [user])
 
   // ─── Tabela de sempre: todo o processo, do jeito que já funcionava ─────────
-  const ativos = useMemo<LinhaAtivo[]>(() => {
-    const p = Number(preco) || 0
-    const pc = Number(pctComissao) || 0
-    const pe = Number(pctEncargo) || 0
-
-    const grupos: Record<string, {
-      qtd: number; pesoSoma: number; gmdSoma: number; ganhoSoma: number
-      consumoConcSoma: number; ganhoConcentradoSoma: number
-      custoAlimSoma: number; custoOpSoma: number; custoVarSoma: number
-      valorCompraSoma: number; receitaLiquidaSoma: number; custoTotalSoma: number
-    }> = {}
-
-    for (const a of animaisAtivosRaw) {
-      const r = resultadosAtivos[a.id]
-      if (!r) continue
-      const fornecedorId = fornecedorPorAnimalAtivos[a.id] ?? null
-      if (!passaFiltroFornecedor(fornecedorId)) continue
-      const chave = agruparPor === 'lote' ? a.lote_atual_id : (fornecedorId ?? SEM_FORNECEDOR)
-      const g = grupos[chave] ??= {
-        qtd: 0, pesoSoma: 0, gmdSoma: 0, ganhoSoma: 0,
-        consumoConcSoma: 0, ganhoConcentradoSoma: 0,
-        custoAlimSoma: 0, custoOpSoma: 0, custoVarSoma: 0,
-        valorCompraSoma: 0, receitaLiquidaSoma: 0, custoTotalSoma: 0,
-      }
-      const custoVar = custosVarAtivos[a.id] ?? 0
-      const custoTotalAnimal = r.custoAcumulado + custoVar + a.valor_compra
-      const ganho = r.peso - a.peso_entrada
-
-      g.qtd += 1
-      g.pesoSoma += r.peso
-      g.gmdSoma += r.gmdMedio
-      g.ganhoSoma += ganho
-      g.consumoConcSoma += r.consumoConcentradoKg
-      g.ganhoConcentradoSoma += r.ganhoPesoConcentrado
-      g.custoAlimSoma += r.custoAlimentacao
-      g.custoOpSoma += r.custoOperacional
-      g.custoVarSoma += custoVar
-      g.valorCompraSoma += a.valor_compra
-      g.custoTotalSoma += custoTotalAnimal
-
-      if (p > 0) {
-        const rendPct = obterRendimento(r.peso, rendimentos)
-        const pesoCarcaca = r.peso * (rendPct / 100)
-        const valorBonus = pesoCarcaca * obterBonus(r.peso, bonus)
-        const receitaBruta = r.peso * p + valorBonus
-        g.receitaLiquidaSoma += receitaBruta * (1 - pc / 100 - pe / 100)
-      }
-    }
-
-    return Object.entries(grupos).map(([grupoId, g]) => {
-      const lucroProjetado = p > 0 ? g.receitaLiquidaSoma - g.custoTotalSoma : null
-      const grupoNome = agruparPor === 'lote'
-        ? (nomePorLote[grupoId]?.nome ?? '—')
-        : (grupoId === SEM_FORNECEDOR ? 'Não informado' : nomeFornecedor(grupoId))
-      const status = agruparPor === 'lote' ? (nomePorLote[grupoId]?.status ?? '—') : '—'
-      return {
-        grupoId, grupoNome, status,
-        qtd: g.qtd,
-        pesoMedio: g.qtd > 0 ? g.pesoSoma / g.qtd : 0,
-        gmdMedio: g.qtd > 0 ? g.gmdSoma / g.qtd : 0,
-        // Conversão = kg concentrado consumido / kg ganho ATRIBUÍDO ao
-        // concentrado (não o ganho total do ciclo) — decisão tomada com o
-        // produtor. consumoConcSoma > 0 exige que o lote de fato consuma
-        // concentrado (senão "—", nunca 0,00, para pastagem pura).
-        conversao: (g.consumoConcSoma > 0 && g.ganhoConcentradoSoma > 0) ? g.consumoConcSoma / g.ganhoConcentradoSoma : null,
-        custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
-        valorCompraTotal: g.valorCompraSoma,
-        custoAcumuladoTotal: g.custoAlimSoma + g.custoOpSoma + g.custoVarSoma,
-        lucroProjetado,
-        margemProjetada: p > 0 && g.receitaLiquidaSoma > 0 ? (lucroProjetado! / g.receitaLiquidaSoma) * 100 : null,
-      }
-    })
-  }, [animaisAtivosRaw, resultadosAtivos, custosVarAtivos, fornecedorPorAnimalAtivos, nomePorLote, preco, pctComissao, pctEncargo, rendimentos, bonus, agruparPor, passaFiltroFornecedor, nomeFornecedor])
+  const ativos = useMemo<LinhaAtivo[]>(
+    () => agregarComparativoAtivos(dadosAtivos, {
+      preco: Number(preco) || 0, pctComissao: Number(pctComissao) || 0, pctEncargo: Number(pctEncargo) || 0,
+      rendimentos, bonus, agruparPor, passaFiltroFornecedor, nomePorLote, nomeFornecedor,
+    }),
+    [dadosAtivos, nomePorLote, preco, pctComissao, pctEncargo, rendimentos, bonus, agruparPor, passaFiltroFornecedor, nomeFornecedor])
 
   // ─── Tabela por ciclo: só aparece quando o produtor marca ao menos um
   // número de ciclo. Agrega, por lote, apenas os dias/ganho/custo que
@@ -324,81 +159,15 @@ export default function Comparativo() {
   // motor) — não é projeção nem venda, é o que já foi vivido naquele(s)
   // ciclo(s) até hoje. Custos variáveis e valor de compra ficam de fora
   // (não são amarrados a um ciclo específico). ───
-  const linhasPorCiclo = useMemo<LinhaPorCiclo[]>(() => {
-    if (ciclosSelecionados.size === 0) return []
-
-    const grupos: Record<string, {
-      qtd: number; diasSoma: number; ganhoSoma: number; ganhoGmdSoma: number
-      consumoConcSoma: number; ganhoConcentradoSoma: number
-      custoAlimSoma: number; custoOpSoma: number
-    }> = {}
-
-    for (const a of animaisAtivosRaw) {
-      if (!passaFiltroFornecedor(fornecedorPorAnimalAtivos[a.id] ?? null)) continue
-      const r = resultadosAtivos[a.id]
-      if (!r) continue
-      const etapas = Object.values(r.porEtapa).filter(e => ciclosSelecionados.has(e.numero))
-      if (etapas.length === 0) continue
-
-      const g = grupos[a.lote_atual_id] ??= { qtd: 0, diasSoma: 0, ganhoSoma: 0, ganhoGmdSoma: 0, consumoConcSoma: 0, ganhoConcentradoSoma: 0, custoAlimSoma: 0, custoOpSoma: 0 }
-      g.qtd += 1
-      for (const e of etapas) {
-        g.diasSoma += e.dias
-        g.ganhoSoma += e.ganhoPeso
-        g.ganhoGmdSoma += e.gmdUsaEsperado ? e.ganhoEsperado : e.ganhoPeso
-        g.consumoConcSoma += e.consumoConcentradoKg
-        g.ganhoConcentradoSoma += e.ganhoPesoConcentrado
-        g.custoAlimSoma += e.custoAlimentacao
-        g.custoOpSoma += e.custoOperacional
-      }
-    }
-
-    return Object.entries(grupos).map(([loteId, g]) => ({
-      loteId, loteNome: nomePorLote[loteId]?.nome ?? '—',
-      qtd: g.qtd,
-      diasMedio: g.qtd > 0 ? g.diasSoma / g.qtd : 0,
-      ganhoMedio: g.qtd > 0 ? g.ganhoSoma / g.qtd : 0,
-      gmdMedio: g.diasSoma > 0 ? g.ganhoGmdSoma / g.diasSoma : 0,
-      // Conversão = kg concentrado / kg ganho ATRIBUÍDO ao concentrado (ver
-      // mesma decisão na tabela de lotes ativos, acima).
-      conversao: (g.consumoConcSoma > 0 && g.ganhoConcentradoSoma > 0) ? g.consumoConcSoma / g.ganhoConcentradoSoma : null,
-      custoAlimMedio: g.qtd > 0 ? g.custoAlimSoma / g.qtd : 0,
-      custoOpMedio: g.qtd > 0 ? g.custoOpSoma / g.qtd : 0,
-      custoPorKg: g.ganhoSoma > 0 ? (g.custoAlimSoma + g.custoOpSoma) / g.ganhoSoma : null,
-      consumoConcSoma: g.consumoConcSoma,
-      ganhoConcentradoSoma: g.ganhoConcentradoSoma,
-      ganhoGmdSoma: g.ganhoGmdSoma,
-    }))
-  }, [animaisAtivosRaw, resultadosAtivos, ciclosSelecionados, nomePorLote, fornecedorPorAnimalAtivos, passaFiltroFornecedor])
+  const linhasPorCiclo = useMemo<LinhaPorCiclo[]>(
+    () => agregarComparativoPorCiclo(dadosAtivos, ciclosSelecionados, { passaFiltroFornecedor, nomePorLote }),
+    [dadosAtivos, ciclosSelecionados, nomePorLote, passaFiltroFornecedor])
 
   // Linha de média da tabela por ciclo — ponderada por animal: reconstrói as
   // somas de cada lote (média x qtd) e aplica as mesmas fórmulas das linhas,
   // como se todos os animais fossem um grupo só. Útil quando o mesmo grupo de
   // animais foi bifurcado em vários lotes ao longo do caminho.
-  const totalPorCiclo = useMemo(() => {
-    if (linhasPorCiclo.length < 2) return null
-    let qtd = 0, diasSoma = 0, ganhoSoma = 0, ganhoGmdSoma = 0, custoAlimSoma = 0, custoOpSoma = 0, consumoConcSoma = 0, ganhoConcentradoSoma = 0
-    for (const l of linhasPorCiclo) {
-      ganhoGmdSoma += l.ganhoGmdSoma
-      qtd += l.qtd
-      diasSoma += l.diasMedio * l.qtd
-      ganhoSoma += l.ganhoMedio * l.qtd
-      custoAlimSoma += l.custoAlimMedio * l.qtd
-      custoOpSoma += l.custoOpMedio * l.qtd
-      consumoConcSoma += l.consumoConcSoma
-      ganhoConcentradoSoma += l.ganhoConcentradoSoma
-    }
-    return {
-      qtd,
-      diasMedio: qtd > 0 ? diasSoma / qtd : 0,
-      ganhoMedio: qtd > 0 ? ganhoSoma / qtd : 0,
-      gmdMedio: diasSoma > 0 ? ganhoGmdSoma / diasSoma : 0,
-      conversao: (consumoConcSoma > 0 && ganhoConcentradoSoma > 0) ? consumoConcSoma / ganhoConcentradoSoma : null,
-      custoAlimMedio: qtd > 0 ? custoAlimSoma / qtd : 0,
-      custoOpMedio: qtd > 0 ? custoOpSoma / qtd : 0,
-      custoPorKg: ganhoSoma > 0 ? (custoAlimSoma + custoOpSoma) / ganhoSoma : null,
-    }
-  }, [linhasPorCiclo])
+  const totalPorCiclo = useMemo(() => totalComparativoPorCiclo(linhasPorCiclo), [linhasPorCiclo])
 
   // ─── Dados brutos de cada venda já registrada — ver VendidoRaw no topo. ───
   const [vendidosRaw, setVendidosRaw] = useState<VendidoRaw[]>([])
@@ -409,104 +178,16 @@ export default function Comparativo() {
   const carregarVendidos = useCallback(async () => {
     if (!user) return
     setLoadingVendidos(true)
-    const { data: movsData } = await supabase
-      .from('movimentacoes_animais')
-      .select('animal_id, data, peso, valor, custo_atribuido, lucro, lote_origem_id, animais(peso_entrada, data_entrada)')
-      .eq('user_id', user.id).not('lucro', 'is', null)
-      .in('tipo', ['saida_venda', 'saida_abate', 'saida_transferencia', 'saida_morte'])
-
-    const movs = (movsData ?? []) as any[]
-
-    // ─── Consumo de concentrado até a data de cada venda ───────────────────
-    // Esta tabela não usa o motor de custo (só dados já liquidados salvos no
-    // banco), mas a Conversão precisa do consumo de concentrado, que só o
-    // motor calcula. Roda o motor uma vez por data de venda distinta
-    // (agrupando os animais vendidos naquela data), reconstruindo o consumo
-    // de cada animal até o dia da própria venda dele.
-    const datasUnicas = Array.from(new Set(movs.map(m => m.data).filter(Boolean)))
-    const consumoConcPorAnimalData: Record<string, number> = {}
-    const ganhoConcentradoPorAnimalData: Record<string, number> = {}
-    const consumoPromise = datasUnicas.length > 0 ? Promise.all(datasUnicas.map(async (data) => {
-      const idsNaData = Array.from(new Set(
-        movs.filter(m => m.data === data && m.animal_id).map(m => m.animal_id as string)
-      ))
-      if (idsNaData.length === 0) return
-      const resultados = await calcularEmLote(idsNaData, data)
-      for (const id of idsNaData) {
-        const r = resultados[id]
-        if (r) {
-          consumoConcPorAnimalData[`${id}|${data}`] = r.consumoConcentradoKg
-          ganhoConcentradoPorAnimalData[`${id}|${data}`] = r.ganhoPesoConcentrado
-        }
-      }
-    })) : Promise.resolve([])
-
-    const [, fornecedorPorAnimal] = await Promise.all([
-      consumoPromise,
-      buscarFornecedorPorAnimal(Array.from(new Set(movs.map(m => m.animal_id).filter(Boolean)))),
-    ])
-
-    const raw: VendidoRaw[] = movs
-      .filter(m => m.lote_origem_id && m.animais && m.peso != null)
-      .map(m => ({
-        animal_id: m.animal_id,
-        loteOrigemId: m.lote_origem_id as string,
-        fornecedorId: fornecedorPorAnimal[m.animal_id] ?? null,
-        data: m.data, pesoEntrada: m.animais.peso_entrada as number, dataEntrada: m.animais.data_entrada as string,
-        peso: m.peso,
-        consumoConcKg: consumoConcPorAnimalData[`${m.animal_id}|${m.data}`] ?? 0,
-        ganhoConcentradoKg: ganhoConcentradoPorAnimalData[`${m.animal_id}|${m.data}`] ?? 0,
-        custoAtribuido: m.custo_atribuido ?? 0, lucro: m.lucro ?? 0, valor: m.valor ?? 0,
-      }))
-    setVendidosRaw(raw)
+    setVendidosRaw(await carregarVendidosComparativo(user.id))
     setLoadingVendidos(false)
-  }, [user, calcularEmLote])
+  }, [user])
 
   // ─── Agregação dos dados brutos por lote ou por fornecedor, com o filtro de
   // fornecedor aplicado — reprocessa client-side, sem novo fetch, igual ao
   // padrão de `ativos` acima. ───
-  const vendidos = useMemo<LinhaVendido[]>(() => {
-    const grupos: Record<string, {
-      qtd: number; pesoSoma: number; ganhoSoma: number; diasSoma: number
-      consumoConcSoma: number; ganhoConcentradoSoma: number
-      custoSoma: number; lucroSoma: number; receitaSoma: number
-    }> = {}
-
-    for (const v of vendidosRaw) {
-      if (!passaFiltroFornecedor(v.fornecedorId)) continue
-      const chave = agruparPor === 'lote' ? v.loteOrigemId : (v.fornecedorId ?? SEM_FORNECEDOR)
-      const g = grupos[chave] ??= { qtd: 0, pesoSoma: 0, ganhoSoma: 0, diasSoma: 0, consumoConcSoma: 0, ganhoConcentradoSoma: 0, custoSoma: 0, lucroSoma: 0, receitaSoma: 0 }
-      const ganho = v.peso - v.pesoEntrada
-      const dias = Math.max(0, Math.floor((new Date(v.data).getTime() - new Date(v.dataEntrada).getTime()) / 86400000))
-
-      g.qtd += 1
-      g.pesoSoma += v.peso
-      g.ganhoSoma += ganho
-      g.diasSoma += dias
-      g.consumoConcSoma += v.consumoConcKg
-      g.ganhoConcentradoSoma += v.ganhoConcentradoKg
-      g.custoSoma += v.custoAtribuido
-      g.lucroSoma += v.lucro
-      g.receitaSoma += v.valor
-    }
-
-    return Object.entries(grupos).map(([grupoId, g]) => ({
-      grupoId,
-      grupoNome: agruparPor === 'lote'
-        ? (nomePorLote[grupoId]?.nome ?? '—')
-        : (grupoId === SEM_FORNECEDOR ? 'Não informado' : nomeFornecedor(grupoId)),
-      qtd: g.qtd,
-      pesoMedioVenda: g.qtd > 0 ? g.pesoSoma / g.qtd : 0,
-      gmdMedio: g.diasSoma > 0 ? g.ganhoSoma / g.diasSoma : 0,
-      // Conversão = kg concentrado / kg ganho ATRIBUÍDO ao concentrado (ver
-      // mesma decisão nas outras tabelas deste arquivo).
-      conversao: (g.consumoConcSoma > 0 && g.ganhoConcentradoSoma > 0) ? g.consumoConcSoma / g.ganhoConcentradoSoma : null,
-      custoPorKg: g.ganhoSoma > 0 ? g.custoSoma / g.ganhoSoma : null,
-      lucroTotal: g.lucroSoma,
-      margemPct: g.receitaSoma > 0 ? (g.lucroSoma / g.receitaSoma) * 100 : null,
-      lucroPorAnimal: g.qtd > 0 ? g.lucroSoma / g.qtd : 0,
-    }))
-  }, [vendidosRaw, agruparPor, passaFiltroFornecedor, nomePorLote, nomeFornecedor])
+  const vendidos = useMemo<LinhaVendido[]>(
+    () => agregarComparativoVendidos(vendidosRaw, { agruparPor, passaFiltroFornecedor, nomePorLote, nomeFornecedor }),
+    [vendidosRaw, agruparPor, passaFiltroFornecedor, nomePorLote, nomeFornecedor])
 
   useEffect(() => { carregarAtivos() }, [carregarAtivos])
   useEffect(() => { carregarVendidos() }, [carregarVendidos])
@@ -520,42 +201,9 @@ export default function Comparativo() {
   // investido, lucro); média simples entre os lotes exibidos para taxas
   // (peso médio, GMD, custo/kg, margem). Colunas sem dado em nenhum lote
   // ficam em branco. ───
-  const totalAtivos = useMemo(() => {
-    if (ativos.length === 0) return null
-    const n = ativos.length
-    const custos = ativos.map(l => l.custoPorKg).filter((v): v is number => v != null)
-    const conversoes = ativos.map(l => l.conversao).filter((v): v is number => v != null)
-    const lucros = ativos.map(l => l.lucroProjetado).filter((v): v is number => v != null)
-    const margens = ativos.map(l => l.margemProjetada).filter((v): v is number => v != null)
-    return {
-      qtd: ativos.reduce((s, l) => s + l.qtd, 0),
-      pesoMedio: ativos.reduce((s, l) => s + l.pesoMedio, 0) / n,
-      gmdMedio: ativos.reduce((s, l) => s + l.gmdMedio, 0) / n,
-      conversao: conversoes.length > 0 ? conversoes.reduce((s, v) => s + v, 0) / conversoes.length : null,
-      custoPorKg: custos.length > 0 ? custos.reduce((s, v) => s + v, 0) / custos.length : null,
-      valorCompraTotal: ativos.reduce((s, l) => s + l.valorCompraTotal, 0),
-      lucroProjetado: lucros.length > 0 ? lucros.reduce((s, v) => s + v, 0) : null,
-      margemProjetada: margens.length > 0 ? margens.reduce((s, v) => s + v, 0) / margens.length : null,
-    }
-  }, [ativos])
+  const totalAtivos = useMemo(() => totalComparativoAtivos(ativos), [ativos])
 
-  const totalVendidos = useMemo(() => {
-    if (vendidos.length === 0) return null
-    const n = vendidos.length
-    const custos = vendidos.map(l => l.custoPorKg).filter((v): v is number => v != null)
-    const conversoes = vendidos.map(l => l.conversao).filter((v): v is number => v != null)
-    const margens = vendidos.map(l => l.margemPct).filter((v): v is number => v != null)
-    return {
-      qtd: vendidos.reduce((s, l) => s + l.qtd, 0),
-      pesoMedioVenda: vendidos.reduce((s, l) => s + l.pesoMedioVenda, 0) / n,
-      gmdMedio: vendidos.reduce((s, l) => s + l.gmdMedio, 0) / n,
-      conversao: conversoes.length > 0 ? conversoes.reduce((s, v) => s + v, 0) / conversoes.length : null,
-      custoPorKg: custos.length > 0 ? custos.reduce((s, v) => s + v, 0) / custos.length : null,
-      lucroTotal: vendidos.reduce((s, l) => s + l.lucroTotal, 0),
-      margemPct: margens.length > 0 ? margens.reduce((s, v) => s + v, 0) / margens.length : null,
-      lucroPorAnimal: vendidos.reduce((s, l) => s + l.lucroPorAnimal, 0) / n,
-    }
-  }, [vendidos])
+  const totalVendidos = useMemo(() => totalComparativoVendidos(vendidos), [vendidos])
 
   return (
     <div className="page">

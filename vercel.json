@@ -1,8 +1,14 @@
 {
+  "functions": {
+    "api/mcp.ts": { "maxDuration": 60 }
+  },
   "redirects": [
     { "source": "/", "destination": "/landing", "permanent": false }
   ],
   "rewrites": [
+    { "source": "/.well-known/oauth-protected-resource", "has": [{ "type": "host", "value": "mcp.confinamais.com" }], "destination": "/api/oauth-protected-resource" },
+    { "source": "/.well-known/oauth-protected-resource/:caminho*", "has": [{ "type": "host", "value": "mcp.confinamais.com" }], "destination": "/api/oauth-protected-resource" },
+    { "source": "/mcp", "has": [{ "type": "host", "value": "mcp.confinamais.com" }], "destination": "/api/mcp" },
     { "source": "/landing", "destination": "/landing.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],

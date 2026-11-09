@@ -1,24 +1,13 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { carregarResumoRelatorio, diasPeriodoRelatorio, type PeriodoRelatorio, type ResumoRelatorio } from '@/core/analises'
 import { useAuth } from '@/contexts/AuthContext'
 import { PageHeader } from '@/components/common/UI'
 import { fmt, fmtNum, fmtData } from '@/lib/calculations'
 
-type Periodo = 'semanal'|'quinzenal'|'mensal'|'trimestral'|'semestral'|'anual'
-const diasPeriodo: Record<Periodo, number> = {
-  semanal: 7, quinzenal: 15, mensal: 30, trimestral: 90, semestral: 180, anual: 365
-}
+type Periodo = PeriodoRelatorio
+const diasPeriodo = diasPeriodoRelatorio
 
-interface Resumo {
-  receita_bruta: number
-  total_comissoes: number; total_encargos: number; receita_liquida: number
-  custo_compra: number; custo_alimentacao: number
-  custos_variaveis: number; custos_fixos: number; custo_total: number
-  lucro_total: number; qtd_saidas: number; qtd_animais: number
-  lucro_por_animal: number; margem_pct: number
-  custo_pastagem: number; custo_confinamento: number; custo_misto: number
-  ganho_pastagem: number; ganho_confinamento: number; ganho_misto: number
-}
+type Resumo = ResumoRelatorio
 
 export default function Relatorios() {
   const { user } = useAuth()
@@ -40,44 +29,7 @@ export default function Relatorios() {
       setLoading(true)
       setErro(null)
       try {
-        const [{ data: saidas, error: e1 }, { count: qtdAnimaisCount, error: e2 }] = await Promise.all([
-          supabase.from('saidas_grupo').select('*')
-            .eq('user_id', user.id).gte('data', getInicio()).lte('data', getFim()),
-          supabase.from('movimentacoes_animais').select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id).not('saida_grupo_id', 'is', null)
-            .gte('data', getInicio()).lte('data', getFim()),
-        ])
-        if (e1) throw e1
-        if (e2) throw e2
-
-        const ss = saidas ?? []
-        const receita_bruta     = ss.reduce((t, s) => t + (s.receita_bruta ?? 0), 0)
-        const total_comissoes   = ss.reduce((t, s) => t + (s.total_comissoes ?? 0), 0)
-        const total_encargos    = ss.reduce((t, s) => t + (s.total_encargos ?? 0), 0)
-        const receita_liquida   = ss.reduce((t, s) => t + (s.receita_liquida ?? 0), 0)
-        const custo_compra      = ss.reduce((t, s) => t + (s.custo_compra_total ?? 0), 0)
-        const custo_alimentacao = ss.reduce((t, s) => t + (s.custo_alimentacao_total ?? 0), 0)
-        const custos_variaveis  = ss.reduce((t, s) => t + (s.custos_variaveis_total ?? 0), 0)
-        const custos_fixos      = ss.reduce((t, s) => t + (s.custos_fixos_rateados ?? 0), 0)
-        const custo_total       = custo_compra + custo_alimentacao + custos_variaveis + custos_fixos
-        const lucro_total       = ss.reduce((t, s) => t + (s.lucro_total ?? 0), 0)
-        const qtd_animais       = qtdAnimaisCount ?? 0
-        const lucro_por_animal  = qtd_animais > 0 ? lucro_total / qtd_animais : 0
-        const margem_pct        = receita_liquida > 0 ? (lucro_total / receita_liquida) * 100 : 0
-
-        const custo_pastagem      = ss.reduce((t, s) => t + (s.custo_alimentacao_pastagem_total ?? 0) + (s.custo_operacional_pastagem_total ?? 0), 0)
-        const custo_confinamento  = ss.reduce((t, s) => t + (s.custo_alimentacao_confinamento_total ?? 0) + (s.custo_operacional_confinamento_total ?? 0), 0)
-        const custo_misto         = ss.reduce((t, s) => t + (s.custo_alimentacao_misto_total ?? 0) + (s.custo_operacional_misto_total ?? 0), 0)
-        const ganho_pastagem      = ss.reduce((t, s) => t + (s.ganho_peso_pastagem_total ?? 0), 0)
-        const ganho_confinamento  = ss.reduce((t, s) => t + (s.ganho_peso_confinamento_total ?? 0), 0)
-        const ganho_misto         = ss.reduce((t, s) => t + (s.ganho_peso_misto_total ?? 0), 0)
-
-        setResumo({
-          receita_bruta, total_comissoes, total_encargos, receita_liquida,
-          custo_compra, custo_alimentacao, custos_variaveis, custos_fixos, custo_total,
-          lucro_total, qtd_saidas: ss.length, qtd_animais, lucro_por_animal, margem_pct,
-          custo_pastagem, custo_confinamento, custo_misto, ganho_pastagem, ganho_confinamento, ganho_misto,
-        })
+        setResumo(await carregarResumoRelatorio(user.id, getInicio(), getFim()))
       } catch {
         setErro('Não foi possível carregar os relatórios. Verifique sua conexão.')
       } finally {

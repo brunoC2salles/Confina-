@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Parceiro } from '@/types'
+import * as core from '@/core/cadastros'
 
+// Operações em src/core/cadastros.ts (compartilhado com o servidor MCP).
 export function useParceiros() {
   const { user } = useAuth()
   const [parceiros, setParceiros] = useState<Parceiro[]>([])
@@ -11,8 +12,7 @@ export function useParceiros() {
   const fetch = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const { data } = await supabase.from('parceiros').select('*').eq('user_id', user.id).order('nome')
-    setParceiros(data ?? [])
+    setParceiros(await core.listarParceiros(user.id))
     setLoading(false)
   }, [user])
 
@@ -20,21 +20,21 @@ export function useParceiros() {
 
   const criarParceiro = async (input: Omit<Parceiro, 'id'|'user_id'|'created_at'|'updated_at'>) => {
     if (!user) return { error: 'Não autenticado' }
-    const { error } = await supabase.from('parceiros').insert({ ...input, user_id: user.id })
-    if (!error) await fetch()
-    return { error: error?.message ?? null }
+    const res = await core.criarParceiro(user.id, input)
+    if (!res.error) await fetch()
+    return res
   }
 
   const editarParceiro = async (id: string, input: Partial<Omit<Parceiro, 'id'|'user_id'|'created_at'|'updated_at'>>) => {
-    const { error } = await supabase.from('parceiros').update(input).eq('id', id)
-    if (!error) await fetch()
-    return { error: error?.message ?? null }
+    const res = await core.editarParceiro(id, input)
+    if (!res.error) await fetch()
+    return res
   }
 
   const excluirParceiro = async (id: string) => {
-    const { error } = await supabase.from('parceiros').delete().eq('id', id)
-    if (!error) await fetch()
-    return { error: error?.message ?? null }
+    const res = await core.excluirParceiro(id)
+    if (!res.error) await fetch()
+    return res
   }
 
   return { parceiros, loading, fetch, criarParceiro, editarParceiro, excluirParceiro, porTipo: (t: Parceiro['tipo']) => parceiros.filter(p => p.tipo === t) }

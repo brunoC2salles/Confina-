@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { useDietas } from '@/hooks/useDietas'
 import { useSimulacoes, type Simulacao } from '@/hooks/useSimulacoes'
-import { useCustoEngine, buscarTudoPaginado, buscarPorIds } from '@/hooks/useLotes'
+import { estadoAtualLote } from '@/core/analises'
 import { PageHeader, EmptyState } from '@/components/common/UI'
 import { CicloCard } from '@/components/simulador/CicloCard'
 import { ResultadoCaminho } from '@/components/simulador/ResultadoCaminho'
@@ -292,7 +292,6 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
 
 function PartidaCard({ partida, onChange, mostrarMsConc }: { partida: SimPartida; onChange: (p: Partial<SimPartida>) => void; mostrarMsConc: boolean }) {
   const { user } = useAuth()
-  const { calcularEmLote } = useCustoEngine()
   const [lotes, setLotes] = useState<Array<{ id: string; nome_lote: string }>>([])
   const [loteSel, setLoteSel] = useState(partida.loteId ?? '')
   const [carregando, setCarregando] = useState(false)
@@ -309,38 +308,19 @@ function PartidaCard({ partida, onChange, mostrarMsConc }: { partida: SimPartida
   // acumulado de alimentação/operacional + custos variáveis).
   const carregarLote = async () => {
     const lote = lotes.find(l => l.id === loteSel)
-    if (!lote) return
+    if (!lote || !user) return
     setCarregando(true); setErro(null)
-    const animais = await buscarTudoPaginado<{ id: string; valor_compra: number | null }>((from, to) =>
-      supabase.from('animais').select('id, valor_compra').eq('lote_atual_id', lote.id).eq('status', 'ativo').range(from, to))
-    if (animais.length === 0) { setErro('Esse lote não tem animais ativos'); setCarregando(false); return }
-    const ids = animais.map(a => a.id)
     const hoje = hojeStr()
-    const [resultados, custosVar] = await Promise.all([
-      calcularEmLote(ids, hoje),
-      buscarPorIds<{ animal_id: string; valor: number }>(ids, (idsChunk, from, to) =>
-        supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).range(from, to)),
-    ])
-    const custoVarPorAnimal: Record<string, number> = {}
-    for (const c of custosVar) custoVarPorAnimal[c.animal_id] = (custoVarPorAnimal[c.animal_id] ?? 0) + Number(c.valor)
-    let n = 0, pesoSoma = 0, compraSoma = 0, custoSoma = 0
-    for (const a of animais) {
-      const r = resultados[a.id]
-      if (!r) continue
-      n++
-      pesoSoma += r.peso
-      compraSoma += Number(a.valor_compra ?? 0)
-      custoSoma += r.custoAcumulado + (custoVarPorAnimal[a.id] ?? 0)
-    }
+    const estado = await estadoAtualLote(user.id, lote.id, hoje)
     setCarregando(false)
-    if (n === 0) { setErro('Não foi possível calcular o estado dos animais desse lote'); return }
+    if (!('qtdAnimais' in estado)) { setErro(estado.erro); return }
     onChange({
       origem: 'lote', loteId: lote.id, loteNome: lote.nome_lote, dataReferencia: hoje,
-      qtdAnimais: String(n),
-      pesoInicial: (pesoSoma / n).toFixed(1),
+      qtdAnimais: String(estado.qtdAnimais),
+      pesoInicial: estado.pesoMedio.toFixed(1),
       compraModo: 'cabeca',
-      compraValor: (compraSoma / n).toFixed(2),
-      custoAnteriorPorCabeca: (custoSoma / n).toFixed(2),
+      compraValor: estado.compraMediaPorCabeca.toFixed(2),
+      custoAnteriorPorCabeca: estado.custoAnteriorPorCabeca.toFixed(2),
     })
   }
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useLotes } from '@/hooks/useLotes'
 import { useDietas } from '@/hooks/useDietas'
 import { useAuth } from '@/contexts/AuthContext'
-import { supabase } from '@/lib/supabase'
+import { carregarAnimaisHoje, montarLinhasHoje, agruparHojePorCiclo, agruparHojePorDieta, type AnimalHoje, type LinhaHoje } from '@/core/analises'
 import { PageHeader, EmptyState } from '@/components/common/UI'
 import { fmtData } from '@/lib/calculations'
 
@@ -12,36 +12,6 @@ import { fmtData } from '@/lib/calculations'
 // (ciclo atual do lote em que o animal está), por dieta em uso e por fornecedor
 // da leva de compra. Não é histórico — é sempre a situação de agora.
 
-interface AnimalHoje {
-  id: string
-  codigo: string
-  brinco: string
-  peso_entrada: number
-  data_entrada: string | null
-  lote_id: string | null
-  ciclo_atual: number
-  fornecedor: string
-  sexo: 'M' | 'F' | null
-}
-
-interface LinhaHoje extends AnimalHoje {
-  loteNome: string
-  cicloNumero: number | null
-  cicloNome: string
-  tipoCiclo: string | null
-  dietaId: string | null
-  dietaNome: string
-  dataPrevistaFim: string | null
-  emEspera: boolean
-}
-
-const addDias = (dataStr: string, dias: number): string => {
-  const d = new Date(dataStr + 'T00:00:00')
-  d.setDate(d.getDate() + dias)
-  return d.toISOString().slice(0, 10)
-}
-
-const hojeISO = (): string => new Date().toISOString().slice(0, 10)
 
 export default function FazendaHoje() {
   const navigate = useNavigate()
@@ -62,23 +32,7 @@ export default function FazendaHoje() {
   const carregar = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const { data } = await supabase
-      .from('animais')
-      .select('id, codigo, brinco, peso_entrada, data_entrada, lote_atual_id, ciclo_atual, sexo, compras(origem_texto, parceiros(nome))')
-      .eq('user_id', user.id).eq('status', 'ativo')
-
-    const lista: AnimalHoje[] = (data ?? []).map((a: any) => ({
-      id: a.id,
-      codigo: a.codigo,
-      brinco: a.brinco,
-      peso_entrada: a.peso_entrada,
-      data_entrada: a.data_entrada,
-      lote_id: a.lote_atual_id,
-      ciclo_atual: a.ciclo_atual,
-      fornecedor: a.compras?.parceiros?.nome ?? a.compras?.origem_texto ?? 'Não informado',
-      sexo: a.sexo ?? null,
-    }))
-    setAnimais(lista)
+    setAnimais(await carregarAnimaisHoje(user.id))
     setLoading(false)
   }, [user])
 
@@ -90,51 +44,9 @@ export default function FazendaHoje() {
     return mapa
   }, [dietas])
 
-  // Ciclo "de agora" é o ciclo_atual do PRÓPRIO ANIMAL (não mais o do lote
-  // como um todo) — com avanço de ciclo parcial, animais do mesmo lote podem
-  // estar em ciclos diferentes ao mesmo tempo. A data prevista de fim é
-  // calculada (data_inicio + dias_planejados) pois o ciclo só ganha data_fim
-  // real quando é encerrado (avançarCiclo). Por isso essa data pode ficar no
-  // passado sem que nada mude automaticamente: é só uma projeção, o sistema
-  // nunca fecha o ciclo sozinho.
-  //
-  // "emEspera": true quando a data prevista já passou E o lote não tem, em
-  // ciclos_lote, nenhum ciclo com número maior que o ciclo deste animal (ou
-  // seja, não há próximo ciclo cadastrado pra assumir esse animal).
-  const infoCiclo = useCallback((loteId: string | null, cicloNumero: number | null) => {
-    if (!loteId || cicloNumero == null) return null
-    const ciclosDoLote = ciclosPorLote[loteId] ?? []
-    const ciclo = ciclosDoLote.find(c => c.numero === cicloNumero)
-    const dataPrevistaFim = ciclo?.data_inicio && ciclo?.dias_planejados
-      ? addDias(ciclo.data_inicio, ciclo.dias_planejados)
-      : null
-    const temProximoCiclo = ciclosDoLote.some(c => c.numero > cicloNumero)
-    const emEspera = !!dataPrevistaFim && dataPrevistaFim < hojeISO() && !temProximoCiclo
-    return {
-      numero: cicloNumero,
-      nome: ciclo?.nome ?? `Ciclo ${cicloNumero}`,
-      tipoCiclo: ciclo?.tipo_ciclo ?? null,
-      dietaId: ciclo?.dieta_id ?? null,
-      dataPrevistaFim,
-      emEspera,
-    }
-  }, [ciclosPorLote])
+  // Ciclo de agora, data prevista e "em espera": ver infoCicloHoje em src/core/analises.ts.
 
-  const linhas: LinhaHoje[] = useMemo(() => animais.map(a => {
-    const lote = lotes.find(l => l.id === a.lote_id)
-    const ciclo = infoCiclo(a.lote_id, a.ciclo_atual)
-    return {
-      ...a,
-      loteNome: lote?.nome_lote ?? '— (sem lote)',
-      cicloNumero: ciclo?.numero ?? null,
-      cicloNome: ciclo?.nome ?? '—',
-      tipoCiclo: ciclo?.tipoCiclo ?? null,
-      dietaId: ciclo?.dietaId ?? null,
-      dietaNome: ciclo?.dietaId ? (dietaNomePorId[ciclo.dietaId] ?? 'Dieta removida') : 'Sem dieta / Pastagem',
-      dataPrevistaFim: ciclo?.dataPrevistaFim ?? null,
-      emEspera: ciclo?.emEspera ?? false,
-    }
-  }), [animais, lotes, infoCiclo, dietaNomePorId])
+  const linhas: LinhaHoje[] = useMemo(() => montarLinhasHoje(animais, lotes, ciclosPorLote, dietaNomePorId), [animais, lotes, ciclosPorLote, dietaNomePorId])
 
   const fornecedores = useMemo(
     () => Array.from(new Set(linhas.map(l => l.fornecedor))).sort(),
@@ -176,44 +88,11 @@ export default function FazendaHoje() {
 
   // Cards por ciclo: agrupados por lote + ciclo, pois a data prevista e o tipo
   // de ciclo variam entre lotes mesmo quando o número do ciclo é o mesmo.
-  const gruposCiclo = useMemo(() => {
-    const mapa: Record<string, {
-      loteId: string; loteNome: string; cicloNumero: number | null; cicloNome: string
-      tipoCiclo: string | null; dataPrevistaFim: string | null; emEspera: boolean; qtd: number
-      dataEntradaMin: string | null; dataEntradaMax: string | null
-    }> = {}
-    for (const l of filtradas) {
-      const chave = `${l.lote_id ?? 'sem-lote'}__${l.cicloNumero}`
-      if (!mapa[chave]) {
-        mapa[chave] = {
-          loteId: l.lote_id ?? '', loteNome: l.loteNome, cicloNumero: l.cicloNumero, cicloNome: l.cicloNome,
-          tipoCiclo: l.tipoCiclo, dataPrevistaFim: l.dataPrevistaFim, emEspera: l.emEspera, qtd: 0,
-          dataEntradaMin: null, dataEntradaMax: null,
-        }
-      }
-      mapa[chave].qtd++
-      if (l.data_entrada) {
-        const g = mapa[chave]
-        if (!g.dataEntradaMin || l.data_entrada < g.dataEntradaMin) g.dataEntradaMin = l.data_entrada
-        if (!g.dataEntradaMax || l.data_entrada > g.dataEntradaMax) g.dataEntradaMax = l.data_entrada
-      }
-    }
-    return Object.values(mapa).sort((a, b) =>
-      a.loteNome.localeCompare(b.loteNome) || (a.cicloNumero ?? 0) - (b.cicloNumero ?? 0)
-    )
-  }, [filtradas])
+  const gruposCiclo = useMemo(() => agruparHojePorCiclo(filtradas), [filtradas])
 
   // Cards por dieta: só dietas que têm algum animal ativo consumindo agora
   // (dieta do ciclo atual do lote de cada animal).
-  const gruposDieta = useMemo(() => {
-    const mapa: Record<string, { dietaId: string | null; dietaNome: string; qtd: number }> = {}
-    for (const l of filtradas) {
-      const chave = l.dietaId ?? 'sem-dieta'
-      if (!mapa[chave]) mapa[chave] = { dietaId: l.dietaId, dietaNome: l.dietaNome, qtd: 0 }
-      mapa[chave].qtd++
-    }
-    return Object.values(mapa).sort((a, b) => b.qtd - a.qtd)
-  }, [filtradas])
+  const gruposDieta = useMemo(() => agruparHojePorDieta(filtradas), [filtradas])
 
   const resultadosBusca = useMemo(() => {
     const termo = busca.trim().toLowerCase()

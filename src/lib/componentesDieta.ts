@@ -4,11 +4,11 @@
 // Compras (estoque de ingredientes). Ficam fora dos hooks para não criar
 // importação circular entre eles.
 
-import { supabase } from './supabase'
+import { supabase } from '../core/db.js'
 import {
   chaveIngrediente,
   type DietaComposicaoInfo, type ComponenteCustoInfo, type PeriodoCustoIngredienteInfo,
-} from './custoIngrediente'
+} from './custoIngrediente.js'
 
 const SELECT_DIETA_COMPOSICAO = `
   id, pct_consumo_pv_ms, pct_concentrado, pct_volumoso, custo_manual_ativo,

@@ -2,17 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
-export type Plano = 'free' | 'pro' | 'master'
+import type { Plano } from '@/core/planos'
 
-export const LIMITE_LOTES_ATIVOS: Record<Plano, number> = {
-  free: Infinity, pro: 12, master: Infinity,
-}
-
-// Limite de animais é sobre o total histórico já cadastrado pelo usuário
-// (inclui animais vendidos/saídos, não só os ativos).
-export const LIMITE_ANIMAIS_TOTAL: Record<Plano, number> = {
-  free: 100, pro: 500, master: Infinity,
-}
+export { LIMITE_LOTES_ATIVOS, LIMITE_ANIMAIS_TOTAL, type Plano } from '@/core/planos'
 
 export const PRICE_IDS = {
   pro_mensal: 'price_1U5WnjE1rxRawy7ufVnECliJ',

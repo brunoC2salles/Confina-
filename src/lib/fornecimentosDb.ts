@@ -3,9 +3,9 @@
 // pelo estoque de ingredientes e pela tela de Compras. Fica fora dos hooks
 // para não criar importação circular entre eles.
 
-import { supabase } from './supabase'
-import { chaveIngrediente } from './custoIngrediente'
-import type { FornecimentoInfo, ModoFornecimento } from './fornecimentoRacao'
+import { supabase } from '../core/db.js'
+import { chaveIngrediente } from './custoIngrediente.js'
+import type { FornecimentoInfo, ModoFornecimento } from './fornecimentoRacao.js'
 
 const SELECT_FORNECIMENTO = `
   id, data, dieta_id, modo, grupo_id, kg_total, pct_ms, observacoes, created_at,

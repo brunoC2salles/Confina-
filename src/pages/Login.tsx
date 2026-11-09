@@ -54,7 +54,9 @@ export default function Login() {
       if (error) {
         setError('E-mail ou senha inválidos.')
       } else {
-        navigate('/')
+        // Volta para a autorização OAuth (assistentes) quando o login veio de lá.
+        const destino = searchParams.get('redirect')
+        navigate(destino && destino.startsWith('/oauth/') ? destino : '/')
       }
     } else {
       if (!nome.trim()) { setError('Informe seu nome.'); setLoading(false); return }

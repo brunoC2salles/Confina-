@@ -31,8 +31,8 @@ import {
   toDay, projetarPesoPorDia, encontrarLoteAtivo, dietaVigenteDoAnimalNoDia,
   type HistoricoCustoPonto, type PeriodoLote, type CicloInfo, type PesagemPonto,
   type CicloAnimalEvento, type TrocaDietaCiclo,
-} from './custoAnimal'
-import { calcularNovoPeriodo } from './custoRacaoGrupo'
+} from './custoAnimal.js'
+import { calcularNovoPeriodo } from './custoRacaoGrupo.js'
 
 export type OrigemIngrediente = 'insumo_padrao' | 'ingrediente_produtor'
 export type TipoEntradaIngrediente = 'compra' | 'producao_propria' | 'ajuste'

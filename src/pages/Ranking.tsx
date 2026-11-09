@@ -1,13 +1,17 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useLotes, useCustoEngine, buscarPorIds, buscarFornecedorPorAnimal } from '@/hooks/useLotes'
+import { useLotes } from '@/hooks/useLotes'
 import { useFaixas } from '@/hooks/useFaixas'
 import { useParceiros } from '@/hooks/useHooks'
 import { useAuth } from '@/contexts/AuthContext'
-import { supabase } from '@/lib/supabase'
+import {
+  carregarLinhasRankingAtivos, carregarLinhasRankingVendidos, aplicarLucroProjetado,
+  ordenarRankingAtivos, ordenarRankingVendidos, rotuloSexo,
+  type CriterioRanking, type LinhaAtivo, type LinhaVendido, type Sexo,
+} from '@/core/analises'
 import { PageHeader, EmptyState } from '@/components/common/UI'
-import { fmt, fmtNum, fmtData, obterRendimento, obterBonus } from '@/lib/calculations'
+import { fmt, fmtNum, fmtData } from '@/lib/calculations'
 
-type Criterio = 'rendimento' | 'ganho' | 'custo_kg' | 'lucro' | 'peso'
+type Criterio = CriterioRanking
 const CRITERIOS: Array<{ value: Criterio; label: string }> = [
   { value: 'lucro',    label: 'Lucro' },
   { value: 'peso',     label: 'Peso' },
@@ -25,59 +29,14 @@ const TITULOS_RANKING: Record<Criterio, { desc: string; asc: string }> = {
   lucro:      { desc: 'Ranking dos mais lucrativos', asc: 'Ranking dos menos lucrativos' },
 }
 
-const hojeStr = () => new Date().toISOString().split('T')[0]
-
-type Sexo = 'M' | 'F' | null
-const rotuloSexo = (s: Sexo) => s === 'M' ? 'Macho' : s === 'F' ? 'Fêmea' : '—'
-
 // Ordenação numérica natural do brinco (texto), ex: "9" antes de "10".
 const compararBrincoNatural = (a: string, b: string) =>
   (a ?? '').localeCompare(b ?? '', 'pt-BR', { numeric: true, sensitivity: 'base' })
 
-interface LinhaAtivo {
-  animal_id: string
-  codigo: string
-  brinco: string
-  loteId: string
-  loteNome: string
-  cicloAtual: number
-  sexo: Sexo
-  fornecedorId: string | null
-  fornecedorNome: string
-  pesoEntrada: number
-  pesoAtual: number
-  ganho: number
-  diasConfinamento: number
-  rendPct: number
-  custoAcumulado: number
-  custoPorKg: number | null
-  valorCompra: number
-  lucroProjetado: number | null
-}
-
-interface LinhaVendido {
-  animal_id: string
-  codigo: string
-  brinco: string
-  loteId: string | null
-  loteNome: string
-  sexo: Sexo
-  fornecedorId: string | null
-  fornecedorNome: string
-  data: string
-  pesoEntrada: number
-  pesoVenda: number
-  ganho: number
-  rendPct: number
-  custoAtribuido: number
-  custoPorKg: number | null
-  lucro: number
-}
 
 export default function Ranking() {
   const { user } = useAuth()
   const { lotes, ciclosPorLote } = useLotes()
-  const { calcularEmLote } = useCustoEngine()
   const { rendimentos, bonus } = useFaixas()
   const { parceiros } = useParceiros()
   // Mesmo critério usado em Lotes.tsx para o seletor de fornecedor da leva.
@@ -134,107 +93,24 @@ export default function Ranking() {
   const carregarAtivos = useCallback(async () => {
     if (!user) return
     setLoadingAtivos(true)
-    const { data: animaisData } = await supabase
-      .from('animais').select('id, codigo, brinco, peso_entrada, valor_compra, lote_atual_id, data_entrada, ciclo_atual, sexo')
-      .eq('user_id', user.id).eq('status', 'ativo')
-
-    const lista = (animaisData ?? []) as Array<{ id: string; codigo: string; brinco: string; peso_entrada: number; valor_compra: number; lote_atual_id: string; data_entrada: string; ciclo_atual: number; sexo: Sexo }>
-    if (lista.length === 0) { setAtivos([]); setLoadingAtivos(false); return }
-
-    const [custos, custosVarData, fornecedorPorAnimal] = await Promise.all([
-      calcularEmLote(lista.map(a => a.id), hojeStr()),
-      buscarPorIds<{ animal_id: string; valor: number }>(lista.map(a => a.id), (idsChunk, from, to) =>
-        supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).range(from, to)),
-      buscarFornecedorPorAnimal(lista.map(a => a.id)),
-    ])
-    const custosVarPorAnimal: Record<string, number> = {}
-    for (const c of custosVarData) {
-      custosVarPorAnimal[c.animal_id] = (custosVarPorAnimal[c.animal_id] ?? 0) + c.valor
-    }
-
-    const linhas: LinhaAtivo[] = lista.map(a => {
-      const r = custos[a.id]
-      const pesoAtual = r?.peso ?? a.peso_entrada
-      const ganho = pesoAtual - a.peso_entrada
-      const custoAcumulado = (r?.custoAcumulado ?? 0) + (custosVarPorAnimal[a.id] ?? 0)
-      const rendPct = obterRendimento(pesoAtual, rendimentos)
-      const custoPorKg = ganho > 0 ? custoAcumulado / ganho : null
-      const fornecedorId = fornecedorPorAnimal[a.id] ?? null
-      return {
-        animal_id: a.id, codigo: a.codigo, brinco: a.brinco,
-        loteId: a.lote_atual_id, loteNome: lotes.find(l => l.id === a.lote_atual_id)?.nome_lote ?? '—',
-        cicloAtual: a.ciclo_atual,
-        sexo: a.sexo ?? null,
-        fornecedorId, fornecedorNome: nomeFornecedor(fornecedorId),
-        pesoEntrada: a.peso_entrada, pesoAtual, ganho,
-        diasConfinamento: r?.diasConfinamento ?? 0,
-        rendPct, custoAcumulado, custoPorKg,
-        valorCompra: a.valor_compra, lucroProjetado: null,
-      }
-    })
-    setAtivos(linhas)
+    const nomeLote = (id: string | null) => lotes.find(l => l.id === id)?.nome_lote ?? '—'
+    setAtivos(await carregarLinhasRankingAtivos(user.id, { rendimentos, nomeFornecedor, nomeLote }))
     setLoadingAtivos(false)
-  }, [user, calcularEmLote, lotes, rendimentos, nomeFornecedor])
+  }, [user, lotes, rendimentos, nomeFornecedor])
 
   const carregarVendidos = useCallback(async () => {
     if (!user) return
     setLoadingVendidos(true)
-    const { data: movsData } = await supabase
-      .from('movimentacoes_animais')
-      .select('animal_id, data, peso, custo_atribuido, lucro, lote_origem_id, animais(codigo, brinco, peso_entrada, sexo)')
-      .eq('user_id', user.id).not('lucro', 'is', null)
-      .in('tipo', ['saida_venda', 'saida_abate', 'saida_transferencia', 'saida_morte'])
-
-    const movs = (movsData ?? []) as any[]
-    const loteIds = Array.from(new Set(movs.map(m => m.lote_origem_id).filter(Boolean)))
-    const [{ data: lotesData }, fornecedorPorAnimal] = await Promise.all([
-      loteIds.length > 0
-        ? supabase.from('lotes').select('id, nome_lote').in('id', loteIds)
-        : Promise.resolve({ data: [] }),
-      buscarFornecedorPorAnimal(movs.map(m => m.animal_id)),
-    ])
-    const nomePorLote: Record<string, string> = {}
-    for (const l of (lotesData ?? []) as Array<{ id: string; nome_lote: string }>) nomePorLote[l.id] = l.nome_lote
-
-    const linhas: LinhaVendido[] = movs
-      .filter(m => m.animais && m.peso != null)
-      .map(m => {
-        const pesoEntrada = m.animais.peso_entrada as number
-        const ganho = m.peso - pesoEntrada
-        const rendPct = obterRendimento(m.peso, rendimentos)
-        const custoPorKg = ganho > 0 && m.custo_atribuido != null ? m.custo_atribuido / ganho : null
-        const fornecedorId = fornecedorPorAnimal[m.animal_id] ?? null
-        return {
-          animal_id: m.animal_id, codigo: m.animais.codigo, brinco: m.animais.brinco,
-          loteId: m.lote_origem_id ?? null,
-          loteNome: m.lote_origem_id ? (nomePorLote[m.lote_origem_id] ?? '—') : '—',
-          sexo: (m.animais.sexo ?? null) as Sexo,
-          fornecedorId, fornecedorNome: nomeFornecedor(fornecedorId),
-          data: m.data, pesoEntrada, pesoVenda: m.peso, ganho, rendPct,
-          custoAtribuido: m.custo_atribuido ?? 0, custoPorKg, lucro: m.lucro ?? 0,
-        }
-      })
-    setVendidos(linhas)
+    setVendidos(await carregarLinhasRankingVendidos(user.id, { rendimentos, nomeFornecedor }))
     setLoadingVendidos(false)
   }, [user, rendimentos, nomeFornecedor])
 
   useEffect(() => { carregarAtivos() }, [carregarAtivos])
   useEffect(() => { carregarVendidos() }, [carregarVendidos])
 
-  const ativosComLucro = useMemo(() => {
-    if (!preco || Number(preco) <= 0) return ativos
-    const p = Number(preco)
-    const pc = Number(pctComissao) || 0
-    const pe = Number(pctEncargo) || 0
-    return ativos.map(a => {
-      const pesoCarcaca = a.pesoAtual * (a.rendPct / 100)
-      const valorBonus = pesoCarcaca * obterBonus(a.pesoAtual, bonus)
-      const receitaBruta = a.pesoAtual * p + valorBonus
-      const receitaLiquida = receitaBruta * (1 - pc / 100 - pe / 100)
-      const custoTotal = a.valorCompra + a.custoAcumulado
-      return { ...a, lucroProjetado: receitaLiquida - custoTotal }
-    })
-  }, [ativos, preco, pctComissao, pctEncargo, bonus])
+  const ativosComLucro = useMemo(
+    () => aplicarLucroProjetado(ativos, Number(preco), Number(pctComissao), Number(pctEncargo), bonus),
+    [ativos, preco, pctComissao, pctEncargo, bonus])
 
   const passaFiltroFornecedor = (fornecedorId: string | null) =>
     fornecedorFiltro === 'todos' || (fornecedorFiltro === 'nao_informado' ? fornecedorId == null : fornecedorId === fornecedorFiltro)
@@ -258,19 +134,13 @@ export default function Ranking() {
     if (tab === 'ativos' && criterio === 'lucro' && !preco) setCriterio('ganho')
   }, [tab, preco, criterio])
 
-  const ativosOrdenados = useMemo(() => {
-    const arr = [...ativosFiltrados]
-    const key = (a: LinhaAtivo) => criterio === 'rendimento' ? a.rendPct : criterio === 'peso' ? a.pesoAtual : criterio === 'ganho' ? a.ganho : criterio === 'custo_kg' ? (a.custoPorKg ?? -Infinity) : (a.lucroProjetado ?? -Infinity)
-    arr.sort((a, b) => (key(b) - key(a)) * (ordemDesc ? 1 : -1))
-    return arr
-  }, [ativosFiltrados, criterio, ordemDesc])
+  const ativosOrdenados = useMemo(
+    () => ordenarRankingAtivos(ativosFiltrados, criterio, ordemDesc),
+    [ativosFiltrados, criterio, ordemDesc])
 
-  const vendidosOrdenados = useMemo(() => {
-    const arr = [...vendidosFiltrados]
-    const key = (v: LinhaVendido) => criterio === 'rendimento' ? v.rendPct : criterio === 'peso' ? v.pesoVenda : criterio === 'ganho' ? v.ganho : criterio === 'custo_kg' ? (v.custoPorKg ?? -Infinity) : v.lucro
-    arr.sort((a, b) => (key(b) - key(a)) * (ordemDesc ? 1 : -1))
-    return arr
-  }, [vendidosFiltrados, criterio, ordemDesc])
+  const vendidosOrdenados = useMemo(
+    () => ordenarRankingVendidos(vendidosFiltrados, criterio, ordemDesc),
+    [vendidosFiltrados, criterio, ordemDesc])
 
   // Filtro "Top N": limita a lista já ordenada aos N primeiros colocados.
   const topNNumero = useMemo(() => {

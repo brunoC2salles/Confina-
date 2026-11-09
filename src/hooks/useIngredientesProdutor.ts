@@ -1,15 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import type { InsumoPadrao, IngredienteProdutor } from '@/hooks/useDietas'
+import * as core from '@/core/cadastros'
+import type { PrecoProdutor } from '@/core/cadastros'
 
-export interface PrecoProdutor {
-  id: string
-  user_id: string
-  insumo_id: string
-  preco_kg: number
-}
+export type { PrecoProdutor } from '@/core/cadastros'
 
+// Operações em src/core/cadastros.ts (compartilhado com o servidor MCP).
 export function useIngredientesProdutor() {
   const { user } = useAuth()
   const [ingredientes, setIngredientes] = useState<IngredienteProdutor[]>([])
@@ -20,17 +17,10 @@ export function useIngredientesProdutor() {
   const fetchAll = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const [{ data: ing }, { data: ins }, { data: pr }] = await Promise.all([
-      supabase.from('ingredientes_produtor').select('*')
-        .eq('user_id', user.id).order('categoria').order('nome'),
-      supabase.from('insumos_padrao').select('*')
-        .eq('ativo', true).order('categoria').order('nome'),
-      supabase.from('precos_produtor').select('*')
-        .eq('user_id', user.id),
-    ])
-    setIngredientes(ing ?? [])
-    setInsumosPadrao(ins ?? [])
-    setPrecos(pr ?? [])
+    const r = await core.listarIngredientesEPrecos(user.id)
+    setIngredientes(r.ingredientes)
+    setInsumosPadrao(r.insumosPadrao)
+    setPrecos(r.precos)
     setLoading(false)
   }, [user])
 
@@ -48,16 +38,9 @@ export function useIngredientesProdutor() {
     preco_kg: number
   }) => {
     if (!user) return { error: 'Não autenticado' }
-    const { error } = await supabase.from('ingredientes_produtor').insert({
-      user_id: user.id,
-      nome: input.nome,
-      categoria: input.categoria,
-      pct_ms: input.pct_ms,
-      preco_kg: input.preco_kg,
-      ativo: true,
-    })
-    if (!error) await fetchAll()
-    return { error: error?.message ?? null }
+    const res = await core.criarIngrediente(user.id, input)
+    if (!res.error) await fetchAll()
+    return res
   }
 
   const atualizarIngrediente = async (id: string, input: Partial<{
@@ -67,40 +50,30 @@ export function useIngredientesProdutor() {
     preco_kg: number
     ativo: boolean
   }>) => {
-    const { error } = await supabase.from('ingredientes_produtor').update(input).eq('id', id)
-    if (!error) await fetchAll()
-    return { error: error?.message ?? null }
+    const res = await core.atualizarIngrediente(id, input)
+    if (!res.error) await fetchAll()
+    return res
   }
 
   const excluirIngrediente = async (id: string) => {
-    const { error } = await supabase.from('ingredientes_produtor').delete().eq('id', id)
-    if (!error) await fetchAll()
-    return { error: error?.message ?? null }
+    const res = await core.excluirIngrediente(id)
+    if (!res.error) await fetchAll()
+    return res
   }
 
   const upsertPrecoProdutor = async (insumo_id: string, preco_kg: number) => {
     if (!user) return { error: 'Não autenticado' }
-    const existente = precos.find(p => p.insumo_id === insumo_id)
-    if (existente) {
-      const { error } = await supabase.from('precos_produtor')
-        .update({ preco_kg })
-        .eq('id', existente.id)
-      if (!error) await fetchAll()
-      return { error: error?.message ?? null }
-    }
-    const { error } = await supabase.from('precos_produtor').insert({
-      user_id: user.id, insumo_id, preco_kg,
-    })
-    if (!error) await fetchAll()
-    return { error: error?.message ?? null }
+    const res = await core.upsertPrecoProdutor(user.id, insumo_id, preco_kg, precos)
+    if (!res.error) await fetchAll()
+    return res
   }
 
   const removerPrecoProdutor = async (insumo_id: string) => {
-    const existente = precos.find(p => p.insumo_id === insumo_id)
-    if (!existente) return { error: null }
-    const { error } = await supabase.from('precos_produtor').delete().eq('id', existente.id)
-    if (!error) await fetchAll()
-    return { error: error?.message ?? null }
+    if (!user) return { error: 'Não autenticado' }
+    const res = await core.removerPrecoProdutor(user.id, insumo_id, precos)
+    if (res.semAlteracao) return { error: null }
+    if (!res.error) await fetchAll()
+    return { error: res.error }
   }
 
   return {

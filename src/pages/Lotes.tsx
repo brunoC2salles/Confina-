@@ -18,6 +18,7 @@ import type {
   CustoVariavelAnimal,
 } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { somarCustosVariaveisPorAnimal } from '@/core/analises'
 import { parseCsvAnimais } from '@/lib/csv'
 import { calcularGmdRealUltimoIntervalo, toDay } from '@/lib/custoAnimal'
 import type { ResultadoAnimalNaData, EtapaResultado } from '@/lib/custoAnimal'
@@ -1070,15 +1071,10 @@ function DetalheLote({
     if (animais.length === 0) { setResultados({}); setCustosVariaveisPorAnimal({}); return }
     setCalculando(true)
     const animalIds = animais.map(a => a.id)
-    const [res, custosVarData] = await Promise.all([
+    const [res, custosVar] = await Promise.all([
       calcularEmLote(animalIds, hojeStr()),
-      buscarPorIds<{ animal_id: string; valor: number }>(animalIds, (idsChunk, from, to) =>
-        supabase.from('custos_variaveis_animal').select('animal_id, valor').in('animal_id', idsChunk).range(from, to)),
+      somarCustosVariaveisPorAnimal(animalIds),
     ])
-    const custosVar: Record<string, number> = {}
-    for (const c of custosVarData) {
-      custosVar[c.animal_id] = (custosVar[c.animal_id] ?? 0) + c.valor
-    }
     setResultados(res)
     setCustosVariaveisPorAnimal(custosVar)
     setCalculando(false)
