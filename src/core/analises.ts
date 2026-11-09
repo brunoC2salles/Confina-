@@ -703,6 +703,7 @@ export async function carregarResumoRelatorio(userId: string, inicio: string, fi
   const custo_misto         = ss.reduce((t, s) => t + (s.custo_alimentacao_misto_total ?? 0) + (s.custo_operacional_misto_total ?? 0), 0)
   const ganho_pastagem      = ss.reduce((t, s) => t + (s.ganho_peso_pastagem_total ?? 0), 0)
   const ganho_confinamento  = ss.reduce((t, s) => t + (s.ganho_peso_confinamento_total ?? 0), 0)
+  const ganho_misto         = ss.reduce((t, s) => t + (s.ganho_peso_misto_total ?? 0), 0)
 
   return {
     receita_bruta, total_comissoes, total_encargos, receita_liquida,
