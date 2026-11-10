@@ -225,18 +225,28 @@ p,li,blockquote,td,.prob-d,.step-d,.msg{text-wrap:pretty}
 /* FEATURES */
 .feat-head{margin-bottom:48px}
 .feat-head .lead{max-width:720px}
-.feat-group{margin-top:40px}
-.feat-group:first-of-type{margin-top:0}
-.fg-title{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--gray-500);margin-bottom:16px}
-.fg-title::after{content:'';flex:1;height:1px;background:var(--border)}
-.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-.feat-card{padding:26px;border:1px solid var(--border);border-radius:var(--r-lg);background:#fff;transition:border-color .25s,box-shadow .25s,transform .25s}
-.feat-card:hover{border-color:var(--green-border);box-shadow:0 8px 32px rgba(46,125,50,.08);transform:translateY(-2px)}
-.feat-top{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px}
-.feat-top h3{margin:0;padding-top:1px}
-.feat-ic{width:22px;height:22px;flex-shrink:0;stroke:var(--green);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.feat-card p{font-size:14px;font-weight:300;line-height:1.65;color:var(--gray-500)}
 .new{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:#8a6516;background:#fbf4e3;border:1px solid #ecd8a6;border-radius:20px;padding:2px 8px;margin-left:6px;vertical-align:middle}
+
+
+/* PILLARS */
+.pillars{display:flex;flex-direction:column;gap:104px;margin-top:72px}
+.pillar{display:grid;grid-template-columns:1fr 1fr;gap:72px;align-items:center}
+.pillar.rev .pillar-txt{order:2}
+.pillar h3{font-size:clamp(24px,2.4vw,34px);line-height:1.15;letter-spacing:-.4px;margin-bottom:14px}
+.pillar-lead{font-size:16px;font-weight:300;line-height:1.7;color:var(--gray-500);max-width:520px}
+.pillar .ai-list{margin:24px 0 0}
+.pillar .btn{margin-top:30px}
+.gmd-list{display:flex;flex-direction:column;gap:12px;border:1px solid var(--border);border-radius:var(--r-md);padding:16px}
+.gmd-row{display:grid;grid-template-columns:52px 1fr 58px 48px;gap:10px;align-items:center;font-size:13px}
+.gmd-b{font-weight:500}
+.gmd-v{text-align:right;font-weight:500}
+.gmd-d{text-align:right;font-size:12px;font-weight:600}
+.gmd-d.up{color:var(--green)}.gmd-d.dn{color:#a76d0f}
+.incl{margin-top:104px;padding-top:48px;border-top:1px solid var(--border)}
+.incl-t{font-size:clamp(20px,2vw,26px);margin-bottom:28px}
+.incl-list{list-style:none;display:grid;grid-template-columns:repeat(4,1fr);gap:16px 28px}
+.incl-list li{display:flex;gap:10px;font-size:14px;line-height:1.5;color:var(--gray-600)}
+.incl-list .ck{margin-top:2px}
 
 /* SPOTLIGHT (simulador / IA) */
 .spot{background:var(--green-deep);color:#fff}
@@ -397,12 +407,15 @@ footer{background:var(--black);padding:44px var(--pad);display:grid;grid-templat
 
 /* RESPONSIVE */
 @media(max-width:1100px){
+  .pillar{grid-template-columns:1fr;gap:36px}
+  .pillar.rev .pillar-txt{order:0}
+  .pillars{gap:80px}
+  .incl-list{grid-template-columns:repeat(2,1fr)}
   .cons-cta{justify-self:start}
   :root{--pad:40px}
   nav{padding:0 28px}
   .nav-links{display:none}
   .hero-grid,.spot-grid,.how-grid,.prob-grid,.cons-box{grid-template-columns:1fr;gap:44px}
-  .feat-grid{grid-template-columns:1fr 1fr}
   .strip-grid{grid-template-columns:1fr 1fr}
   .price-grid{grid-template-columns:1fr;max-width:420px;margin-left:auto;margin-right:auto}
   .pc-for,.pc-period{min-height:0}
@@ -423,15 +436,22 @@ footer{background:var(--black);padding:44px var(--pad);display:grid;grid-templat
   h2{font-size:26px}
   .hero-sub{font-size:16px}
   .hero-cta .btn{width:100%}
-  .feat-grid,.strip-grid,.faq-grid{grid-template-columns:1fr}
+  .strip-grid,.faq-grid{grid-template-columns:1fr}
   .kpi-v{font-size:19px}
-  .sim th,.sim td{padding:11px 12px}
+  .sim th,.sim td{padding:11px 8px;font-size:12px}
+  .sim th{letter-spacing:0;font-size:10.5px}
+  .sim th:first-child,.sim td:first-child{padding-left:14px}
+  .sim th:last-child,.sim td:last-child{padding-right:14px}
   .cmp th,.cmp td{padding:12px 14px}
   .calc{padding-bottom:72px}
   .calc-box{padding:28px 22px}
   .calc-box .btn{width:100%}
   .cta-row .btn{width:100%}
   .wa-float{right:14px;bottom:14px}
+  .incl-list{grid-template-columns:1fr}
+  .incl{margin-top:80px}
+  .gmd-row{grid-template-columns:46px 1fr 54px 42px;gap:8px;font-size:12px}
+  .pillar .btn{width:100%}
   .mock-hdr .chip{order:-1}
   .cmp thead{display:none}
   .cmp table,.cmp tbody{display:block;height:auto}
@@ -562,82 +582,114 @@ footer{background:var(--black);padding:44px var(--pad);display:grid;grid-templat
 <section class="sec" id="funcionalidades" aria-labelledby="feat-h">
   <div class="wrap">
     <div class="feat-head">
-      <div>
-        <p class="tag">Funcionalidades</p>
-        <h2 id="feat-h">Gestão de ponta a ponta, animal por animal.</h2>
-      </div>
+      <p class="tag">Funcionalidades</p>
+      <h2 id="feat-h">Gestão de ponta a ponta, animal por animal.</h2>
       <p class="lead">Cada cabeça tem seu próprio histórico, custo e projeção. Do dia da compra ao romaneio do frigorífico.</p>
     </div>
 
-    <div class="feat-group">
-      <div class="fg-title">Rebanho e lotes</div>
-      <div class="feat-grid">
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><h3>Rastreabilidade individual</h3></div><p>Histórico completo de cada brinco: entrada, pesagens, troca de lote, ciclos, custos e saída.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M11 18H8a2 2 0 0 1-2-2V9"/></svg><h3>Até 8 ciclos por lote <span class="new">Misto</span></h3></div><p>Pastagem, terminação ou ciclo misto, cada um com dieta e GMD esperado próprios. Bifurque animais sem perder o histórico de custo.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><h3>Fazenda Hoje <span class="new">Novo</span></h3></div><p>A foto do momento: quantos animais ativos você tem por lote, por ciclo, por dieta em uso e por fornecedor.</p></article>
-      </div>
+    <div class="pillars">
+      <article class="pillar" id="gmd">
+        <div class="pillar-txt">
+          <p class="tag">GMD real brinco a brinco</p>
+          <h3>Veja quanto cada animal está ganhando.</h3>
+          <p class="pillar-lead">Cada pesagem atualiza o ganho real de cada brinco no ciclo, comparado ao esperado. Quem está puxando o resultado para baixo aparece na hora.</p>
+          <ul class="ai-list">
+            <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>GMD real por ciclo, a partir de 28 dias de adaptação</li>
+            <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Projeção de peso e lucro com o ganho real de cada animal</li>
+            <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Ranking por ganho, custo por kg ou lucro, com exportação em PDF</li>
+          </ul>
+        </div>
+        <div class="mock reveal" role="img" aria-label="Exemplo de GMD real por brinco no Confina+">
+          <div class="mock-bar"><i></i><i></i><i></i><span>confinamais.com / pesagens</span></div>
+          <div class="mock-body">
+            <div class="mock-hdr"><div><div class="mock-title">Lote Recria 03</div><div class="mock-sub">GMD esperado do ciclo: 0,85 kg/dia</div></div><span class="chip">Pesagem de hoje</span></div>
+            <div class="gmd-list">
+              <div class="gmd-row"><span class="gmd-b">#4821</span><span class="bar"><b style="width:92%"></b></span><span class="gmd-v">1,12 kg</span><span class="gmd-d up">+0,27</span></div>
+              <div class="gmd-row"><span class="gmd-b">#4790</span><span class="bar"><b style="width:79%"></b></span><span class="gmd-v">0,96 kg</span><span class="gmd-d up">+0,11</span></div>
+              <div class="gmd-row"><span class="gmd-b">#4812</span><span class="bar"><b style="width:72%"></b></span><span class="gmd-v">0,88 kg</span><span class="gmd-d up">+0,03</span></div>
+              <div class="gmd-row"><span class="gmd-b">#4833</span><span class="bar"><b class="low" style="width:62%"></b></span><span class="gmd-v">0,76 kg</span><span class="gmd-d dn">-0,09</span></div>
+              <div class="gmd-row"><span class="gmd-b">#4805</span><span class="bar"><b class="low" style="width:52%"></b></span><span class="gmd-v">0,64 kg</span><span class="gmd-d dn">-0,21</span></div>
+            </div>
+            <div class="mock-foot">Exemplo ilustrativo</div>
+          </div>
+        </div>
+      </article>
+
+      <article class="pillar rev" id="comparativo">
+        <div class="pillar-txt">
+          <p class="tag">Comparativo de lotes</p>
+          <h3>Compare todos os lotes lado a lado.</h3>
+          <p class="pillar-lead">Descubra qual lote, dieta ou fornecedor rendeu mais sem abrir um por um.</p>
+          <ul class="ai-list">
+            <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Peso médio, GMD, custo por kg ganho e margem numa tabela só</li>
+            <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Conversão alimentar em kg de concentrado por kg ganho</li>
+            <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Resultado com dieta, rateios e mão de obra incluídos</li>
+          </ul>
+        </div>
+        <div class="sim reveal" role="img" aria-label="Exemplo do comparativo de lotes do Confina+">
+          <div class="sim-hdr"><b>Comparativo de lotes</b><span class="chip">3 lotes ativos</span></div>
+          <table>
+            <thead><tr><th scope="col">Lote</th><th scope="col">GMD</th><th scope="col">Custo por kg</th><th scope="col">Conversão</th></tr></thead>
+            <tbody>
+              <tr><td>Terminação 01</td><td class="best">1,32 kg</td><td>R$ 10,15</td><td>7,4</td></tr>
+              <tr><td>Recria 03</td><td>0,94 kg</td><td>R$ 9,42</td><td>6,8</td></tr>
+              <tr><td>Misto 04</td><td>0,88 kg</td><td class="best">R$ 8,90</td><td class="best">5,9</td></tr>
+            </tbody>
+          </table>
+          <div class="sim-foot">Exemplo ilustrativo. Conversão em kg de concentrado por kg ganho.</div>
+        </div>
+      </article>
+
+      <article class="pillar" id="simulador">
+        <div class="pillar-txt">
+          <p class="tag">Simulador de caminhos <span class="new">Novo</span></p>
+          <h3>Compare caminhos antes de investir.</h3>
+          <p class="pillar-lead">Monte ciclos em sequência, da entrada à venda, e veja qual caminho custa menos e rende mais.</p>
+          <ul class="ai-list">
+            <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Cada ciclo com sua dieta e o custo de estrutura por kg produzido</li>
+            <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Consumo e gasto com concentrado, em matéria natural e matéria seca</li>
+            <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Projeção de lucro e retorno, partindo de um lote real ou do zero</li>
+          </ul>
+          <a href="/login?mode=register&amp;plano=free" class="btn btn-lg btn-green">Criar conta e simular</a>
+        </div>
+        <div class="sim reveal" role="img" aria-label="Exemplo de comparação de dois caminhos no simulador do Confina+">
+          <div class="sim-hdr"><b>Comparativo de caminhos</b><span class="chip gold">100 animais</span></div>
+          <table>
+            <thead><tr><th scope="col">Indicador</th><th scope="col">Pasto e terminação</th><th scope="col">Ciclo misto</th></tr></thead>
+            <tbody>
+              <tr><td>Dias até a venda</td><td>210</td><td>165</td></tr>
+              <tr><td>Concentrado (MS)</td><td>58,4 t</td><td>71,9 t</td></tr>
+              <tr><td>Gasto com concentrado</td><td>R$ 112 mil</td><td>R$ 138 mil</td></tr>
+              <tr><td>Custo por kg produzido</td><td class="best">R$ 9,10</td><td>R$ 9,85</td></tr>
+              <tr><td>Retorno</td><td>1,22x</td><td class="best">1,27x</td></tr>
+            </tbody>
+          </table>
+          <div class="sim-foot">Exemplo ilustrativo. Os resultados dependem dos seus dados.</div>
+        </div>
+      </article>
     </div>
 
-    <div class="feat-group">
-      <div class="fg-title">Desempenho</div>
-      <div class="feat-grid">
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><h3>GMD real por ciclo <span class="new">Novo</span></h3></div><p>Cada ciclo parte do GMD esperado. Com uma nova pesagem após 28 dias de adaptação, a projeção passa a usar o GMD real de cada animal.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg><h3>Ranking de animais</h3></div><p>Ordene ativos ou vendidos por lucro, ganho de peso, custo por kg ou rendimento. Filtre por sexo e por vários lotes, e exporte em PDF.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><h3>Comparativo e conversão alimentar</h3></div><p>Peso médio, GMD, custo por kg ganho, margem e conversão em kg de concentrado por kg ganho, de todos os lotes lado a lado.</p></article>
-      </div>
-    </div>
-
-    <div class="feat-group">
-      <div class="fg-title">Custos e estoque</div>
-      <div class="feat-grid">
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><h3>Custo diário automatizado</h3></div><p>Ingredientes da dieta com percentual do peso vivo e preço por kg. O custo é recalculado conforme o animal ganha peso, com histórico de preço das dietas.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><h3>Estoque de ingredientes <span class="new">Novo</span></h3></div><p>Compras, produção própria e ajuste de inventário em kg de matéria seca. O custo médio do estoque alimenta o custo da dieta.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 20.5l10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7z"/><line x1="8.5" y1="8.5" x2="15.5" y2="15.5"/></svg><h3>Rateio de medicamentos e compras</h3></div><p>Medicamentos e outras compras divididos entre os animais ativos, com o detalhe do custo visível em cada animal.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><h3>Mão de obra e maquinário</h3></div><p>Lance custos por animal com período em dias. O valor é apropriado dia a dia a partir do lançamento.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg><h3>Compra por fornecedor e leva</h3></div><p>Cada entrada registra fornecedor, data e preço. Um lote reúne origens diferentes sem perder o valor pago em cada leva.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><h3>Parceiros e fornecedores</h3></div><p>Cadastre produtores, corretores e fornecedores e vincule cada um às compras de animais, ração e insumos.</p></article>
-      </div>
-    </div>
-
-    <div class="feat-group">
-      <div class="fg-title">Venda e financeiro</div>
-      <div class="feat-grid">
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg><h3>Venda por rendimento de carcaça</h3></div><p>Venda por peso próprio, peso de carga ou rendimento de carcaça, com as faixas de bônus do seu frigorífico aplicadas.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><h3>Comissões e encargos</h3></div><p>Corretor, operador, FUNRURAL e outros encargos lançados na saída. O resultado líquido sai na hora.</p></article>
-        <article class="feat-card reveal"><div class="feat-top"><svg class="feat-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><h3>Relatórios financeiros</h3></div><p>Semanal, mensal, trimestral ou anual, com receitas, deduções e lucro líquido separados. Exportação em PDF e CSV.</p></article>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- SIMULADOR -->
-<section class="sec spot" id="simulador" aria-labelledby="sim-h">
-  <div class="wrap spot-grid">
-    <div>
-      <p class="tag">Simulador de caminhos <span class="new">Novo</span></p>
-      <h2 id="sim-h">Compare caminhos antes de investir.</h2>
-      <p class="lead">Monte ciclos em sequência, da entrada à venda, e veja qual caminho custa menos e rende mais.</p>
-      <ul class="spot-list">
-        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Cada ciclo com sua dieta e o custo de mão de obra e estrutura por kg produzido</li>
-        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Consumo e gasto com concentrado por lote e por animal, em matéria natural e matéria seca</li>
-        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Projeção de lucro e retorno sobre o investimento quando você quiser ver</li>
-        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Parta do estado real de um lote ativo ou de um cenário do zero</li>
+    <div class="incl">
+      <h3 class="incl-t">Tudo o que vem incluso</h3>
+      <ul class="incl-list">
+        
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Rastreabilidade individual por brinco</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Até 8 ciclos por lote: pastagem, terminação ou misto</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Bifurcação de lotes sem perder o histórico</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Fazenda Hoje: animais por lote, ciclo, dieta e fornecedor</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Ranking de animais com filtros e PDF</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Custo diário automatizado da dieta</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Estoque de ingredientes com custo médio</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Rateio de medicamentos e outras compras</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Mão de obra e maquinário por período</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Compra por fornecedor e leva</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Cadastro de parceiros e fornecedores</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Venda por rendimento de carcaça e bônus do frigorífico</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Comissões, FUNRURAL e encargos na venda</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Relatórios financeiros em PDF e CSV</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Importação de animais e pesagens por planilha</li>
+        <li><span class="ck"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></span>Integração com Claude e ChatGPT</li>
       </ul>
-      <a href="/login?mode=register&amp;plano=free" class="btn btn-lg btn-white">Criar conta e simular</a>
-    </div>
-    <div class="sim reveal" role="img" aria-label="Exemplo de comparação de dois caminhos no simulador do Confina+">
-      <div class="sim-hdr"><b>Comparativo de caminhos</b><span class="chip gold">100 animais</span></div>
-      <table>
-        <thead><tr><th scope="col">Indicador</th><th scope="col">Pasto e terminação</th><th scope="col">Ciclo misto</th></tr></thead>
-        <tbody>
-          <tr><td>Dias até a venda</td><td>210</td><td>165</td></tr>
-          <tr><td>Concentrado (MS)</td><td>58,4 t</td><td>71,9 t</td></tr>
-          <tr><td>Gasto com concentrado</td><td>R$ 112 mil</td><td>R$ 138 mil</td></tr>
-          <tr><td>Custo por kg produzido</td><td class="best">R$ 9,10</td><td>R$ 9,85</td></tr>
-          <tr><td>Retorno</td><td>1,22x</td><td class="best">1,27x</td></tr>
-        </tbody>
-      </table>
-      <div class="sim-foot">Exemplo ilustrativo. Os resultados dependem dos seus dados.</div>
     </div>
   </div>
 </section>
