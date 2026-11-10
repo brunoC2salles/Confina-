@@ -149,6 +149,8 @@ h2{font-family:var(--font-d);font-size:clamp(28px,3vw,42px);font-weight:600;line
 h3{font-family:var(--font-d);font-size:16px;font-weight:600;line-height:1.3;color:var(--black);margin-bottom:8px}
 .lead{font-size:17px;font-weight:300;line-height:1.7;color:var(--gray-500);max-width:620px}
 .center{text-align:center}
+h1,h2,h3{text-wrap:balance}
+p,li,blockquote,td,.prob-d,.step-d,.msg{text-wrap:pretty}
 .center .lead{margin-left:auto;margin-right:auto}
 
 /* HERO */
@@ -168,7 +170,7 @@ h3{font-family:var(--font-d);font-size:16px;font-weight:600;line-height:1.3;colo
 .mock-bar i{width:9px;height:9px;border-radius:50%;background:var(--gray-300);display:block}
 .mock-bar span{margin-left:10px;font-size:12px;color:var(--gray-400)}
 .mock-body{padding:22px}
-.mock-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px}
+.mock-hdr{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:10px 12px;margin-bottom:18px}
 .mock-title{font-family:var(--font-d);font-size:17px;font-weight:600}
 .mock-sub{font-size:12px;color:var(--gray-400);margin-top:2px}
 .chip{display:inline-block;font-size:11px;font-weight:500;padding:4px 10px;border-radius:20px;background:var(--green-bg);color:var(--green-dark);border:1px solid var(--green-border);white-space:nowrap}
@@ -203,23 +205,26 @@ h3{font-family:var(--font-d);font-size:16px;font-weight:600;line-height:1.3;colo
 .prob .tag{color:#66bb6a}
 .prob h2{color:#fff}
 .prob .lead{color:rgba(255,255,255,.7)}
-.prob-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start}
-.prob-items{margin-top:36px;display:flex;flex-direction:column;gap:12px}
-.prob-item{display:flex;gap:14px;padding:18px 20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:var(--r-md)}
-.prob-dot{width:7px;height:7px;border-radius:50%;background:#ef5350;flex-shrink:0;margin-top:8px}
+.prob-head{max-width:760px;margin-bottom:44px}
+.prob-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:stretch}
+.prob-items{display:flex;flex-direction:column;gap:12px}
+.prob-item{flex:1;display:flex;align-items:center;padding:18px 22px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:var(--r-md)}
+.prob-t::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#ef5350;margin-right:12px;vertical-align:middle;position:relative;top:-1px}
+.prob-d{padding-left:19px}
 .prob-t{font-size:15px;font-weight:500;color:#fff;margin-bottom:3px}
 .prob-d{font-size:13px;font-weight:300;color:rgba(255,255,255,.68);line-height:1.6}
-.cmp{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:var(--r-xl);overflow:hidden}
-.cmp table{width:100%;border-collapse:collapse}
+.cmp{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:var(--r-md);overflow:hidden;display:flex}
+.cmp table{width:100%;height:100%;border-collapse:collapse}
 .cmp th{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.62);text-align:left;padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.08)}
-.cmp td{font-size:13px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+.cmp td{font-size:13px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle}
 .cmp tr:last-child td{border-bottom:none}
 .cmp td:first-child{color:rgba(255,255,255,.78)}
 .cmp .bad{color:#ef9a9a}
 .cmp .ok{color:#81c784;font-weight:500}
 
 /* FEATURES */
-.feat-head{display:flex;justify-content:space-between;align-items:flex-end;gap:40px;margin-bottom:48px}
+.feat-head{margin-bottom:48px}
+.feat-head .lead{max-width:720px}
 .feat-group{margin-top:40px}
 .feat-group:first-of-type{margin-top:0}
 .fg-title{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--gray-500);margin-bottom:16px}
@@ -353,10 +358,9 @@ h3{font-family:var(--font-d);font-size:16px;font-weight:600;line-height:1.3;colo
 /* PARTNERS */
 .partners{padding:88px var(--pad);border-top:1px solid var(--border)}
 .partners-grid{display:flex;justify-content:center;margin-top:36px}
-.partner{display:flex;flex-direction:column;align-items:center;gap:14px;padding:16px;border:1px solid var(--border);border-radius:var(--r-xl);background:#fff;transition:box-shadow .25s,border-color .25s,transform .25s;width:100%;max-width:440px}
-.partner:hover{border-color:var(--green-border);box-shadow:0 12px 40px rgba(0,0,0,.08);transform:translateY(-2px)}
-.partner img{width:100%;border-radius:var(--r-lg)}
-.partner span{font-size:13px;color:var(--gray-500);padding-bottom:4px}
+.partner{display:block;width:100%;max-width:340px;transition:opacity .2s}
+.partner:hover{opacity:.7}
+.partner img{width:100%}
 
 /* FINAL CTA */
 .cta-sec{background:var(--green-dark);padding:112px var(--pad);text-align:center}
@@ -403,7 +407,7 @@ footer{background:var(--black);padding:44px var(--pad);display:grid;grid-templat
   .price-grid{grid-template-columns:1fr;max-width:420px;margin-left:auto;margin-right:auto}
   .pc-for,.pc-period{min-height:0}
   .how-img{aspect-ratio:16/10;max-height:none}
-  .feat-head,.pricing-hdr{flex-direction:column;align-items:flex-start}
+  .pricing-hdr{flex-direction:column;align-items:flex-start}
   .calc-box{flex-direction:column;align-items:flex-start}
   footer{grid-template-columns:1fr;text-align:center;justify-items:center}
   .ft-copy{text-align:center}
@@ -428,6 +432,16 @@ footer{background:var(--black);padding:44px var(--pad);display:grid;grid-templat
   .calc-box .btn{width:100%}
   .cta-row .btn{width:100%}
   .wa-float{right:14px;bottom:14px}
+  .mock-hdr .chip{order:-1}
+  .cmp thead{display:none}
+  .cmp table,.cmp tbody{display:block;height:auto}
+  .cmp tr{display:block;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .cmp tr:last-child{border-bottom:none}
+  .cmp td{display:flex;justify-content:space-between;gap:16px;padding:3px 0;border:none;text-align:right}
+  .cmp td:first-child{display:block;text-align:left;color:#fff;font-weight:500;margin-bottom:6px}
+  .cmp td[data-label]::before{content:attr(data-label);color:rgba(255,255,255,.6);font-weight:400;text-align:left;flex-shrink:0}
+  .all-plans{flex-direction:column;align-items:flex-start;justify-content:flex-start}
+  .partner{max-width:280px}
 }
 </style>
 </head>
@@ -515,29 +529,31 @@ footer{background:var(--black);padding:44px var(--pad);display:grid;grid-templat
 
 <!-- PROBLEM -->
 <section class="prob" aria-labelledby="prob-h">
-  <div class="wrap prob-grid">
-    <div>
+  <div class="wrap">
+    <div class="prob-head">
       <p class="tag">O problema</p>
       <h2 id="prob-h">Quanto custou cada boi que você vendeu este ano?</h2>
       <p class="lead">Se a resposta depende de memória ou de planilha desatualizada, a decisão de venda está sendo tomada sem dados. E isso tem preço.</p>
-      <div class="prob-items">
-        <div class="prob-item reveal"><div class="prob-dot"></div><div><div class="prob-t">Custo de alimentação estimado</div><div class="prob-d">Sem dieta, consumo e preço de cada ingrediente registrados, o custo real da arroba produzida fica invisível.</div></div></div>
-        <div class="prob-item reveal"><div class="prob-dot"></div><div><div class="prob-t">GMD descoberto tarde demais</div><div class="prob-d">Sem histórico de pesagens por ciclo, o ganho real aparece quando já não há nada a corrigir.</div></div></div>
-        <div class="prob-item reveal"><div class="prob-dot"></div><div><div class="prob-t">Bônus do frigorífico perdido</div><div class="prob-d">A faixa de peso que paga bônus tem janela curta. Sem projeção, a venda acontece cedo ou tarde demais.</div></div></div>
-      </div>
     </div>
+    <div class="prob-grid">
+      <div class="prob-items">
+        <div class="prob-item reveal"><div><div class="prob-t">Custo de alimentação estimado</div><div class="prob-d">Sem dieta, consumo e preço de cada ingrediente registrados, o custo real da arroba produzida fica invisível.</div></div></div>
+        <div class="prob-item reveal"><div><div class="prob-t">GMD descoberto tarde demais</div><div class="prob-d">Sem histórico de pesagens por ciclo, o ganho real aparece quando já não há nada a corrigir.</div></div></div>
+        <div class="prob-item reveal"><div><div class="prob-t">Bônus do frigorífico perdido</div><div class="prob-d">A faixa de peso que paga bônus tem janela curta. Sem projeção, a venda acontece cedo ou tarde demais.</div></div></div>
+      </div>
     <div class="cmp reveal">
       <table>
         <thead><tr><th scope="col">Indicador</th><th scope="col">Sem gestão</th><th scope="col">Com o Confina+</th></tr></thead>
         <tbody>
-          <tr><td>Custo por animal</td><td class="bad">Desconhecido</td><td class="ok">Atualizado todo dia</td></tr>
-          <tr><td>GMD</td><td class="bad">Estimado por lote</td><td class="ok">Real, por animal e por ciclo</td></tr>
-          <tr><td>Custo da ração</td><td class="bad">Preço da última nota</td><td class="ok">Custo médio do estoque</td></tr>
-          <tr><td>Rendimento de carcaça</td><td class="bad">Só após o abate</td><td class="ok">Projetado antes da venda</td></tr>
-          <tr><td>Bônus do frigorífico</td><td class="bad">Sem projeção</td><td class="ok">Calculado pelas suas faixas</td></tr>
-          <tr><td>Melhor caminho até a venda</td><td class="bad">No feeling</td><td class="ok">Comparado no simulador</td></tr>
+          <tr><td>Custo por animal</td><td class="bad" data-label="Sem gestão">Desconhecido</td><td class="ok" data-label="Com o Confina+">Atualizado todo dia</td></tr>
+          <tr><td>GMD</td><td class="bad" data-label="Sem gestão">Estimado por lote</td><td class="ok" data-label="Com o Confina+">Real, por animal e por ciclo</td></tr>
+          <tr><td>Custo da ração</td><td class="bad" data-label="Sem gestão">Preço da última nota</td><td class="ok" data-label="Com o Confina+">Custo médio do estoque</td></tr>
+          <tr><td>Rendimento de carcaça</td><td class="bad" data-label="Sem gestão">Só após o abate</td><td class="ok" data-label="Com o Confina+">Projetado antes da venda</td></tr>
+          <tr><td>Bônus do frigorífico</td><td class="bad" data-label="Sem gestão">Sem projeção</td><td class="ok" data-label="Com o Confina+">Calculado pelas suas faixas</td></tr>
+          <tr><td>Melhor caminho até a venda</td><td class="bad" data-label="Sem gestão">No feeling</td><td class="ok" data-label="Com o Confina+">Comparado no simulador</td></tr>
         </tbody>
       </table>
+    </div>
     </div>
   </div>
 </section>
@@ -548,7 +564,7 @@ footer{background:var(--black);padding:44px var(--pad);display:grid;grid-templat
     <div class="feat-head">
       <div>
         <p class="tag">Funcionalidades</p>
-        <h2 id="feat-h">Gestão de ponta a ponta,<br/>animal por animal.</h2>
+        <h2 id="feat-h">Gestão de ponta a ponta, animal por animal.</h2>
       </div>
       <p class="lead">Cada cabeça tem seu próprio histórico, custo e projeção. Do dia da compra ao romaneio do frigorífico.</p>
     </div>
@@ -811,8 +827,7 @@ footer{background:var(--black);padding:44px var(--pad);display:grid;grid-templat
     <h2 id="parc-h">Quem caminha com a Confina+</h2>
     <div class="partners-grid">
       <a class="partner reveal" href="https://desenvolvepecuaria.com.br/" target="_blank" rel="noopener" aria-label="Instituto Desenvolve Pecuária (abre em nova aba)">
-        <img src="/img/lp/parceiro-idp.webp" width="760" height="300" loading="lazy" decoding="async" alt="Logotipo do Instituto Desenvolve Pecuária"/>
-        <span>Instituto Desenvolve Pecuária</span>
+        <img src="/img/lp/parceiro-idp.webp" width="730" height="250" loading="lazy" decoding="async" alt="Logotipo do Instituto Desenvolve Pecuária"/>
       </a>
     </div>
   </div>
@@ -862,6 +877,20 @@ footer{background:var(--black);padding:44px var(--pad);display:grid;grid-templat
 </a>
 
 <script>
+(function(){
+  var sel='h1,h2,h3,p,li,blockquote,td,th,.prob-t,.prob-d,.step-t,.step-d,.kpi-d,.strip-t,.strip-d,.msg,.faq-btn,.pc-for,.mock-sub,.bars-t'
+  document.querySelectorAll(sel).forEach(function(el){
+    var nodes=[],w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null)
+    while(w.nextNode())nodes.push(w.currentNode)
+    nodes.forEach(function(n,i){
+      var next=n.nextSibling,isEnd=(i===nodes.length-1)||(next&&next.nodeName==='BR')
+      if(next&&next.nodeType===1&&next.classList&&next.classList.contains('new')){n.nodeValue=n.nodeValue.replace(/\s+$/,'\u00a0');return}
+      if(!isEnd)return
+      var t=n.nodeValue.replace(/\s+$/,''),k=t.lastIndexOf(' ')
+      if(k>0)n.nodeValue=t.slice(0,k)+'\u00a0'+t.slice(k+1)+n.nodeValue.slice(t.length)
+    })
+  })
+})()
 var nav=document.getElementById('nav')
 window.addEventListener('scroll',function(){nav.classList.toggle('scrolled',window.scrollY>20)},{passive:true})
 if('IntersectionObserver' in window){
