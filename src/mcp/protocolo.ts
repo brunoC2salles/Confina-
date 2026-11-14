@@ -90,7 +90,8 @@ async function chamarFerramenta(params: any, ctx: ContextoFerramenta) {
   } catch (e) {
     if (e instanceof ErroFerramenta) return { content: [{ type: 'text', text: e.message }], isError: true }
     console.error(`[mcp] erro na ferramenta ${ferramenta.name}:`, e)
-    return { content: [{ type: 'text', text: 'Erro interno ao executar a ferramenta. Tente de novo em instantes.' }], isError: true }
+    const motivo = e instanceof Error ? e.message : (e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e))
+    return { content: [{ type: 'text', text: `Não foi possível executar ${ferramenta.title}: ${motivo || 'falha inesperada no servidor'}. Nada foi alterado além do que a mensagem indicar; tente de novo em instantes.` }], isError: true }
   }
 }
 

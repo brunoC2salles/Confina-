@@ -24,6 +24,8 @@ import CalculadoraConfinamento from '@/pages/CalculadoraConfinamento'
 import Consultoria from '@/pages/Consultoria'
 import Tutorial from '@/pages/Tutorial'
 import OAuthConsentimento from '@/pages/OAuthConsentimento'
+import Assistentes from '@/pages/Assistentes'
+import Privacidade from '@/pages/Privacidade'
 
 export default function App() {
   return (
@@ -39,6 +41,9 @@ export default function App() {
           <Route path="/redefinir-senha" element={<RedefinirSenha />} />
           {/* Autorização OAuth do servidor MCP (Claude / ChatGPT) */}
           <Route path="/oauth/consentimento" element={<OAuthConsentimento />} />
+          {/* Páginas públicas: documentação do conector e política de privacidade */}
+          <Route path="/assistentes" element={<Assistentes />} />
+          <Route path="/privacidade" element={<Privacidade />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="fazenda-hoje" element={<FazendaHoje />} />

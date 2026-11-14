@@ -1,0 +1,171 @@
+/* Páginas institucionais públicas: /assistentes e /privacidade */
+.inst-page {
+  --verde: #2e7d32;
+  --verde-escuro: #1b5e20;
+  --dourado: #c99a2e;
+  --texto: #1a1a1a;
+  --suave: #555;
+  --linha: #e6e6e6;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--texto);
+  background: #fff;
+  min-height: 100vh;
+}
+
+.inst-topo {
+  border-bottom: 1px solid var(--linha);
+  background: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.inst-topo-in {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.inst-topo img { height: 40px; display: block; }
+.inst-topo nav { display: flex; gap: 20px; flex-wrap: wrap; }
+.inst-topo nav a { color: var(--suave); text-decoration: none; font-size: 14px; font-weight: 500; }
+.inst-topo nav a:hover, .inst-topo nav a.ativo { color: var(--verde-escuro); }
+
+.inst-hero {
+  background: var(--verde-escuro);
+  color: #fff;
+}
+.inst-hero-in { max-width: 920px; margin: 0 auto; padding: 56px 24px 48px; }
+.inst-selo {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--dourado);
+  margin-bottom: 14px;
+}
+.inst-hero h1 {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: clamp(30px, 5vw, 44px);
+  line-height: 1.1;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+.inst-hero p {
+  font-size: 18px;
+  line-height: 1.6;
+  max-width: 680px;
+  margin: 0;
+  color: rgba(255, 255, 255, .88);
+  text-wrap: pretty;
+}
+
+.inst-corpo { max-width: 920px; margin: 0 auto; padding: 48px 24px 72px; }
+.inst-corpo section { margin-bottom: 48px; }
+.inst-corpo h2 {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: clamp(22px, 3.2vw, 28px);
+  line-height: 1.2;
+  color: var(--verde-escuro);
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+.inst-corpo h3 { font-size: 17px; font-weight: 600; margin: 24px 0 8px; text-wrap: balance; }
+.inst-corpo p, .inst-corpo li {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--suave);
+  text-wrap: pretty;
+}
+.inst-corpo p { margin: 0 0 12px; }
+.inst-corpo ul, .inst-corpo ol { margin: 0 0 12px; padding-left: 22px; }
+.inst-corpo li { margin-bottom: 6px; }
+.inst-corpo strong { color: var(--texto); font-weight: 600; }
+.inst-corpo a { color: var(--verde); }
+.inst-corpo code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  background: #f3f6f3;
+  border: 1px solid #dfe8df;
+  border-radius: 6px;
+  padding: 2px 6px;
+  color: var(--verde-escuro);
+  word-break: break-all;
+}
+
+.inst-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+.inst-cartao {
+  border: 1px solid var(--linha);
+  border-radius: 12px;
+  padding: 20px;
+  background: #fafbfa;
+}
+.inst-cartao h3 { margin-top: 0; color: var(--verde-escuro); }
+.inst-cartao ul { padding-left: 18px; margin: 0; }
+.inst-cartao li { font-size: 15px; }
+
+.inst-passos { counter-reset: passo; list-style: none; padding: 0 !important; }
+.inst-passos li {
+  counter-increment: passo;
+  position: relative;
+  padding: 0 0 0 48px;
+  margin-bottom: 18px;
+  min-height: 32px;
+}
+.inst-passos li::before {
+  content: counter(passo);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--verde);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inst-aviso {
+  border-left: 4px solid var(--dourado);
+  background: #fbf7ec;
+  border-radius: 0 10px 10px 0;
+  padding: 16px 20px;
+  margin: 16px 0;
+}
+.inst-aviso p:last-child { margin-bottom: 0; }
+
+.inst-rodape { border-top: 1px solid var(--linha); background: #fafafa; }
+.inst-rodape-in {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 28px 24px;
+  font-size: 14px;
+  color: #777;
+  line-height: 1.7;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.inst-rodape a { color: var(--verde); text-decoration: none; }
+
+@media (max-width: 640px) {
+  .inst-topo-in { flex-direction: column; align-items: flex-start; }
+  .inst-hero-in { padding: 40px 20px 36px; }
+  .inst-hero p { font-size: 16px; }
+  .inst-corpo { padding: 36px 20px 56px; }
+}

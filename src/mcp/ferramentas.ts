@@ -39,8 +39,16 @@ export class ErroFerramenta extends Error {}
 
 const hoje = () => new Date().toISOString().slice(0, 10)
 
+// Mensagens do core que mencionam upgrade de plano viram mensagens neutras:
+// os diretórios de assistentes não permitem promover planos ou assinaturas.
+function neutralizar(msg: string): string {
+  return msg
+    .replace(/\s*Faça upgrade em Configurações, aba Conta, para cadastrar mais\./i, '')
+    .replace(/ ou faça upgrade em Configurações, aba Conta/i, '')
+}
+
 function falhou(res: { error: string | null }): void {
-  if (res.error) throw new ErroFerramenta(res.error)
+  if (res.error) throw new ErroFerramenta(neutralizar(res.error))
 }
 
 function exigirConfirmacao(args: { confirmar?: boolean }, oQue: string): void {
@@ -422,8 +430,14 @@ export const FERRAMENTAS: Ferramenta[] = [
     name: 'buscar_animais',
     title: 'Buscar animais por brinco',
     description: 'Busca animais pelo brinco (contém o texto), com o lote atual. Por padrão só ativos.',
-    inputSchema: s.obj({ brinco: s.texto('Brinco ou parte dele'), incluir_inativos: s.bool('Incluir animais que já saíram') }, ['brinco']),
-    executar: async (a, { userId }) => lotes.buscarAnimaisPorBrinco(userId, String(a.brinco).trim(), !!a.incluir_inativos),
+    inputSchema: s.obj({
+      brinco: s.texto('Brinco ou parte dele'), incluir_inativos: s.bool('Incluir animais que já saíram'),
+      limite: s.int('Máximo de animais no resultado (padrão 50)', { minimum: 1 }),
+    }, ['brinco']),
+    executar: async (a, { userId }) => {
+      const r = limitar(await lotes.buscarAnimaisPorBrinco(userId, String(a.brinco).trim(), !!a.incluir_inativos), a.limite ?? 50)
+      return { animais: r.itens, total: r.total, truncado: r.truncado }
+    },
   }),
   L({
     name: 'detalhar_animal',
@@ -646,8 +660,15 @@ export const FERRAMENTAS: Ferramenta[] = [
     name: 'listar_vendas',
     title: 'Listar vendas e saídas',
     description: 'Lista as saídas registradas (venda, abate, transferência, morte) com receita, custos, lucro e margem. Opcionalmente só de um lote.',
-    inputSchema: s.obj({ lote_id: s.id('Lote de origem (opcional)') }),
-    executar: async (a, { userId }) => a.lote_id ? lotes.buscarSaidasPorLote(a.lote_id) : lotes.listarSaidas(userId),
+    inputSchema: s.obj({
+      lote_id: s.id('Lote de origem (opcional)'),
+      limite: s.int('Máximo de saídas, das mais recentes (padrão 100)', { minimum: 1 }),
+    }),
+    executar: async (a, { userId }) => {
+      const lista = a.lote_id ? await lotes.buscarSaidasPorLote(a.lote_id) : await lotes.listarSaidas(userId)
+      const r = limitar([...lista].sort((x, y) => y.data.localeCompare(x.data)), a.limite ?? 100)
+      return { vendas: r.itens, total: r.total, truncado: r.truncado }
+    },
   }),
   L({
     name: 'detalhar_venda',
@@ -974,11 +995,16 @@ export const FERRAMENTAS: Ferramenta[] = [
     name: 'estoque_ingredientes',
     title: 'Estoque de ingredientes',
     description: 'Entradas de ingredientes (compra, produção própria, ajuste) e o saldo de cada ingrediente em kg de MS, consumo, ajustes e custo médio vigente (R$/kg de MS). Traz as chaves de ingrediente usadas para registrar entradas.',
-    inputSchema: s.obj({}),
-    executar: async (_a, { userId }) => {
+    inputSchema: s.obj({ limite_entradas: s.int('Máximo de entradas listadas, das mais recentes (padrão 100)', { minimum: 1 }) }),
+    executar: async (a, { userId }) => {
       const d = await estoque.carregarDadosEstoque(userId)
       const resumos = await estoque.calcularResumos(userId, d.entradas)
-      return { ingredientes: d.ingredientes, fornecedores: d.fornecedores, entradas: d.entradas, saldos: Object.values(resumos).map(r => ({ ...r, periodos: undefined })) }
+      const entradas = limitar([...d.entradas].sort((x, y) => y.data.localeCompare(x.data)), a.limite_entradas ?? 100)
+      return {
+        ingredientes: d.ingredientes, fornecedores: d.fornecedores,
+        entradas: entradas.itens, entradas_total: entradas.total, entradas_truncado: entradas.truncado,
+        saldos: Object.values(resumos).map(r => ({ ...r, periodos: undefined })),
+      }
     },
   }),
   E({
@@ -1033,12 +1059,17 @@ export const FERRAMENTAS: Ferramenta[] = [
     name: 'fornecimentos_racao',
     title: 'Fornecimentos de ração',
     description: 'Fornecimentos registrados e o planejado x realizado por lote (consumo % PV, % concentrado, custo por cabeça/dia, custo por kg ganho, conversão). Traz também dietas, grupos de dieta pronta, lotes com a dieta planejada hoje e ingredientes (chaves) para registrar.',
-    inputSchema: s.obj({ incluir_opcoes: s.bool('Incluir dietas, grupos, lotes e ingredientes para registrar um fornecimento') }),
+    inputSchema: s.obj({
+      incluir_opcoes: s.bool('Incluir dietas, grupos, lotes e ingredientes para registrar um fornecimento'),
+      limite: s.int('Máximo de fornecimentos listados, dos mais recentes (padrão 100)', { minimum: 1 }),
+    }),
     executar: async (a, { userId }) => {
       const d = await fornecimentos.carregarDadosFornecimento(userId)
       const indicadores = await fornecimentos.calcularIndicadoresFornecimento(userId, d.fornecimentos, d.composicoes)
+      const lista = limitar([...d.fornecimentos].sort((x, y) => y.data.localeCompare(x.data)), a.limite ?? 100)
       return {
-        fornecimentos: d.fornecimentos, indicadores_por_lote: indicadores,
+        fornecimentos: lista.itens, fornecimentos_total: lista.total, fornecimentos_truncado: lista.truncado,
+        indicadores_por_lote: indicadores,
         opcoes: a.incluir_opcoes ? { dietas: d.dietas, grupos: d.grupos, lotes: d.lotes, dieta_hoje_por_lote: d.dietaHojePorLote, ingredientes: d.ingredientes } : undefined,
       }
     },
