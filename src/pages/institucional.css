@@ -140,9 +140,9 @@
 }
 
 .inst-aviso {
-  border-left: 4px solid var(--dourado);
+  border: 1px solid #ead9ac;
   background: #fbf7ec;
-  border-radius: 0 10px 10px 0;
+  border-radius: 10px;
   padding: 16px 20px;
   margin: 16px 0;
 }

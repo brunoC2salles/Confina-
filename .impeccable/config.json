@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-11-14T18:09:19.323Z",
+        "reason": "Brand system of Confina+ defines Inter (body) and Syne (headings) for all materials, per project brand rules"
+      }
+    ]
+  }
+}
