@@ -10,6 +10,16 @@ const WHATSAPP = `https://wa.me/5555999937665?text=${encodeURIComponent(
   'Olá! Represento uma cooperativa/revenda de ração e tenho interesse no portal de parceiros do Confina+. Podemos conversar?',
 )}`
 
+// Ícones das abas (traço 1.6, mesmo estilo da faixa de diferenciais).
+const ICONES_ABA: Record<string, JSX.Element> = {
+  painel: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+  pedidos: <><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2" /><circle cx="10" cy="20" r="1.2" /><circle cx="17" cy="20" r="1.2" /></>,
+  demanda: <><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></>,
+  clientes: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.3a6.5 6.5 0 0 1 3.5 5.7" /></>,
+  produtos: <><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /><line x1="12" y1="13" x2="12" y2="21" /></>,
+}
+const TROCA_AUTOMATICA_MS = 6000
+
 const TELAS_VENDEDOR = [
   { id: 'painel', rotulo: 'Painel', img: '/parceiros/painel-vendedor.webp', titulo: 'O dia do vendedor em uma tela', texto: 'Pedidos novos, produtos que acabam nos próximos 7 dias, demanda prevista e clientes conectados, atualizados pelo consumo real das fazendas.' },
   { id: 'pedidos', rotulo: 'Pedidos', img: '/parceiros/pedidos.webp', titulo: 'Do pedido novo até a entrega', texto: 'Cada solicitação e cada alerta entram no funil: novo, em cotação, cotado, aprovado e entregue. A cotação chega ao cliente pelo portal e pelo WhatsApp.' },
@@ -37,6 +47,9 @@ function Tela({ src, alt, eager }: { src: string; alt: string; eager?: boolean }
 export default function LandingParceiros() {
   const [tela, setTela] = useState(TELAS_VENDEDOR[0].id)
   const [rolou, setRolou] = useState(false)
+  // As abas trocam sozinhas (com barra de progresso) até o visitante clicar
+  // em uma delas: deixa claro que dá para explorar as telas.
+  const [automatico, setAutomatico] = useState(true)
   const atual = TELAS_VENDEDOR.find(t => t.id === tela) ?? TELAS_VENDEDOR[0]
 
   useEffect(() => {
@@ -44,6 +57,15 @@ export default function LandingParceiros() {
     window.addEventListener('scroll', aoRolar, { passive: true })
     return () => window.removeEventListener('scroll', aoRolar)
   }, [])
+
+  useEffect(() => {
+    if (!automatico) return
+    const t = window.setTimeout(() => {
+      const i = TELAS_VENDEDOR.findIndex(x => x.id === tela)
+      setTela(TELAS_VENDEDOR[(i + 1) % TELAS_VENDEDOR.length].id)
+    }, TROCA_AUTOMATICA_MS)
+    return () => window.clearTimeout(t)
+  }, [automatico, tela])
 
   return (
     <div className="lpp">
@@ -137,12 +159,22 @@ export default function LandingParceiros() {
           <div className="wrap">
             <div className="feat-head">
               <p className="tag">Para o vendedor</p>
-              <h2 id="vend-h">Ele conhece a necessidade antes da ligação.</h2>
+              <h2 id="vend-h" className="uma-linha">Ele conhece a necessidade antes da ligação.</h2>
               <p className="lead">Um portal no padrão do Confina+ para gestores e vendedores, em que cada um vê a própria carteira.</p>
             </div>
+            <p className="abas-dica">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10" /><path d="M12 9.5a1.5 1.5 0 0 1 3 0V11" /><path d="M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-.6a6 6 0 0 1-4.6-2.2L4.3 15.9a1.5 1.5 0 0 1 2.3-1.9L9 16.5V11" /></svg>
+              Clique em cada tela para explorar o portal
+            </p>
             <div className="abas" role="tablist" aria-label="Telas do portal do vendedor">
               {TELAS_VENDEDOR.map(t => (
-                <button key={t.id} type="button" role="tab" aria-selected={t.id === tela} className={`aba${t.id === tela ? ' ativa' : ''}`} onClick={() => setTela(t.id)}>{t.rotulo}</button>
+                <button key={t.id} type="button" role="tab" aria-selected={t.id === tela}
+                  className={`aba${t.id === tela ? ' ativa' : ''}`}
+                  onClick={() => { setAutomatico(false); setTela(t.id) }}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">{ICONES_ABA[t.id]}</svg>
+                  <span>{t.rotulo}</span>
+                  {automatico && t.id === tela && <i className="aba-prog" key={`p-${t.id}`} style={{ animationDuration: `${TROCA_AUTOMATICA_MS}ms` }} />}
+                </button>
               ))}
             </div>
             <div className="vitrine" role="tabpanel">
