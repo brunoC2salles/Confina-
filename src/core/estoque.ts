@@ -39,6 +39,9 @@ export interface ResumoIngrediente extends ResultadoKardex {
   // fornecimento — sem isso não há consumo, e o saldo só reflete entradas e
   // ajustes.
   usadoEmDieta: boolean
+  // Consumo em kg de MS por dia (dia = toDay), usado na previsão de fim de
+  // estoque do portal de parceiros.
+  consumoPorDia: Record<number, number>
 }
 
 // Recalcula o kardex de todos os ingredientes e regrava todos os períodos de
@@ -105,7 +108,11 @@ type Mov = { animal_id: string; tipo: string; lote_origem_id: string | null; lot
 // fornecimento de ração registrado deixam de contar pelo teórico a partir do
 // primeiro fornecimento; o que foi fornecido (ração feita na fazenda) baixa
 // do estoque no dia do fornecimento.
-export async function calcularResumos(userId: string, entradas: CompraIngrediente[]): Promise<Record<string, ResumoIngrediente>> {
+// opcoes.somenteTeorico: ignora os fornecimentos registrados e calcula só o
+// consumo teórico das dietas (usado para comparar previsto x realizado).
+export async function calcularResumos(
+  userId: string, entradas: CompraIngrediente[], opcoes?: { somenteTeorico?: boolean },
+): Promise<Record<string, ResumoIngrediente>> {
   const entradasPorChave: Record<string, CompraIngrediente[]> = {}
   for (const e of entradas) {
     const chave = chaveIngrediente(e.origem_ingrediente, e.insumo_id, e.ingrediente_produtor_id)
@@ -121,7 +128,7 @@ export async function calcularResumos(userId: string, entradas: CompraIngredient
     carregarComposicaoDietasDoUsuario(userId),
     carregarFornecimentosDoUsuario(userId),
   ])
-  const inicioCobertura = inicioCoberturaPorLote(fornecimentos)
+  const inicioCobertura: Record<string, number> = opcoes?.somenteTeorico ? {} : inicioCoberturaPorLote(fornecimentos)
   const chavesEmDieta = new Set<string>()
   const dietaIdsAlvo: string[] = []
   for (const [dietaId, d] of Object.entries(composicoes)) {
@@ -200,6 +207,7 @@ export async function calcularResumos(userId: string, entradas: CompraIngredient
   // Realizado: ingredientes fornecidos (ração feita na fazenda) baixam do
   // estoque no dia do fornecimento, em kg de MS (kg natural x % MS do item).
   for (const f of fornecimentos) {
+    if (opcoes?.somenteTeorico) break
     if (f.modo !== 'feita_na_fazenda') continue
     const dia = toDay(f.data)
     if (dia > hojeDia) continue
@@ -218,7 +226,7 @@ export async function calcularResumos(userId: string, entradas: CompraIngredient
       consumo[chave] ?? {},
       hojeDia,
     )
-    resultado[chave] = { ...kardex, chave, usadoEmDieta: chavesEmDieta.has(chave) }
+    resultado[chave] = { ...kardex, chave, usadoEmDieta: chavesEmDieta.has(chave), consumoPorDia: consumo[chave] ?? {} }
   }
   return resultado
 }

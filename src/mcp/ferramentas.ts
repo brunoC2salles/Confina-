@@ -1003,7 +1003,7 @@ export const FERRAMENTAS: Ferramenta[] = [
       return {
         ingredientes: d.ingredientes, fornecedores: d.fornecedores,
         entradas: entradas.itens, entradas_total: entradas.total, entradas_truncado: entradas.truncado,
-        saldos: Object.values(resumos).map(r => ({ ...r, periodos: undefined })),
+        saldos: Object.values(resumos).map(r => ({ ...r, periodos: undefined, consumoPorDia: undefined })),
       }
     },
   }),

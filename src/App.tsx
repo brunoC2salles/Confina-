@@ -26,8 +26,15 @@ import Tutorial from '@/pages/Tutorial'
 import OAuthConsentimento from '@/pages/OAuthConsentimento'
 import Assistentes from '@/pages/Assistentes'
 import Privacidade from '@/pages/Privacidade'
+import Convite from '@/pages/Convite'
+import PortalApp from '@/portal/PortalApp'
+
+// parceiros.confinamais.com serve o portal de parceiros (fornecedores de
+// ração, vendedores e clientes), com a mesma base e o mesmo login.
+const EH_PORTAL = typeof window !== 'undefined' && window.location.hostname.startsWith('parceiros.')
 
 export default function App() {
+  if (EH_PORTAL) return <PortalApp />
   return (
     <AuthProvider>
       <BrowserRouter>
@@ -44,6 +51,8 @@ export default function App() {
           {/* Páginas públicas: documentação do conector e política de privacidade */}
           <Route path="/assistentes" element={<Assistentes />} />
           <Route path="/privacidade" element={<Privacidade />} />
+          {/* Convite de fornecedor para produtores do Confina+ (portal de parceiros) */}
+          <Route path="/convite" element={<Convite destino="/dietas" />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="fazenda-hoje" element={<FazendaHoje />} />

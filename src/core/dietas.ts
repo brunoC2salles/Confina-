@@ -294,6 +294,8 @@ export async function reativarIngredientes(ids: string[]): Promise<{ error: stri
 
 export interface CriarDietaInput {
   nome: string
+  // Dieta do fornecedor (portal de parceiros) usada como base.
+  fornecedor_dieta_id?: string
   descricao?: string
   gmd_esperado: number
   gmd_esperado_concentrado?: number | null
@@ -352,6 +354,7 @@ export async function criarDieta(
     gmd_esperado_concentrado: input.gmd_esperado_concentrado ?? null,
     ciclo_recomendado: input.ciclo_recomendado ?? null,
     baseada_em: input.baseada_em ?? null,
+    ...(input.fornecedor_dieta_id ? { fornecedor_dieta_id: input.fornecedor_dieta_id } : {}),
     pct_consumo_pv_ms: input.pct_consumo_pv_ms,
     pct_concentrado: input.pct_concentrado,
     pct_volumoso: input.pct_volumoso,

@@ -9,6 +9,7 @@ import { dividirTotalPelaComposicao } from '@/lib/fornecimentoRacao'
 import type { FornecimentoCompleto } from '@/lib/fornecimentosDb'
 import type { CompraIngrediente } from '@/types'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
+import { PainelFornecedorCompras } from '@/components/parceiros/PainelFornecedorCompras'
 import { fmt, fmtNum, fmtData } from '@/lib/calculations'
 
 const formVazio = { nome: '', dieta_id: '', observacoes: '', loteIds: [] as string[] }
@@ -97,6 +98,7 @@ export default function Compras() {
 
       {aba === 'racao' && (
       <>
+      <PainelFornecedorCompras versaoEstoque={versaoEstoque} />
       <SecaoFornecimentos pedidoRegistro={pedidoFornecimento}
         onEstoqueAlterado={() => setVersaoEstoque(n => n + 1)} />
 

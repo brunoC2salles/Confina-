@@ -8,6 +8,9 @@ import { chaveIngrediente, calcularCustoKgMsComPrecos } from '@/lib/custoIngredi
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt } from '@/lib/calculations'
 import { Link } from 'react-router-dom'
+import { useParceiroCliente } from '@/hooks/useParceiroCliente'
+import { DietasFornecedorCliente } from '@/components/parceiros/DietasFornecedorCliente'
+import type { DietaPublicada } from '@/core/parceiros'
 
 // Custo por kg de MS da dieta com o custo médio atual do estoque dos
 // ingredientes (ração feita na fazenda, ver Compras). Null quando nenhum
@@ -67,6 +70,7 @@ interface FormDieta {
   custo_manual_unidade: 'kg' | 'ton'
   vigente_desde: string
   componentes: CompForm[]
+  fornecedor_dieta_id: string
 }
 
 const hojeStr = () => new Date().toISOString().slice(0, 10)
@@ -82,6 +86,7 @@ const emptyForm = (): FormDieta => ({
   custo_manual_unidade: 'ton',
   vigente_desde: hojeStr(),
   componentes: [],
+  fornecedor_dieta_id: '',
 })
 
 const somaPct = (comps: CompForm[], tipo: 'concentrado' | 'volumoso') =>
@@ -108,7 +113,12 @@ export default function Dietas() {
   const [showDetalhe, setShowDetalhe] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [tab, setTab] = useState<'minhas' | 'base'>('minhas')
+  const [tab, setTab] = useState<'minhas' | 'base' | 'fornecedor'>('minhas')
+  // Produtor vinculado a um fornecedor (portal de parceiros): aba com as
+  // dietas publicadas por ele. Ingredientes criados a partir dos produtos
+  // entram como "extras" no salvamento.
+  const { vinculo } = useParceiroCliente({ calcularEstoque: false })
+  const [extrasFornecedor, setExtrasFornecedor] = useState<IngredienteProdutor[]>([])
   const [form, setForm] = useState<FormDieta>(emptyForm())
   const [simPeso, setSimPeso] = useState('450')
   const [simQtd, setSimQtd] = useState('80')
@@ -350,7 +360,7 @@ export default function Dietas() {
     //    preço informados na linha. As linhas passam a apontar para o criado,
     //    então um novo salvamento após erro não duplica.
     let comps = form.componentes
-    let extras: IngredienteProdutor[] = []
+    let extras: IngredienteProdutor[] = [...extrasFornecedor]
     const novosPorKey = new Map<string, CompForm>()
     comps.forEach(c => { if (c._novo && !novosPorKey.has(c._key)) novosPorKey.set(c._key, c) })
     if (novosPorKey.size > 0) {
@@ -364,7 +374,7 @@ export default function Dietas() {
       if (res.error || res.criados.length !== lista.length) {
         setSaving(false); setErro(res.error ?? 'Não foi possível cadastrar os ingredientes novos'); return
       }
-      extras = res.criados
+      extras = [...extras, ...res.criados]
       const criadoPorKey = new Map(lista.map((c, i) => [c._key, res.criados[i]]))
       comps = comps.map(c => {
         const cr = c._novo ? criadoPorKey.get(c._key) : undefined
@@ -402,6 +412,7 @@ export default function Dietas() {
       gmd_esperado_concentrado: gmdConcEfetivo,
       ciclo_recomendado: form.ciclo_recomendado ? Number(form.ciclo_recomendado) : undefined,
       baseada_em: form.baseada_em || undefined,
+      fornecedor_dieta_id: form.fornecedor_dieta_id || undefined,
       pct_consumo_pv_ms: Number(form.pct_consumo_pv_ms),
       pct_concentrado: pctConc,
       pct_volumoso: pctVol,
@@ -464,9 +475,48 @@ export default function Dietas() {
       custo_manual_unidade: d.custo_manual_unidade ?? 'ton',
       vigente_desde: hojeStr(),
       componentes: comps,
+      fornecedor_dieta_id: '',
     })
     setShowEditar(id)
     setErro(null)
+  }
+
+  // Dieta do fornecedor como base: os produtos entram como ingredientes
+  // próprios ligados ao produto (criados ou reativados antes de abrir).
+  const carregarDietaFornecedor = (d: DietaPublicada & { id: string }, ingredientes: IngredienteProdutor[]) => {
+    const comps: CompForm[] = d.itens.map((it, i) => {
+      const ing = ingredientes[i]
+      return {
+        _key: `ingrediente_produtor:${ing.id}`,
+        _nome: ing.nome,
+        _categoria: ing.categoria,
+        _pct_ms_base: ing.pct_ms,
+        _preco_cadastro: ing.preco_kg,
+        tipo: it.tipo,
+        origem_ingrediente: 'ingrediente_produtor',
+        insumo_id: null,
+        ingrediente_produtor_id: ing.id,
+        pct_participacao: it.pct_participacao,
+        preco_kg: ing.preco_kg ?? 0,
+        pct_ms_manual: null,
+      }
+    })
+    setExtrasFornecedor(ingredientes)
+    setForm({
+      ...emptyForm(),
+      nome: d.nome,
+      descricao: d.descricao ?? '',
+      gmd_esperado: d.gmd_esperado != null ? String(d.gmd_esperado) : '',
+      gmd_esperado_concentrado: d.gmd_esperado_concentrado != null ? String(d.gmd_esperado_concentrado) : '',
+      ciclo_recomendado: d.ciclo_recomendado != null ? String(d.ciclo_recomendado) : '',
+      pct_consumo_pv_ms: String(d.pct_consumo_pv_ms),
+      pct_concentrado: String(d.pct_concentrado),
+      pct_volumoso: String(d.pct_volumoso),
+      componentes: comps,
+      fornecedor_dieta_id: d.id,
+    })
+    setErro(null)
+    setShowNova(true)
   }
 
   const fecharModal = () => {
@@ -492,7 +542,16 @@ export default function Dietas() {
         <button className={`tab-btn${tab === 'base' ? ' active' : ''}`} onClick={() => setTab('base')}>
           Templates base ({dietasBase.length})
         </button>
+        {vinculo && (
+          <button className={`tab-btn${tab === 'fornecedor' ? ' active' : ''}`} onClick={() => setTab('fornecedor')}>
+            Dietas {vinculo.fornecedor.nome}
+          </button>
+        )}
       </div>
+
+      {tab === 'fornecedor' && vinculo && (
+        <DietasFornecedorCliente vinculo={vinculo} onUsar={carregarDietaFornecedor} />
+      )}
 
       {tab === 'minhas' && (
         loading ? (

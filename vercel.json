@@ -1,9 +1,13 @@
 {
   "functions": {
-    "api/mcp.ts": { "maxDuration": 60 }
+    "api/mcp.ts": { "maxDuration": 60 },
+    "api/parceiros-diario.ts": { "maxDuration": 60 }
   },
+  "crons": [
+    { "path": "/api/parceiros-diario", "schedule": "0 9 * * *" }
+  ],
   "redirects": [
-    { "source": "/", "destination": "/landing", "permanent": false }
+    { "source": "/", "missing": [{ "type": "host", "value": "parceiros.confinamais.com" }], "destination": "/landing", "permanent": false }
   ],
   "rewrites": [
     { "source": "/.well-known/oauth-protected-resource", "has": [{ "type": "host", "value": "mcp.confinamais.com" }], "destination": "/api/oauth-protected-resource" },
