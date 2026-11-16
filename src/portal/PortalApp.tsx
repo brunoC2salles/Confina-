@@ -1,8 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { PortalProvider, usePortal } from '@/portal/PortalContext'
 import { PortalLayout } from '@/portal/PortalLayout'
 import PortalLogin from '@/portal/pages/PortalLogin'
+import LandingParceiros from '@/portal/pages/LandingParceiros'
 import Painel from '@/portal/pages/Painel'
 import Pedidos from '@/portal/pages/Pedidos'
 import Demanda from '@/portal/pages/Demanda'
@@ -38,8 +39,10 @@ function SemAcesso() {
 function RotasProtegidas() {
   const { session, loading } = useAuth()
   const portal = usePortal()
+  const { pathname } = useLocation()
   if (loading || (session && portal.carregando)) return <Carregando />
-  if (!session) return <Navigate to="/login" replace />
+  // Sem login: a raiz mostra a página de apresentação; o resto vai ao login.
+  if (!session) return pathname === '/' ? <LandingParceiros /> : <Navigate to="/login" replace />
 
   if (portal.fornecedor && portal.papel) {
     return (

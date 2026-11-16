@@ -55,7 +55,7 @@ export default function PortalLogin() {
           {modo === 'entrar' ? 'Esqueci minha senha' : 'Voltar para entrar'}
         </button>
         <p style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center', marginTop: 16 }}>
-          O acesso é liberado por convite do fornecedor.
+          O acesso é liberado por convite do fornecedor. <a href="/" style={{ color: 'var(--green)' }}>Conheça o portal</a>
         </p>
       </form>
     </div>
