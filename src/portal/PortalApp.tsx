@@ -12,6 +12,8 @@ import Catalogo from '@/portal/pages/Catalogo'
 import DietasFornecedor from '@/portal/pages/DietasFornecedor'
 import Equipe from '@/portal/pages/Equipe'
 import Admin from '@/portal/pages/Admin'
+import Entregas from '@/portal/pages/Entregas'
+import Romaneio from '@/portal/pages/Romaneio'
 import ClienteEstoque from '@/portal/pages/ClienteEstoque'
 import ClientePedidos from '@/portal/pages/ClientePedidos'
 import Convite from '@/pages/Convite'
@@ -47,9 +49,11 @@ function RotasProtegidas() {
   if (portal.fornecedor && portal.papel) {
     return (
       <Routes>
+        <Route path="romaneio" element={<Romaneio />} />
         <Route element={<PortalLayout />}>
           <Route index element={<Painel />} />
           <Route path="pedidos" element={<Pedidos />} />
+          <Route path="entregas" element={<Entregas />} />
           <Route path="demanda" element={<Demanda />} />
           <Route path="clientes" element={<Clientes />} />
           <Route path="catalogo" element={<Catalogo />} />

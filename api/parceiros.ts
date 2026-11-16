@@ -4,8 +4,11 @@
 //  - notificar_pedido      cliente: avisa o vendedor de uma nova solicitação
 //  - cobranca_ativar       admin: cria cliente e assinatura na Stripe
 //  - cobranca_sincronizar  admin: ajusta a quantidade de clientes cobrados
+//  - pedido_entregue       gestor ou vendedor: lança a entrega no estoque do cliente
 // O acesso de cada ação é conferido com o cliente do Supabase do próprio
 // usuário (RLS); a chave de serviço só é usada depois disso.
+import { definirProvedorDb } from '../src/core/db.js'
+import { recalcularIngrediente } from '../src/core/estoque.js'
 import {
   clienteDoUsuario, clienteServico, json, enviarEmail, modeloEmail, emailsAtendimento,
   kg, dataBr, stripe, sincronizarCobranca, contarClientesCobrados,
@@ -13,6 +16,11 @@ import {
 } from './_parceiros.js'
 
 type Corpo = { acao?: string; convite_id?: string; pedido_id?: string; fornecedor_id?: string }
+
+// O código de src/core usa o cliente de serviço nesta função (só em ações
+// já autorizadas pelo RLS do usuário).
+const servicoCore = SERVICE_KEY ? clienteServico() : null
+if (servicoCore) definirProvedorDb(() => servicoCore)
 
 export async function POST(request: Request): Promise<Response> {
   if (!SERVICE_KEY) return json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada' }, 500)
@@ -83,6 +91,58 @@ export async function POST(request: Request): Promise<Response> {
       if (r.error) return json({ error: r.error }, 502)
       await servico.from('fornecedor_pedidos').update({ notificado_em: new Date().toISOString() }).eq('id', p.id)
       return json({ ok: true, fornecedor: f?.nome })
+    }
+
+    case 'pedido_entregue': {
+      const { data: p } = await usuario.from('fornecedor_pedidos').select('*').eq('id', corpo.pedido_id ?? '').maybeSingle()
+      if (!p) return json({ error: 'Pedido não encontrado' }, 404)
+      const { data: papel } = await usuario.rpc('fornec_papel', { fid: p.fornecedor_id })
+      const { data: perfilU } = await servico.from('profiles').select('role').eq('id', userId).maybeSingle()
+      if (!papel && perfilU?.role !== 'admin') return json({ error: 'Somente a equipe do fornecedor' }, 403)
+      if (p.status !== 'entregue') return json({ error: 'O pedido não está entregue' }, 400)
+      if (p.estoque_lancado_em) return json({ ok: true, ja_lancado: true })
+      if (!p.produto_id || !(Number(p.quantidade_kg) > 0)) return json({ error: 'Pedido sem produto ou quantidade' }, 400)
+      const [{ data: cli }, { data: prod }] = await Promise.all([
+        servico.from('fornecedor_clientes').select('*').eq('id', p.cliente_id).maybeSingle(),
+        servico.from('fornecedor_produtos').select('*').eq('id', p.produto_id).maybeSingle(),
+      ])
+      if (!cli || !prod) return json({ error: 'Cliente ou produto não encontrado' }, 404)
+      const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
+      const data = p.data_entrega && p.data_entrega <= hoje ? p.data_entrega : hoje
+      const qtd = Number(p.quantidade_kg)
+      if (cli.modo === 'estoque') {
+        const { error } = await servico.from('estoque_movimentos').insert({
+          user_id: cli.user_id, produto_id: prod.id, tipo: 'entrada', data, quantidade_kg: qtd,
+          observacoes: `Pedido #${p.numero} entregue`, criado_por: userId, pedido_id: p.id,
+        })
+        if (error) return json({ error: error.message }, 500)
+      } else {
+        // Cliente do Confina+: compra do ingrediente ligado ao produto (cria se não existir).
+        let { data: ing } = await servico.from('ingredientes_produtor').select('id, preco_kg, pct_ms')
+          .eq('user_id', cli.user_id).eq('fornecedor_produto_id', prod.id).maybeSingle()
+        if (!ing) {
+          const categorias: Record<string, string> = { racao: 'concentrado_energetico', nucleo: 'mineral_aditivo', mineral: 'mineral_aditivo', grao: 'concentrado_energetico', farelo: 'concentrado_proteico', volumoso: 'volumoso', outro: 'subproduto' }
+          const { data: novo, error } = await servico.from('ingredientes_produtor').insert({
+            user_id: cli.user_id, nome: prod.nome, categoria: categorias[prod.categoria] ?? 'subproduto', pct_ms: prod.pct_ms,
+            preco_kg: Number(p.preco_kg) || 0, ativo: true, fornecedor_produto_id: prod.id,
+          }).select('id, preco_kg, pct_ms').single()
+          if (error || !novo) return json({ error: error?.message ?? 'Erro ao criar o ingrediente' }, 500)
+          ing = novo
+        }
+        const valor = p.valor_total != null ? Number(p.valor_total)
+          : p.preco_kg != null ? Math.round(Number(p.preco_kg) * qtd * 100) / 100
+            : Math.round(Number(ing.preco_kg || 0) * qtd * 100) / 100
+        const { error } = await servico.from('compras_ingrediente').insert({
+          origem_ingrediente: 'ingrediente_produtor', ingrediente_produtor_id: ing.id, tipo: 'compra', data,
+          quantidade_kg: qtd, pct_ms: ing.pct_ms ?? prod.pct_ms ?? null, valor_total: valor,
+          observacoes: `Pedido #${p.numero} entregue`, user_id: cli.user_id,
+        })
+        if (error) return json({ error: error.message }, 500)
+        const r = await recalcularIngrediente(cli.user_id, `ingrediente_produtor:${ing.id}`)
+        if (r.error) console.error('[parceiros] recalcular ingrediente', r.error)
+      }
+      await servico.from('fornecedor_pedidos').update({ estoque_lancado_em: new Date().toISOString() }).eq('id', p.id)
+      return json({ ok: true })
     }
 
     case 'cobranca_ativar':

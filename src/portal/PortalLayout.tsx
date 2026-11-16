@@ -11,6 +11,7 @@ export function navDoPortal(p: ReturnType<typeof usePortal>): ItemNav[] {
     const itens: ItemNav[] = [
       { to: '/', label: 'Painel', end: true },
       { to: '/pedidos', label: 'Pedidos' },
+      { to: '/entregas', label: 'Entregas' },
       { to: '/demanda', label: 'Previsão de demanda' },
       { to: '/clientes', label: 'Clientes' },
       { to: '/catalogo', label: 'Produtos' },

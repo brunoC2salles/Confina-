@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { useDadosFornecedor, nomeCliente } from '@/portal/useDadosFornecedor'
 import { usePortal } from '@/portal/PortalContext'
+import { chamarApiParceiros } from '@/lib/parceirosApi'
 import {
   ROTULO_STATUS, CLASSE_STATUS, ROTULO_ORIGEM, fmtKg, fmtDataBr, linkWhatsApp, criarPedido, hojeISO,
   type PedidoFornecedor, type StatusPedido, type ClienteFornecedor,
@@ -40,6 +41,11 @@ export default function Pedidos() {
     setErro(null)
     const { error } = await supabase.from('fornecedor_pedidos').update({ status }).eq('id', p.id)
     if (error) { setErro(error.message); return }
+    // Entregue: a quantidade entra no estoque do cliente (servidor).
+    if (status === 'entregue') {
+      const r = await chamarApiParceiros('pedido_entregue', { pedido_id: p.id })
+      if (r.error) setErro(`Pedido marcado como entregue, mas a entrada no estoque do cliente falhou: ${r.error}`)
+    }
     recarregar()
   }
 

@@ -62,6 +62,7 @@ export interface ClienteFornecedor {
   resumo_atualizado_em: string | null
   ativo: boolean
   created_at: string
+  rota_id: string | null
 }
 
 export interface ConviteFornecedor {
@@ -157,6 +158,27 @@ export interface MovimentoEstoque {
   quantidade_kg: number
   observacoes: string | null
   created_at: string
+  automatico: boolean
+  criado_por: string | null
+  pedido_id: string | null
+}
+
+// Consumo informado por produto (kg de MN por dia; unidade só para exibição).
+export interface ConsumoInformado {
+  id?: string
+  cliente_id: string
+  produto_id: string
+  kg_dia: number
+  unidade: 'dia' | 'semana'
+  vigente_desde: string
+  atualizado_em?: string
+}
+
+export interface RotaEntrega {
+  id: string
+  fornecedor_id: string
+  nome: string
+  municipios: string[]
 }
 
 export interface PedidoFornecedor {
@@ -177,6 +199,7 @@ export interface PedidoFornecedor {
   valor_total: number | null
   resposta: string | null
   notificado_em: string | null
+  estoque_lancado_em: string | null
   created_at: string
   updated_at: string
 }
@@ -248,30 +271,84 @@ export function dataEntregaSugerida(produto: Pick<ProdutoFornecedor, 'prazo_entr
 
 // ─── Conta só de estoque ──────────────────────────────────────────────────────
 
+export type OrigemConsumo = 'baixas' | 'informado' | null
+
+export interface ResumoSimples { saldo_kg: number | null; consumo_dia_kg: number; origem: OrigemConsumo }
+
 // Saldo pelos movimentos (entrada soma, baixa subtrai, ajuste substitui o
-// saldo pelo contado) e consumo médio das baixas na janela de dias.
+// saldo pelo contado). Consumo para a previsão:
+//  - com baixas lançadas à mão na janela: média delas;
+//  - senão, o consumo informado do produto;
+//  - senão, a média das baixas (automáticas) da janela.
 export function resumoEstoqueSimples(
-  movimentos: MovimentoEstoque[], janelaDias: number, hoje = hojeISO(),
-): Record<string, { saldo_kg: number; consumo_dia_kg: number }> {
+  movimentos: MovimentoEstoque[], janelaDias: number, hoje = hojeISO(), informados: Record<string, number> = {},
+): Record<string, ResumoSimples> {
   const porProduto: Record<string, MovimentoEstoque[]> = {}
   for (const m of movimentos) (porProduto[m.produto_id] ??= []).push(m)
   const inicioJanela = somarDias(hoje, -(janelaDias - 1))
   const ordemTipo = { entrada: 0, baixa: 1, ajuste: 2 } as const
-  const resultado: Record<string, { saldo_kg: number; consumo_dia_kg: number }> = {}
-  for (const [produtoId, lista] of Object.entries(porProduto)) {
+  const resultado: Record<string, ResumoSimples> = {}
+  const ids = new Set([...Object.keys(porProduto), ...Object.keys(informados)])
+  for (const produtoId of ids) {
+    const lista = porProduto[produtoId] ?? []
     const ordenada = [...lista].sort((a, b) => a.data.localeCompare(b.data) || ordemTipo[a.tipo] - ordemTipo[b.tipo] || a.created_at.localeCompare(b.created_at))
     let saldo = 0
-    let baixasJanela = 0
+    let manuais = 0
+    let todas = 0
     for (const m of ordenada) {
       if (m.data > hoje) continue
       const q = Number(m.quantidade_kg)
       if (m.tipo === 'entrada') saldo += q
-      else if (m.tipo === 'baixa') { saldo -= q; if (m.data >= inicioJanela) baixasJanela += q }
-      else saldo = q
+      else if (m.tipo === 'baixa') {
+        saldo -= q
+        if (m.data >= inicioJanela) { todas += q; if (!m.automatico) manuais += q }
+      } else saldo = q
     }
-    resultado[produtoId] = { saldo_kg: Math.round(saldo * 100) / 100, consumo_dia_kg: baixasJanela / janelaDias }
+    let consumo = 0
+    let origem: OrigemConsumo = null
+    if (manuais > 0) { consumo = manuais / janelaDias; origem = 'baixas' }
+    else if (informados[produtoId] != null) { consumo = informados[produtoId]; origem = 'informado' }
+    else if (todas > 0) { consumo = todas / janelaDias; origem = 'baixas' }
+    resultado[produtoId] = { saldo_kg: lista.length > 0 ? Math.round(saldo * 100) / 100 : null, consumo_dia_kg: consumo, origem }
   }
   return resultado
+}
+
+// Baixas automáticas pelo consumo informado, do último dia com baixa
+// automática (ou do início da vigência) até hoje, no máximo 30 dias para
+// trás. Não gera quando há baixa lançada à mão na janela, nem abaixo de zero.
+export function gerarBaixasAutomaticas(
+  movimentos: MovimentoEstoque[], informados: ConsumoInformado[], janelaDias: number, hoje = hojeISO(),
+): Array<{ produto_id: string; data: string; quantidade_kg: number }> {
+  const inicioJanela = somarDias(hoje, -(janelaDias - 1))
+  const saida: Array<{ produto_id: string; data: string; quantidade_kg: number }> = []
+  for (const inf of informados) {
+    if (!(inf.kg_dia > 0)) continue
+    const doProduto = movimentos.filter(m => m.produto_id === inf.produto_id)
+    if (doProduto.length === 0) continue
+    if (doProduto.some(m => m.tipo === 'baixa' && !m.automatico && m.data >= inicioJanela && m.data <= hoje)) continue
+    const ultimaAuto = doProduto.filter(m => m.automatico).map(m => m.data).sort().pop()
+    let dia = [ultimaAuto ? somarDias(ultimaAuto, 1) : inf.vigente_desde, inf.vigente_desde, somarDias(hoje, -29)].sort().pop() as string
+    let saldo = resumoEstoqueSimples(doProduto, janelaDias, somarDias(dia, -1))[inf.produto_id]?.saldo_kg ?? 0
+    // movimentos posteriores a "dia" entram na conta dia a dia
+    while (dia <= hoje) {
+      const doDia = doProduto.filter(m => m.data === dia)
+      for (const m of doDia) {
+        if (m.tipo === 'entrada') saldo += Number(m.quantidade_kg)
+        else if (m.tipo === 'baixa') saldo -= Number(m.quantidade_kg)
+        else saldo = Number(m.quantidade_kg)
+      }
+      const q = Math.min(inf.kg_dia, Math.max(0, saldo))
+      if (q > 0) { saida.push({ produto_id: inf.produto_id, data: dia, quantidade_kg: Math.round(q * 100) / 100 }); saldo -= q }
+      dia = somarDias(dia, 1)
+    }
+  }
+  return saida
+}
+
+export async function carregarConsumoInformado(clienteId: string): Promise<ConsumoInformado[]> {
+  const { data } = await supabase.from('fornecedor_consumo_informado').select('*').eq('cliente_id', clienteId)
+  return (data ?? []) as ConsumoInformado[]
 }
 
 export async function carregarMovimentos(userId: string): Promise<MovimentoEstoque[]> {
@@ -391,14 +468,16 @@ export async function calcularUsoDietas(userId: string): Promise<{ cabecas: numb
 // Estoque da conta só de estoque, no mesmo formato.
 export function calcularEstoqueClienteSimples(
   cliente: Pick<ClienteFornecedor, 'id' | 'janela_consumo_dias'>, movimentos: MovimentoEstoque[], hoje = hojeISO(),
+  informados: ConsumoInformado[] = [],
 ): EstoqueCliente[] {
-  const resumo = resumoEstoqueSimples(movimentos, cliente.janela_consumo_dias || 7, hoje)
+  const mapa = Object.fromEntries(informados.map(i => [i.produto_id, Number(i.kg_dia)]))
+  const resumo = resumoEstoqueSimples(movimentos, cliente.janela_consumo_dias || 7, hoje, mapa)
   return Object.entries(resumo).map(([produtoId, r]) => {
     const consumo = r.consumo_dia_kg > 0 ? Math.round(r.consumo_dia_kg * 10) / 10 : 0
     return {
       cliente_id: cliente.id, produto_id: produtoId,
       saldo_kg: r.saldo_kg, consumo_dia_kg: consumo,
-      consumo_previsto_dia_kg: null, consumo_real_dia_kg: consumo,
+      consumo_previsto_dia_kg: mapa[produtoId] ?? null, consumo_real_dia_kg: r.origem === 'baixas' ? consumo : null,
       ...previsaoFim(r.saldo_kg, consumo, hoje),
     }
   })
@@ -427,8 +506,8 @@ export async function atualizarResumoCliente(
   userId: string, cliente: ClienteFornecedor, produtos: ProdutoFornecedor[],
 ): Promise<{ linhas: EstoqueCliente[]; error: string | null }> {
   if (cliente.modo === 'estoque') {
-    const movimentos = await carregarMovimentos(userId)
-    const linhas = calcularEstoqueClienteSimples(cliente, movimentos)
+    const [movimentos, informados] = await Promise.all([carregarMovimentos(userId), carregarConsumoInformado(cliente.id)])
+    const linhas = calcularEstoqueClienteSimples(cliente, movimentos, hojeISO(), informados)
     const r = await gravarResumoCliente(cliente, linhas, null)
     return { linhas, error: r.error }
   }
@@ -519,3 +598,16 @@ export const fmtKg = (v: number | null | undefined) =>
 
 export const fmtDataBr = (iso: string | null | undefined) =>
   iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—'
+
+// ─── Rotas de entrega ─────────────────────────────────────────────────────────
+
+export const normalizarMunicipio = (s: string | null | undefined) =>
+  (s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ')
+
+// Rota do cliente: a escolhida pelo gestor, ou a que contém o município dele.
+export function rotaDoCliente(cliente: Pick<ClienteFornecedor, 'rota_id' | 'municipio'>, rotas: RotaEntrega[]): RotaEntrega | null {
+  if (cliente.rota_id) return rotas.find(r => r.id === cliente.rota_id) ?? null
+  const m = normalizarMunicipio(cliente.municipio)
+  if (!m) return null
+  return rotas.find(r => r.municipios.some(x => normalizarMunicipio(x) === m)) ?? null
+}

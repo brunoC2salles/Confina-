@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { PageHeader, EmptyState } from '@/components/common/UI'
+import { PageHeader, EmptyState, Modal } from '@/components/common/UI'
+import { EstoqueGerenciado } from '@/components/parceiros/EstoqueGerenciado'
 import { useDadosFornecedor, nomeCliente } from '@/portal/useDadosFornecedor'
 import { usePortal } from '@/portal/PortalContext'
-import { fmtKg, fmtDataBr, emAlerta, linkWhatsApp, type ClienteFornecedor, type EstoqueCliente } from '@/core/parceiros'
+import { fmtKg, fmtDataBr, emAlerta, linkWhatsApp, rotaDoCliente, type ClienteFornecedor, type EstoqueCliente } from '@/core/parceiros'
 
 // Desvio de consumo: realizado (fornecimentos registrados ou baixas) contra
 // o previsto pelas dietas, somando os produtos com os dois valores.
@@ -17,7 +18,8 @@ function desvio(linhas: EstoqueCliente[]): number | null {
 
 export default function Clientes() {
   const { papel, fornecedor, membro } = usePortal()
-  const { clientes, produtos, membros, estoque, loading, recarregar } = useDadosFornecedor()
+  const { clientes, produtos, membros, estoque, rotas, loading, recarregar } = useDadosFornecedor()
+  const [gerenciar, setGerenciar] = useState<ClienteFornecedor | null>(null)
   const [sel, setSel] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [erro, setErro] = useState<string | null>(null)
@@ -59,7 +61,7 @@ export default function Clientes() {
         <div style={{ display: 'grid', gridTemplateColumns: atual ? 'minmax(0, 1fr) minmax(300px, 380px)' : '1fr', gap: 16, alignItems: 'start' }}>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Fazenda</th><th>Conta</th><th>Cabeças</th><th>Dieta em uso</th><th>Consumo x previsto</th><th>Próxima reposição</th>{papel === 'gestor' && <th>Vendedor</th>}</tr></thead>
+              <thead><tr><th>Fazenda</th><th>Conta</th><th>Cabeças</th><th>Dieta em uso</th><th>Consumo x previsto</th><th>Próxima reposição</th><th>Rota</th>{papel === 'gestor' && <th>Vendedor</th>}</tr></thead>
               <tbody>
                 {lista.map(c => {
                   const linhas = estoquePorCliente[c.id] ?? []
@@ -75,6 +77,14 @@ export default function Clientes() {
                       <td>{d == null ? <span style={{ color: 'var(--text-3)' }}>—</span>
                         : <span className={`badge ${Math.abs(d) <= 0.05 ? 'badge-green' : Math.abs(d) <= 0.15 ? 'badge-amber' : 'badge-red'}`}>{d > 0 ? '+' : ''}{Math.round(d * 100)}%</span>}</td>
                       <td style={{ color: alerta ? 'var(--red)' : undefined }}>{proxima ? fmtDataBr(proxima.data_fim) : '—'}</td>
+                      <td onClick={e => e.stopPropagation()} style={{ fontSize: 12 }}>
+                        {papel === 'gestor'
+                          ? <select className="form-input" style={{ height: 32, fontSize: 12 }} value={c.rota_id ?? ''} onChange={e => atualizar(c, { rota_id: e.target.value || null })}>
+                              <option value="">{(() => { const r = rotaDoCliente({ ...c, rota_id: null }, rotas); return r ? `Pelo município (${r.nome})` : 'Pelo município' })()}</option>
+                              {rotas.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
+                            </select>
+                          : rotaDoCliente(c, rotas)?.nome ?? 'Sem rota'}
+                      </td>
                       {papel === 'gestor' && (
                         <td onClick={e => e.stopPropagation()}>
                           <select className="form-input" style={{ height: 32, fontSize: 12 }} value={c.vendedor_id ?? ''} onChange={e => atualizar(c, { vendedor_id: e.target.value || null })}>
@@ -127,6 +137,7 @@ export default function Clientes() {
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                {atual.modo === 'estoque' && <button className="btn btn-primary btn-sm" onClick={() => setGerenciar(atual)}>Gerenciar estoque e consumo</button>}
                 {(() => {
                   const zap = linkWhatsApp(atual.telefone, `Olá ${atual.responsavel ?? ''}, aqui é ${membro?.nome ?? ''} da ${fornecedor?.nome ?? ''}. Gostaria de agendar uma visita técnica para acompanhar o consumo das dietas.`)
                   return zap ? <a className="btn btn-primary btn-sm" href={zap} target="_blank" rel="noreferrer">Agendar visita pelo WhatsApp</a> : null
@@ -141,6 +152,13 @@ export default function Clientes() {
             </div>
           )}
         </div>
+      )}
+
+      {gerenciar && fornecedor && (
+        <Modal open size="xl" onClose={() => { setGerenciar(null); recarregar() }} title={`Estoque de ${nomeCliente(gerenciar)}`}
+          subtitle="Lance entradas, baixas e ajustes e informe o consumo. O cliente vê e altera o mesmo estoque.">
+          <EstoqueGerenciado cliente={gerenciar} produtos={produtos} fornecedorNome={fornecedor.nome} quem="equipe" />
+        </Modal>
       )}
     </div>
   )

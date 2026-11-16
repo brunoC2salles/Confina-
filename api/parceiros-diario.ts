@@ -11,6 +11,7 @@
 import { definirProvedorDb } from '../src/core/db.js'
 import {
   atualizarResumoCliente, emAlerta, quantidadeSugerida, dataEntregaSugerida,
+  carregarMovimentos, carregarConsumoInformado, gerarBaixasAutomaticas, hojeISO,
   type ClienteFornecedor, type ProdutoFornecedor, type EstoqueCliente,
 } from '../src/core/parceiros.js'
 import {
@@ -25,7 +26,9 @@ export async function GET(request: Request): Promise<Response> {
   if (!servico) return json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada' }, 500)
   if (!CRON_SECRET || request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) return json({ error: 'Não autorizado' }, 401)
 
-  const relatorio = { clientes: 0, alertas: 0, emails: 0, cancelados: 0, erros: [] as string[] }
+  const relatorio = { clientes: 0, baixas_automaticas: 0, alertas: 0, emails: 0, cancelados: 0, erros: [] as string[] }
+  // Data de hoje no horário de Brasília (a rotina roda às 6h).
+  const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
   // Fornecedor de demonstração fica de fora: dados fixos para apresentação.
   const { data: fornecedores } = await servico.from('fornecedores').select('id, nome, stripe_subscription_id').eq('ativo', true).eq('demo', false)
 
@@ -40,6 +43,23 @@ export async function GET(request: Request): Promise<Response> {
     for (const cliente of (clis ?? []) as ClienteFornecedor[]) {
       relatorio.clientes++
       let linhas: EstoqueCliente[] = []
+      // Conta só de estoque: baixa automática diária pelo consumo informado.
+      if (cliente.modo === 'estoque') {
+        try {
+          const [movs, informados] = await Promise.all([carregarMovimentos(cliente.user_id), carregarConsumoInformado(cliente.id)])
+          const baixas = gerarBaixasAutomaticas(movs, informados, cliente.janela_consumo_dias || 7, hoje)
+          if (baixas.length > 0) {
+            const { error } = await servico.from('estoque_movimentos').insert(baixas.map(b => ({
+              user_id: cliente.user_id, produto_id: b.produto_id, tipo: 'baixa', data: b.data, quantidade_kg: b.quantidade_kg,
+              automatico: true, observacoes: 'Baixa automática pelo consumo informado',
+            })))
+            if (error) relatorio.erros.push(`baixas ${cliente.id}: ${error.message}`)
+            else relatorio.baixas_automaticas += baixas.length
+          }
+        } catch (e) {
+          relatorio.erros.push(`baixas ${cliente.id}: ${(e as Error).message}`)
+        }
+      }
       try {
         const r = await atualizarResumoCliente(cliente.user_id, cliente, produtos)
         if (r.error) relatorio.erros.push(`${cliente.id}: ${r.error}`)

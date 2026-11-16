@@ -481,3 +481,7 @@ grant execute on function public.uso_dietas_fornecedor(uuid) to authenticated;
 
 -- Fornecedor de demonstração (2026-11-16): a rotina diária ignora.
 alter table public.fornecedores add column demo boolean not null default false;
+
+-- Estoque gerenciado e logística (2026-11-16): ver migração portal_parceiros_estoque_gerenciado_logistica
+-- (estoque_movimentos.automatico/criado_por/pedido_id e RLS da equipe, fornecedor_consumo_informado,
+--  fornecedor_rotas, fornecedor_config, fornecedor_clientes.rota_id, fornecedor_pedidos.estoque_lancado_em).
