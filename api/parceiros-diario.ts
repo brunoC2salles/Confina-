@@ -26,7 +26,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!CRON_SECRET || request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) return json({ error: 'Não autorizado' }, 401)
 
   const relatorio = { clientes: 0, alertas: 0, emails: 0, cancelados: 0, erros: [] as string[] }
-  const { data: fornecedores } = await servico.from('fornecedores').select('id, nome, stripe_subscription_id').eq('ativo', true)
+  // Fornecedor de demonstração fica de fora: dados fixos para apresentação.
+  const { data: fornecedores } = await servico.from('fornecedores').select('id, nome, stripe_subscription_id').eq('ativo', true).eq('demo', false)
 
   for (const f of (fornecedores ?? []) as Array<{ id: string; nome: string; stripe_subscription_id: string | null }>) {
     const [{ data: prods }, { data: clis }] = await Promise.all([

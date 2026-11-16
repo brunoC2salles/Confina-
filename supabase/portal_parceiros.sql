@@ -478,3 +478,6 @@ language sql stable security definer set search_path = public as $$
   group by d.fornecedor_dieta_id
 $$;
 grant execute on function public.uso_dietas_fornecedor(uuid) to authenticated;
+
+-- Fornecedor de demonstração (2026-11-16): a rotina diária ignora.
+alter table public.fornecedores add column demo boolean not null default false;
