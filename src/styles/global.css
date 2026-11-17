@@ -42,13 +42,13 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   --t:           all 0.15s ease;
 }
 
-html, body { height: 100%; font-family: var(--font); font-size: 14px; line-height: 1.5; color: var(--text-1); background: var(--gray-100); -webkit-font-smoothing: antialiased; }
+html, body { margin: 0; padding: 0; height: 100%; font-family: var(--font); font-size: 14px; line-height: 1.5; color: var(--text-1); background: var(--gray-100); -webkit-font-smoothing: antialiased; }
 #root { height: 100%; }
 a { color: var(--green); text-decoration: none; }
 
 /* Layout */
 .app { display: flex; height: 100vh; overflow: hidden; }
-.main { flex: 1; overflow-y: auto; background: var(--gray-100); }
+.main { flex: 1; overflow-y: auto; background: var(--gray-100); scrollbar-width: thin; scrollbar-color: #d6d3d1 transparent; }
 .page { padding: 24px; max-width: 1400px; }
 .mobile-topbar { display: none; }
 .sidebar-backdrop { display: none; }
