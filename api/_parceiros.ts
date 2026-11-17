@@ -109,12 +109,22 @@ export async function stripe(metodo: 'GET' | 'POST' | 'DELETE', caminho: string,
   return dados
 }
 
-// Clientes cobrados: contas só de estoque ativas vinculadas ao fornecedor
-// (clientes do Confina+ da opção integrada não têm custo para o fornecedor).
+// Clientes cobrados: todos os clientes ativos do fornecedor, menos os que
+// usam o Confina+ num plano pago (Pro ou Master) com a assinatura ativa.
+// Contas só de estoque e clientes do Confina+ no plano Free entram no pacote.
 export async function contarClientesCobrados(sb: SupabaseClient, fornecedorId: string): Promise<number> {
-  const { count } = await sb.from('fornecedor_clientes').select('id', { count: 'exact', head: true })
-    .eq('fornecedor_id', fornecedorId).eq('ativo', true).eq('modo', 'estoque')
-  return count ?? 0
+  const { data: clientes } = await sb.from('fornecedor_clientes').select('modo, user_id')
+    .eq('fornecedor_id', fornecedorId).eq('ativo', true)
+  const lista = (clientes ?? []) as Array<{ modo: string; user_id: string | null }>
+  const ids = lista.filter(c => c.modo === 'confina' && c.user_id).map(c => c.user_id as string)
+  const pagantes = new Set<string>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data: perfis } = await sb.from('profiles').select('id, plano, plano_status').in('id', ids.slice(i, i + 200))
+    for (const p of (perfis ?? []) as Array<{ id: string; plano: string | null; plano_status: string | null }>) {
+      if ((p.plano === 'pro' || p.plano === 'master') && (p.plano_status ?? 'ativo') === 'ativo') pagantes.add(p.id)
+    }
+  }
+  return lista.filter(c => !(c.modo === 'confina' && c.user_id && pagantes.has(c.user_id))).length
 }
 
 // Pacotes de clientes: 20, depois múltiplos de 50 (489 clientes cobram o pacote de 500).

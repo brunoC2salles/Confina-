@@ -233,26 +233,26 @@ export default function LandingParceiros() {
             <div className="center">
               <p className="tag">Planos</p>
               <h2 id="planos-h">Três formas de parceria.</h2>
-              <p className="lead">Clientes que usam o Confina+ não geram custo para a cooperativa. Para atender clientes sem Confina+, a plataforma tem um valor fixo mensal e um pacote de clientes. Os valores são apresentados na conversa.</p>
+              <p className="lead">Clientes nos planos pagos do Confina+ (Pro e Master) não geram custo para a cooperativa. Clientes sem Confina+ ou no plano Free entram num pacote de clientes, com um valor fixo mensal. Os valores são apresentados na conversa.</p>
             </div>
             <div className="price-grid">
               <div className="pc">
                 <div className="pc-plan">Parceria integrada</div>
-                <div className="pc-for">Para os clientes que usam o Confina+, trazidos por você</div>
+                <div className="pc-for">Para os clientes nos planos Pro e Master do Confina+</div>
                 <div className="pc-div" />
                 <ul className="pc-feats">
                   <li><Ck />Suas dietas na tela de dietas do produtor</li>
                   <li><Ck />Pedido em 1 clique e alerta de estoque</li>
                   <li><Ck />Portal com calendário, pedidos, rotas e simulador</li>
                   <li><Ck />Exclusividade: o cliente vê só os seus produtos</li>
-                  <li><Ck />Sem custo para a cooperativa</li>
+                  <li><Ck />Sem custo para a cooperativa nesses clientes</li>
                 </ul>
                 <a href={WHATSAPP} target="_blank" rel="noopener" className="pc-btn">Quero esta parceria</a>
               </div>
               <div className="pc feat">
                 <div className="pc-badge">Mais completo</div>
                 <div className="pc-plan">Plataforma de venda de ração</div>
-                <div className="pc-for">Para atender também os clientes sem Confina+, de corte e leite</div>
+                <div className="pc-for">Para clientes sem Confina+ ou no plano Free, de corte e leite</div>
                 <div className="pc-div" />
                 <ul className="pc-feats">
                   <li><Ck />Tudo da parceria integrada</li>
