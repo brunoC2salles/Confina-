@@ -1,6 +1,7 @@
 // Hook de dietas. Tipos, cálculo de custo e operações estão em src/core/dietas.ts
 // (compartilhado com o servidor MCP); aqui fica o estado do React.
 import { useState, useEffect, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import * as core from '@/core/dietas'
@@ -20,12 +21,13 @@ export {
 
 export function useDietas() {
   const { user } = useAuth()
-  const [dietas, setDietas] = useState<Dieta[]>([])
-  const [dietasBase, setDietasBase] = useState<DietaBase[]>([])
-  const [insumosPadrao, setInsumosPadrao] = useState<InsumoPadrao[]>([])
-  const [ingredientesProdutorTodos, setIngredientesProdutorTodos] = useState<IngredienteProdutor[]>([])
-  const [precosProdutor, setPrecosProdutor] = useState<Array<{ insumo_id: string; preco_kg: number }>>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useDietas:${user.id}` : null
+  const [dietas, setDietas] = useEstadoCache<Dieta[]>(_k && `${_k}:dietas`, [])
+  const [dietasBase, setDietasBase] = useEstadoCache<DietaBase[]>(_k && `${_k}:dietasBase`, [])
+  const [insumosPadrao, setInsumosPadrao] = useEstadoCache<InsumoPadrao[]>(_k && `${_k}:insumosPadrao`, [])
+  const [ingredientesProdutorTodos, setIngredientesProdutorTodos] = useEstadoCache<IngredienteProdutor[]>(_k && `${_k}:ingredientesProdutorTodos`, [])
+  const [precosProdutor, setPrecosProdutor] = useEstadoCache<Array<{ insumo_id: string; preco_kg: number }>>(_k && `${_k}:precosProdutor`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:dietas`)
 
   const fetchInsumosPadrao = useCallback(async () => {
     setInsumosPadrao(await core.carregarInsumosPadrao())
@@ -123,9 +125,10 @@ export function useDietas() {
 
 export function useAdmin() {
   const { user } = useAuth()
-  const [insumos, setInsumos] = useState<InsumoPadrao[]>([])
-  const [dietasBase, setDietasBase] = useState<DietaBase[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useAdmin:${user.id}` : null
+  const [insumos, setInsumos] = useEstadoCache<InsumoPadrao[]>(_k && `${_k}:insumos`, [])
+  const [dietasBase, setDietasBase] = useEstadoCache<DietaBase[]>(_k && `${_k}:dietasBase`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:insumos`)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)

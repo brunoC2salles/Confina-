@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import type { CompraOutros } from '@/types'
 import * as core from '@/core/comprasRateio'
@@ -19,9 +20,10 @@ import type { RegistrarCompraRateioInput } from '@/core/comprasRateio'
 
 export function useComprasOutros() {
   const { user } = useAuth()
-  const [compras, setCompras] = useState<CompraOutros[]>([])
-  const [fornecedores, setFornecedores] = useState<Array<{ id: string; nome: string }>>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useComprasOutros:${user.id}` : null
+  const [compras, setCompras] = useEstadoCache<CompraOutros[]>(_k && `${_k}:compras`, [])
+  const [fornecedores, setFornecedores] = useEstadoCache<Array<{ id: string; nome: string }>>(_k && `${_k}:fornecedores`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:compras`)
 
   const fetch = useCallback(async () => {
     if (!user) return

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useLotes } from '@/hooks/useLotes'
 import { useFaixas } from '@/hooks/useFaixas'
 import { useParceiros } from '@/hooks/useHooks'
@@ -82,10 +83,11 @@ export default function Ranking() {
   const [pctComissao, setPctComissao] = useState('2')
   const [pctEncargo, setPctEncargo] = useState('1.5')
 
-  const [ativos, setAtivos] = useState<LinhaAtivo[]>([])
-  const [vendidos, setVendidos] = useState<LinhaVendido[]>([])
-  const [loadingAtivos, setLoadingAtivos] = useState(true)
-  const [loadingVendidos, setLoadingVendidos] = useState(true)
+  const _k = user ? `Ranking:${user.id}` : null
+  const [ativos, setAtivos] = useEstadoCache<LinhaAtivo[]>(_k && `${_k}:ativos`, [])
+  const [vendidos, setVendidos] = useEstadoCache<LinhaVendido[]>(_k && `${_k}:vendidos`, [])
+  const [loadingAtivos, setLoadingAtivos] = useCarregando(_k && `${_k}:ativos`)
+  const [loadingVendidos, setLoadingVendidos] = useCarregando(_k && `${_k}:vendidos`)
 
   const [selecionadosAtivos, setSelecionadosAtivos] = useState<Set<string>>(new Set())
   const [selecionadosVendidos, setSelecionadosVendidos] = useState<Set<string>>(new Set())

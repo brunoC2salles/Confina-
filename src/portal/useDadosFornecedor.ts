@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { supabase } from '@/lib/supabase'
 import { usePortal } from '@/portal/PortalContext'
 import type {
@@ -9,16 +10,17 @@ import type {
 // carteira; o vendedor, só os clientes dele (e os pedidos e estoques deles).
 export function useDadosFornecedor() {
   const { fornecedor } = usePortal()
-  const [clientes, setClientes] = useState<ClienteFornecedor[]>([])
-  const [produtos, setProdutos] = useState<ProdutoFornecedor[]>([])
-  const [membros, setMembros] = useState<MembroFornecedor[]>([])
-  const [pedidos, setPedidos] = useState<PedidoFornecedor[]>([])
-  const [estoque, setEstoque] = useState<EstoqueCliente[]>([])
-  const [rotas, setRotas] = useState<RotaEntrega[]>([])
-  const [capacidadeKg, setCapacidadeKg] = useState(15000)
+  const _k = fornecedor ? `useDadosFornecedor:${fornecedor.id}` : null
+  const [clientes, setClientes] = useEstadoCache<ClienteFornecedor[]>(_k && `${_k}:clientes`, [])
+  const [produtos, setProdutos] = useEstadoCache<ProdutoFornecedor[]>(_k && `${_k}:produtos`, [])
+  const [membros, setMembros] = useEstadoCache<MembroFornecedor[]>(_k && `${_k}:membros`, [])
+  const [pedidos, setPedidos] = useEstadoCache<PedidoFornecedor[]>(_k && `${_k}:pedidos`, [])
+  const [estoque, setEstoque] = useEstadoCache<EstoqueCliente[]>(_k && `${_k}:estoque`, [])
+  const [rotas, setRotas] = useEstadoCache<RotaEntrega[]>(_k && `${_k}:rotas`, [])
+  const [capacidadeKg, setCapacidadeKg] = useEstadoCache(_k && `${_k}:capacidadeKg`, 15000)
   // Preço de referência R$/kg MN por produto (só a equipe lê).
-  const [precos, setPrecos] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(true)
+  const [precos, setPrecos] = useEstadoCache<Record<string, number>>(_k && `${_k}:precos`, {})
+  const [loading, setLoading] = useCarregando(_k && `${_k}:clientes`)
 
   const carregar = useCallback(async () => {
     if (!fornecedor) { setLoading(false); return }

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { definirDonoCache } from '@/lib/cacheTela'
 
 interface AuthCtx {
   session: Session | null; user: User | null; loading: boolean
@@ -19,16 +20,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    // A renovação do token (por exemplo, ao voltar para a aba) recria o
+    // objeto do usuário. Mantém o mesmo objeto enquanto for o mesmo usuário,
+    // para as telas não recarregarem os dados.
+    const aplicar = (s: Session | null) => {
       setSession(s)
-      setUser(s?.user ?? null)
+      const novo = s?.user ?? null
+      definirDonoCache(novo?.id ?? null)
+      setUser(atual => (atual && novo && atual.id === novo.id && atual.email === novo.email
+        && JSON.stringify(atual.user_metadata) === JSON.stringify(novo.user_metadata) ? atual : novo))
+    }
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      aplicar(s)
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s)
-      setUser(s?.user ?? null)
-    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => aplicar(s))
 
     return () => subscription.unsubscribe()
   }, [])

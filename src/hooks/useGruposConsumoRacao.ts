@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import type { SaldoGrupo, RankingLoteCompra } from '@/lib/custoRacaoGrupo'
 import type { GrupoConsumoLoteRow, CompraRacaoGrupo, GrupoConsumoPeriodo } from '@/types'
@@ -16,11 +17,12 @@ export { recomputarGrupoCompleto, type GrupoConsumoComDieta } from '@/core/grupo
 // específico, em useResumoGrupo, abaixo.
 export function useGruposConsumoRacao() {
   const { user } = useAuth()
-  const [grupos, setGrupos] = useState<GrupoConsumoComDieta[]>([])
-  const [lotesAtivos, setLotesAtivos] = useState<Array<{ id: string; nome_lote: string; codigo_lote: string }>>([])
-  const [dietas, setDietas] = useState<Array<{ id: string; nome: string; pct_consumo_pv_ms: number | null }>>([])
-  const [fornecedores, setFornecedores] = useState<Array<{ id: string; nome: string }>>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useGruposConsumoRacao:${user.id}` : null
+  const [grupos, setGrupos] = useEstadoCache<GrupoConsumoComDieta[]>(_k && `${_k}:grupos`, [])
+  const [lotesAtivos, setLotesAtivos] = useEstadoCache<Array<{ id: string; nome_lote: string; codigo_lote: string }>>(_k && `${_k}:lotesAtivos`, [])
+  const [dietas, setDietas] = useEstadoCache<Array<{ id: string; nome: string; pct_consumo_pv_ms: number | null }>>(_k && `${_k}:dietas`, [])
+  const [fornecedores, setFornecedores] = useEstadoCache<Array<{ id: string; nome: string }>>(_k && `${_k}:fornecedores`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:grupos`)
 
   const fetch = useCallback(async () => {
     if (!user) { setGrupos([]); setLoading(false); return }
@@ -63,23 +65,24 @@ export function useGruposConsumoRacao() {
 // ─── Detalhe de um grupo: membros, compras, períodos, saldo, ranking ──────
 export function useResumoGrupo(grupoId: string | null) {
   const { user } = useAuth()
-  const [membros, setMembros] = useState<GrupoConsumoLoteRow[]>([])
-  const [compras, setCompras] = useState<CompraRacaoGrupo[]>([])
-  const [periodos, setPeriodos] = useState<GrupoConsumoPeriodo[]>([])
-  const [lotesInfo, setLotesInfo] = useState<Record<string, { nome_lote: string; codigo_lote: string }>>({})
-  const [saldo, setSaldo] = useState<SaldoGrupo | null>(null)
+  const _k = user ? `useResumoGrupo:${user.id}:${grupoId}` : null
+  const [membros, setMembros] = useEstadoCache<GrupoConsumoLoteRow[]>(_k && `${_k}:membros`, [])
+  const [compras, setCompras] = useEstadoCache<CompraRacaoGrupo[]>(_k && `${_k}:compras`, [])
+  const [periodos, setPeriodos] = useEstadoCache<GrupoConsumoPeriodo[]>(_k && `${_k}:periodos`, [])
+  const [lotesInfo, setLotesInfo] = useEstadoCache<Record<string, { nome_lote: string; codigo_lote: string }>>(_k && `${_k}:lotesInfo`, {})
+  const [saldo, setSaldo] = useEstadoCache<SaldoGrupo | null>(_k && `${_k}:saldo`, null)
   const [consumoTeoricoPorLote, setConsumoTeoricoPorLote] =
-    useState<Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>>>({})
-  const [pctConsumoPvMs, setPctConsumoPvMs] = useState<number | null>(null)
-  const [pctMsDieta, setPctMsDieta] = useState<number | null>(null)
+    useEstadoCache<Record<string, Record<number, { pesoTotalKg: number; qtdAtiva: number; consumoKg: number }>>>(_k && `${_k}:consumoTeoricoPorLote`, {})
+  const [pctConsumoPvMs, setPctConsumoPvMs] = useEstadoCache<number | null>(_k && `${_k}:pctConsumoPvMs`, null)
+  const [pctMsDieta, setPctMsDieta] = useEstadoCache<number | null>(_k && `${_k}:pctMsDieta`, null)
   // Ver DadosConsumoGrupo.algumAnimalNaDietaHoje. Começa true (postura
   // conservadora): antes de carregar, prefere não sugerir "ok" indevidamente.
-  const [algumAnimalNaDietaHoje, setAlgumAnimalNaDietaHoje] = useState(true)
+  const [algumAnimalNaDietaHoje, setAlgumAnimalNaDietaHoje] = useEstadoCache(_k && `${_k}:algumAnimalNaDietaHoje`, true)
   // R$/kg teórico confirmado manualmente (ver confirmarSaldoGrupo) — null
   // enquanto não há confirmação, ou depois que uma nova compra invalida a
   // confirmação anterior.
-  const [custoConfirmadoKg, setCustoConfirmadoKg] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [custoConfirmadoKg, setCustoConfirmadoKg] = useEstadoCache<number | null>(_k && `${_k}:custoConfirmadoKg`, null)
+  const [loading, setLoading] = useCarregando(_k && `${_k}:membros`)
 
   const fetch = useCallback(async () => {
     if (!user || !grupoId) { setLoading(false); return }

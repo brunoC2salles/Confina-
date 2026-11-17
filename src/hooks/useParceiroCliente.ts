@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
@@ -11,11 +12,12 @@ import {
 // gravado para o vendedor ver no portal.
 export function useParceiroCliente(opcoes?: { calcularEstoque?: boolean }) {
   const { user } = useAuth()
+  const _k = user ? `useParceiroCliente:${user.id}` : null
   const calcular = opcoes?.calcularEstoque ?? true
-  const [vinculo, setVinculo] = useState<VinculoCliente | null>(null)
-  const [pedidos, setPedidos] = useState<PedidoFornecedor[]>([])
-  const [estoque, setEstoque] = useState<Record<string, EstoqueCliente>>({})
-  const [loading, setLoading] = useState(true)
+  const [vinculo, setVinculo] = useEstadoCache<VinculoCliente | null>(_k && `${_k}:vinculo`, null)
+  const [pedidos, setPedidos] = useEstadoCache<PedidoFornecedor[]>(_k && `${_k}:pedidos`, [])
+  const [estoque, setEstoque] = useEstadoCache<Record<string, EstoqueCliente>>(_k && `${_k}:estoque`, {})
+  const [loading, setLoading] = useCarregando(_k && `${_k}:vinculo`)
   const [calculando, setCalculando] = useState(false)
 
   const recarregarPedidos = useCallback(async (v?: VinculoCliente | null) => {

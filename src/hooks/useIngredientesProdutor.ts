@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import type { InsumoPadrao, IngredienteProdutor } from '@/hooks/useDietas'
 import * as core from '@/core/cadastros'
@@ -9,10 +10,11 @@ export type { PrecoProdutor } from '@/core/cadastros'
 // Operações em src/core/cadastros.ts (compartilhado com o servidor MCP).
 export function useIngredientesProdutor() {
   const { user } = useAuth()
-  const [ingredientes, setIngredientes] = useState<IngredienteProdutor[]>([])
-  const [insumosPadrao, setInsumosPadrao] = useState<InsumoPadrao[]>([])
-  const [precos, setPrecos] = useState<PrecoProdutor[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useIngredientesProdutor:${user.id}` : null
+  const [ingredientes, setIngredientes] = useEstadoCache<IngredienteProdutor[]>(_k && `${_k}:ingredientes`, [])
+  const [insumosPadrao, setInsumosPadrao] = useEstadoCache<InsumoPadrao[]>(_k && `${_k}:insumosPadrao`, [])
+  const [precos, setPrecos] = useEstadoCache<PrecoProdutor[]>(_k && `${_k}:precos`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:ingredientes`)
 
   const fetchAll = useCallback(async () => {
     if (!user) return

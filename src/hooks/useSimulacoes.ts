@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import type { SimDados } from '@/lib/simulador'
 import * as core from '@/core/cadastros'
@@ -9,9 +10,10 @@ export type { Simulacao } from '@/core/cadastros'
 // Operações em src/core/cadastros.ts (compartilhado com o servidor MCP).
 export function useSimulacoes() {
   const { user } = useAuth()
-  const [simulacoes, setSimulacoes] = useState<Simulacao[]>([])
-  const [loading, setLoading] = useState(true)
-  const [tabelaAusente, setTabelaAusente] = useState(false)
+  const _k = user ? `useSimulacoes:${user.id}` : null
+  const [simulacoes, setSimulacoes] = useEstadoCache<Simulacao[]>(_k && `${_k}:simulacoes`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:simulacoes`)
+  const [tabelaAusente, setTabelaAusente] = useEstadoCache(_k && `${_k}:tabelaAusente`, false)
 
   const fetchSimulacoes = useCallback(async () => {
     if (!user) return

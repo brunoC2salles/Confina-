@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Modal, EmptyState } from '@/components/common/UI'
@@ -24,10 +25,11 @@ export function EstoqueGerenciado({ cliente, produtos, fornecedorNome, quem, onA
   onAlterado?: () => void
 }) {
   const { user } = useAuth()
-  const [movs, setMovs] = useState<MovimentoEstoque[]>([])
-  const [informados, setInformados] = useState<ConsumoInformado[]>([])
-  const [linhas, setLinhas] = useState<Record<string, EstoqueCliente>>({})
-  const [loading, setLoading] = useState(true)
+  const _k = `EstoqueGerenciado:${cliente.id}`
+  const [movs, setMovs] = useEstadoCache<MovimentoEstoque[]>(`${_k}:movs`, [])
+  const [informados, setInformados] = useEstadoCache<ConsumoInformado[]>(`${_k}:informados`, [])
+  const [linhas, setLinhas] = useEstadoCache<Record<string, EstoqueCliente>>(`${_k}:linhas`, {})
+  const [loading, setLoading] = useCarregando(`${_k}:linhas`)
   const [registrar, setRegistrar] = useState<{ produto: ProdutoFornecedor; tipo: MovimentoEstoque['tipo'] } | null>(null)
   const [form, setForm] = useState({ data: hojeISO(), quantidade: '', obs: '' })
   const [consumo, setConsumo] = useState<{ produto: ProdutoFornecedor; valor: string; unidade: 'dia' | 'semana' } | null>(null)

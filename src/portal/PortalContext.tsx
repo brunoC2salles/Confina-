@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { carregarVinculoCliente, type Fornecedor, type MembroFornecedor, type PapelMembro, type VinculoCliente } from '@/core/parceiros'
@@ -23,12 +24,13 @@ const CHAVE = 'portal-fornecedor'
 
 export function PortalProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
-  const [carregando, setCarregando] = useState(true)
-  const [admin, setAdmin] = useState(false)
-  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
-  const [membros, setMembros] = useState<MembroFornecedor[]>([])
-  const [vinculo, setVinculo] = useState<VinculoCliente | null>(null)
-  const [carregadoPara, setCarregadoPara] = useState<string | null>(null)
+  const _k = user ? `PortalProvider:${user.id}` : null
+  const [carregando, setCarregando] = useCarregando(_k && `${_k}:carregadoPara`)
+  const [admin, setAdmin] = useEstadoCache(_k && `${_k}:admin`, false)
+  const [fornecedores, setFornecedores] = useEstadoCache<Fornecedor[]>(_k && `${_k}:fornecedores`, [])
+  const [membros, setMembros] = useEstadoCache<MembroFornecedor[]>(_k && `${_k}:membros`, [])
+  const [vinculo, setVinculo] = useEstadoCache<VinculoCliente | null>(_k && `${_k}:vinculo`, null)
+  const [carregadoPara, setCarregadoPara] = useEstadoCache<string | null>(_k && `${_k}:carregadoPara`, null)
   const [escolhido, setEscolhido] = useState<string | null>(() => { try { return localStorage.getItem(CHAVE) } catch { return null } })
 
   const recarregar = useCallback(async () => {

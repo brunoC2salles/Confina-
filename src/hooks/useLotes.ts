@@ -2,6 +2,7 @@
 // gravação) está em src/core/lotes.ts, compartilhada com o servidor MCP —
 // aqui fica só o estado do React e o recarregamento depois de cada operação.
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import type {
   Lote, CicloLote, Animal, SaidaGrupo, CategoriaCustoOperacional, MotivoEncerramento,
@@ -27,18 +28,19 @@ type Res<F extends (...args: any[]) => Promise<unknown>> = Promise<Awaited<Retur
 
 export function useLotes() {
   const { user } = useAuth()
-  const [lotes, setLotes] = useState<Lote[]>([])
-  const [ciclosPorLote, setCiclosPorLote] = useState<Record<string, CicloLote[]>>({})
-  const [resumo, setResumo] = useState<Record<string, ResumoLote>>({})
+  const _k = user ? `useLotes:${user.id}` : null
+  const [lotes, setLotes] = useEstadoCache<Lote[]>(_k && `${_k}:lotes`, [])
+  const [ciclosPorLote, setCiclosPorLote] = useEstadoCache<Record<string, CicloLote[]>>(_k && `${_k}:ciclosPorLote`, {})
+  const [resumo, setResumo] = useEstadoCache<Record<string, ResumoLote>>(_k && `${_k}:resumo`, {})
   // Quantos animais ativos de cada lote estão em cada número de ciclo — igual
   // a { [numero]: qtd }. Num lote sem avanço parcial, tem uma única chave
   // (o ciclo_atual do lote); com avanço parcial, pode ter mais de uma —
   // é o que alimenta o badge de distribuição na UI.
-  const [distribuicaoCiclos, setDistribuicaoCiclos] = useState<Record<string, Record<number, number>>>({})
+  const [distribuicaoCiclos, setDistribuicaoCiclos] = useEstadoCache<Record<string, Record<number, number>>>(_k && `${_k}:distribuicaoCiclos`, {})
   // Trocas de dieta dentro do mesmo ciclo (lote inteiro), por lote — ver
   // TrocaDietaLoteRow em types/index.ts e resolverDietaIdNoDia em custoAnimal.ts.
-  const [trocasDietaPorLote, setTrocasDietaPorLote] = useState<Record<string, TrocaDietaLoteRow[]>>({})
-  const [loading, setLoading] = useState(true)
+  const [trocasDietaPorLote, setTrocasDietaPorLote] = useEstadoCache<Record<string, TrocaDietaLoteRow[]>>(_k && `${_k}:trocasDietaPorLote`, {})
+  const [loading, setLoading] = useCarregando(_k && `${_k}:lotes`)
 
   const fetchLotes = useCallback(async () => {
     if (!user) return
@@ -149,8 +151,9 @@ export function useLotes() {
 
 export function useAnimaisDoLote(loteId: string | null) {
   const { user } = useAuth()
-  const [animais, setAnimais] = useState<Animal[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useAnimaisDoLote:${user.id}:${loteId}` : null
+  const [animais, setAnimais] = useEstadoCache<Animal[]>(_k && `${_k}:animais`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:animais`)
 
   const fetch = useCallback(async () => {
     if (!user || !loteId) { setAnimais([]); setLoading(false); return }
@@ -248,8 +251,9 @@ export function useBuscaAnimalPorBrinco() {
 // escopo pedido).
 export function useMovimentacoesLote(loteId: string | null) {
   const { user } = useAuth()
-  const [eventos, setEventos] = useState<MovimentacaoGrupoLote[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useMovimentacoesLote:${user.id}:${loteId}` : null
+  const [eventos, setEventos] = useEstadoCache<MovimentacaoGrupoLote[]>(_k && `${_k}:eventos`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:eventos`)
 
   const fetch = useCallback(async () => {
     if (!user || !loteId) { setEventos([]); setLoading(false); return }
@@ -296,8 +300,9 @@ export function useCustoEngine() {
 
 export function useCustosOperacionais(loteId: string | null) {
   const { user } = useAuth()
-  const [custos, setCustos] = useState<CustoOperacionalComQtd[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useCustosOperacionais:${user.id}:${loteId}` : null
+  const [custos, setCustos] = useEstadoCache<CustoOperacionalComQtd[]>(_k && `${_k}:custos`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:custos`)
 
   const fetch = useCallback(async () => {
     if (!user || !loteId) { setCustos([]); setLoading(false); return }
@@ -332,8 +337,9 @@ export function useCustosOperacionais(loteId: string | null) {
 
 export function useCompras(loteId: string | null) {
   const { user } = useAuth()
-  const [compras, setCompras] = useState<Compra[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useCompras:${user.id}:${loteId}` : null
+  const [compras, setCompras] = useEstadoCache<Compra[]>(_k && `${_k}:compras`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:compras`)
 
   const fetch = useCallback(async () => {
     if (!user || !loteId) { setCompras([]); setLoading(false); return }
@@ -357,8 +363,9 @@ export function useCompras(loteId: string | null) {
 
 export function useSaidasGrupo() {
   const { user } = useAuth()
-  const [saidas, setSaidas] = useState<SaidaGrupo[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useSaidasGrupo:${user.id}` : null
+  const [saidas, setSaidas] = useEstadoCache<SaidaGrupo[]>(_k && `${_k}:saidas`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:saidas`)
 
   const fetchTodas = useCallback(async () => {
     if (!user) return

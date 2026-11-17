@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLotes } from '@/hooks/useLotes'
 import { useFaixas } from '@/hooks/useFaixas'
@@ -79,8 +80,9 @@ export default function Comparativo() {
     [fornecedorFiltro])
 
   const [tab, setTab] = useState<'ativos' | 'vendidos'>('ativos')
-  const [loadingAtivos, setLoadingAtivos] = useState(true)
-  const [loadingVendidos, setLoadingVendidos] = useState(true)
+  const _k = user ? `Comparativo:${user.id}` : null
+  const [loadingAtivos, setLoadingAtivos] = useCarregando(_k && `${_k}:dadosAtivos`)
+  const [loadingVendidos, setLoadingVendidos] = useCarregando(_k && `${_k}:vendidosRaw`)
   const [sortAtivos, setSortAtivos] = useState<SortState<LinhaAtivo> | null>(null)
   const [sortVendidos, setSortVendidos] = useState<SortState<LinhaVendido> | null>(null)
   const [sortPorCiclo, setSortPorCiclo] = useState<SortState<LinhaPorCiclo> | null>(null)
@@ -133,7 +135,7 @@ export default function Comparativo() {
   // A agregação em si (por lote, ou por ciclo selecionado) acontece nos
   // useMemo abaixo — assim trocar a seleção de ciclos ou o preço esperado
   // não exige nova consulta ao banco, só reprocessa o que já foi buscado.
-  const [dadosAtivos, setDadosAtivos] = useState<DadosAtivosComparativo>({ animais: [], resultados: {}, custosVar: {}, fornecedorPorAnimal: {} })
+  const [dadosAtivos, setDadosAtivos] = useEstadoCache<DadosAtivosComparativo>(_k && `${_k}:dadosAtivos`, { animais: [], resultados: {}, custosVar: {}, fornecedorPorAnimal: {} })
 
   // ─── Lotes com animais ativos: peso/GMD/custo são o estado atual; lucro e
   // margem só aparecem se um preço esperado for informado (projeção, igual à
@@ -170,7 +172,7 @@ export default function Comparativo() {
   const totalPorCiclo = useMemo(() => totalComparativoPorCiclo(linhasPorCiclo), [linhasPorCiclo])
 
   // ─── Dados brutos de cada venda já registrada — ver VendidoRaw no topo. ───
-  const [vendidosRaw, setVendidosRaw] = useState<VendidoRaw[]>([])
+  const [vendidosRaw, setVendidosRaw] = useEstadoCache<VendidoRaw[]>(_k && `${_k}:vendidosRaw`, [])
 
   // ─── Lotes com vendas registradas: dados realizados (peso na venda, custo e
   // lucro já liquidados na hora da venda), não é projeção. Um lote pode

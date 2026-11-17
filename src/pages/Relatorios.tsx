@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useEstadoCache, temCache } from '@/lib/cacheTela'
 import { carregarResumoRelatorio, diasPeriodoRelatorio, type PeriodoRelatorio, type ResumoRelatorio } from '@/core/analises'
 import { useAuth } from '@/contexts/AuthContext'
 import { PageHeader } from '@/components/common/UI'
@@ -12,8 +13,9 @@ type Resumo = ResumoRelatorio
 export default function Relatorios() {
   const { user } = useAuth()
   const [periodo, setPeriodo] = useState<Periodo>('mensal')
+  const _k = user ? `Relatorios:${user.id}:${periodo}` : null
   const [loading, setLoading] = useState(false)
-  const [resumo, setResumo] = useState<Resumo | null>(null)
+  const [resumo, setResumo] = useEstadoCache<Resumo | null>(_k && `${_k}:resumo`, null)
   const [erro, setErro] = useState<string | null>(null)
 
   const getFim = () => new Date().toISOString().split('T')[0]
@@ -26,7 +28,7 @@ export default function Relatorios() {
   useEffect(() => {
     if (!user) return
     const load = async () => {
-      setLoading(true)
+      if (!temCache(_k && `${_k}:resumo`)) setLoading(true)
       setErro(null)
       try {
         setResumo(await carregarResumoRelatorio(user.id, getInicio(), getFim()))

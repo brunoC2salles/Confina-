@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLotes } from '@/hooks/useLotes'
@@ -22,14 +23,15 @@ export default function Dashboard() {
   const [conviteTutorial, setConviteTutorial] = useState(true)
   const mostrarConviteTutorial = conviteTutorial && !loadLotes && lotes.length === 0 && !upgrade
 
-  const [metricas, setMetricas] = useState({
+  const _k = user ? `Dashboard:${user.id}` : null
+  const [metricas, setMetricas] = useEstadoCache(_k && `${_k}:metricas`, {
     totalAnimais: 0, pesoMedioGeral: 0,
     receitaTotal: 0, custoTotal: 0, lucroTotal: 0, qtdVendidos: 0,
     valorCompraTotal: 0,
     custoPastagemTotal: 0, custoConfinamentoTotal: 0, custoMistoTotal: 0,
     ganhoPastagemTotal: 0, ganhoConfinamentoTotal: 0, ganhoMistoTotal: 0,
   })
-  const [loadMetricas, setLoadMetricas] = useState(true)
+  const [loadMetricas, setLoadMetricas] = useCarregando(_k && `${_k}:metricas`)
   const [erroMetricas, setErroMetricas] = useState<string | null>(null)
 
   useEffect(() => {

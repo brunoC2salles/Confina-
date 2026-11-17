@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { supabase } from '@/lib/supabase'
 import { usePortal } from '@/portal/PortalContext'
 import { useDadosFornecedor } from '@/portal/useDadosFornecedor'
@@ -83,10 +84,11 @@ export function montarDietasPortal(produtos: ProdutoFornecedor[], precos: Record
 export function useSimuladorFornecedor() {
   const { membro } = usePortal()
   const { fornecedor, produtos, precos, membros, loading: carregandoDados } = useDadosFornecedor()
-  const [simulacoes, setSimulacoes] = useState<SimulacaoFornecedor[]>([])
-  const [insumos, setInsumos] = useState<Insumo[]>([])
-  const [itens, setItens] = useState<ItemCarregado[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = fornecedor ? `useSimuladorFornecedor:${fornecedor.id}` : null
+  const [simulacoes, setSimulacoes] = useEstadoCache<SimulacaoFornecedor[]>(_k && `${_k}:simulacoes`, [])
+  const [insumos, setInsumos] = useEstadoCache<Insumo[]>(_k && `${_k}:insumos`, [])
+  const [itens, setItens] = useEstadoCache<ItemCarregado[]>(_k && `${_k}:itens`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:simulacoes`)
 
   const carregarSimulacoes = useCallback(async () => {
     if (!fornecedor) return

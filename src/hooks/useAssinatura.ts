@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -15,10 +16,11 @@ export const PRICE_IDS = {
 
 export function useAssinatura() {
   const { user } = useAuth()
-  const [plano, setPlano] = useState<Plano>('free')
-  const [planoStatus, setPlanoStatus] = useState<string>('ativo')
-  const [temStripeCustomer, setTemStripeCustomer] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useAssinatura:${user.id}` : null
+  const [plano, setPlano] = useEstadoCache<Plano>(_k && `${_k}:plano`, 'free')
+  const [planoStatus, setPlanoStatus] = useEstadoCache<string>(_k && `${_k}:planoStatus`, 'ativo')
+  const [temStripeCustomer, setTemStripeCustomer] = useEstadoCache(_k && `${_k}:temStripeCustomer`, false)
+  const [loading, setLoading] = useCarregando(_k && `${_k}:plano`)
   const [processando, setProcessando] = useState(false)
 
   const fetch = useCallback(async () => {

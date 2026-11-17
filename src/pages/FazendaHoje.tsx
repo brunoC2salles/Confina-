@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useNavigate } from 'react-router-dom'
 import { useLotes } from '@/hooks/useLotes'
 import { useDietas } from '@/hooks/useDietas'
@@ -19,8 +20,9 @@ export default function FazendaHoje() {
   const { lotes, lotesAtivos, ciclosPorLote, loading: loadingLotes } = useLotes()
   const { dietas, loading: loadingDietas } = useDietas()
 
-  const [animais, setAnimais] = useState<AnimalHoje[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `FazendaHoje:${user.id}` : null
+  const [animais, setAnimais] = useEstadoCache<AnimalHoje[]>(_k && `${_k}:animais`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:animais`)
 
   const [filtroLote, setFiltroLote] = useState('todos')
   const [filtroCiclo, setFiltroCiclo] = useState('todos')

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import * as core from '@/core/estoque'
 import type { IngredienteOpcao, ResumoIngrediente, RegistrarEntradaIngredienteInput } from '@/core/estoque'
@@ -15,11 +16,12 @@ export {
 
 export function useComprasIngrediente() {
   const { user } = useAuth()
-  const [entradas, setEntradas] = useState<CompraIngrediente[]>([])
-  const [ingredientes, setIngredientes] = useState<IngredienteOpcao[]>([])
-  const [fornecedores, setFornecedores] = useState<Array<{ id: string; nome: string }>>([])
-  const [resumos, setResumos] = useState<Record<string, ResumoIngrediente>>({})
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useComprasIngrediente:${user.id}` : null
+  const [entradas, setEntradas] = useEstadoCache<CompraIngrediente[]>(_k && `${_k}:entradas`, [])
+  const [ingredientes, setIngredientes] = useEstadoCache<IngredienteOpcao[]>(_k && `${_k}:ingredientes`, [])
+  const [fornecedores, setFornecedores] = useEstadoCache<Array<{ id: string; nome: string }>>(_k && `${_k}:fornecedores`, [])
+  const [resumos, setResumos] = useEstadoCache<Record<string, ResumoIngrediente>>(_k && `${_k}:resumos`, {})
+  const [loading, setLoading] = useCarregando(_k && `${_k}:entradas`)
   const [calculando, setCalculando] = useState(false)
 
   const fetch = useCallback(async () => {
@@ -86,7 +88,8 @@ export function useComprasIngrediente() {
 // usado na tela Dietas para mostrar o custo com o preço do estoque.
 export function usePrecosEstoqueHoje() {
   const { user } = useAuth()
-  const [precos, setPrecos] = useState<Record<string, number>>({})
+  const _k = user ? `usePrecosEstoqueHoje:${user.id}` : null
+  const [precos, setPrecos] = useEstadoCache<Record<string, number>>(_k && `${_k}:precos`, {})
 
   useEffect(() => {
     if (!user) return

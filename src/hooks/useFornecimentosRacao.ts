@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useEstadoCache, useCarregando } from '@/lib/cacheTela'
 import { useAuth } from '@/contexts/AuthContext'
 import type { DietaComposicaoInfo } from '@/lib/custoIngrediente'
 import type { FornecimentoCompleto } from '@/lib/fornecimentosDb'
@@ -14,15 +15,16 @@ export type { IngredienteFornecimentoOpcao, IndicadoresLote, IndicadoresValores 
 
 export function useFornecimentosRacao() {
   const { user } = useAuth()
-  const [fornecimentos, setFornecimentos] = useState<FornecimentoCompleto[]>([])
-  const [dietas, setDietas] = useState<Array<{ id: string; nome: string }>>([])
-  const [composicoes, setComposicoes] = useState<Record<string, DietaComposicaoInfo>>({})
-  const [lotes, setLotes] = useState<Array<{ id: string; nome_lote: string; codigo_lote: string; status: string }>>([])
-  const [dietaHojePorLote, setDietaHojePorLote] = useState<Record<string, string | null>>({})
-  const [grupos, setGrupos] = useState<Array<{ id: string; nome: string; dieta_id: string; status: string }>>([])
-  const [ingredientes, setIngredientes] = useState<IngredienteFornecimentoOpcao[]>([])
-  const [indicadores, setIndicadores] = useState<IndicadoresLote[]>([])
-  const [loading, setLoading] = useState(true)
+  const _k = user ? `useFornecimentosRacao:${user.id}` : null
+  const [fornecimentos, setFornecimentos] = useEstadoCache<FornecimentoCompleto[]>(_k && `${_k}:fornecimentos`, [])
+  const [dietas, setDietas] = useEstadoCache<Array<{ id: string; nome: string }>>(_k && `${_k}:dietas`, [])
+  const [composicoes, setComposicoes] = useEstadoCache<Record<string, DietaComposicaoInfo>>(_k && `${_k}:composicoes`, {})
+  const [lotes, setLotes] = useEstadoCache<Array<{ id: string; nome_lote: string; codigo_lote: string; status: string }>>(_k && `${_k}:lotes`, [])
+  const [dietaHojePorLote, setDietaHojePorLote] = useEstadoCache<Record<string, string | null>>(_k && `${_k}:dietaHojePorLote`, {})
+  const [grupos, setGrupos] = useEstadoCache<Array<{ id: string; nome: string; dieta_id: string; status: string }>>(_k && `${_k}:grupos`, [])
+  const [ingredientes, setIngredientes] = useEstadoCache<IngredienteFornecimentoOpcao[]>(_k && `${_k}:ingredientes`, [])
+  const [indicadores, setIndicadores] = useEstadoCache<IndicadoresLote[]>(_k && `${_k}:indicadores`, [])
+  const [loading, setLoading] = useCarregando(_k && `${_k}:fornecimentos`)
   const [calculandoIndicadores, setCalculandoIndicadores] = useState(false)
 
   const fetch = useCallback(async () => {
