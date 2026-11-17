@@ -40,10 +40,12 @@ export function Digita({ texto, ativo, velocidade = 55 }: { texto: string; ativo
 
 const NAV_MINI = ['Dashboard', 'Lotes', 'Pesagens', 'Ranking', 'Comparativo', 'Simulador', 'Importar', 'Dietas', 'Ingredientes', 'Compras', 'Parceiros']
 
-export function Mockup({ pagina, rota, passos, children }: {
+export function Mockup({ pagina, rota, passos, children, nav = NAV_MINI, dominio = 'confinamais.com' }: {
   pagina: string
   rota: string
   passos: Passo[]
+  nav?: string[]
+  dominio?: string
   children: (p: number) => ReactNode
 }) {
   const [passo, setPasso] = useState(0)
@@ -131,12 +133,12 @@ export function Mockup({ pagina, rota, passos, children }: {
             style={{ width: largura, height: ALTURA, transform: `scale(${escala})` }}
             aria-hidden="true">
             <div className="tt-barra">
-              <span className="tt-barra-url">confinamais.com{rota}</span>
+              <span className="tt-barra-url">{dominio}{rota}</span>
               <span className="tt-barra-tag">Dados ilustrativos</span>
             </div>
             <div className="tt-app">
               {!compacto && <div className="tt-nav">
-                {NAV_MINI.map(n => <div key={n} className={`tt-nav-item${n === pagina ? ' ativo' : ''}`}>{n}</div>)}
+                {nav.map(n => <div key={n} className={`tt-nav-item${n === pagina ? ' ativo' : ''}`}>{n}</div>)}
               </div>}
               <div className="tt-conteudo">{children(passo)}</div>
             </div>

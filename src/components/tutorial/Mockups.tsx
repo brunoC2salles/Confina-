@@ -7,7 +7,7 @@ import { Mockup, Digita, Passo } from './Player'
 
 // ─── Peças visuais ───────────────────────────────────────────────────────────
 
-function Cab({ titulo, sub, acao }: { titulo: string; sub?: string; acao?: ReactNode }) {
+export function Cab({ titulo, sub, acao }: { titulo: string; sub?: string; acao?: ReactNode }) {
   return (
     <div className="tt-cab">
       <div>
@@ -19,11 +19,11 @@ function Cab({ titulo, sub, acao }: { titulo: string; sub?: string; acao?: React
   )
 }
 
-function Btn({ children, alvo, ghost, ativo, sm }: { children: ReactNode; alvo?: string; ghost?: boolean; ativo?: boolean; sm?: boolean }) {
+export function Btn({ children, alvo, ghost, ativo, sm }: { children: ReactNode; alvo?: string; ghost?: boolean; ativo?: boolean; sm?: boolean }) {
   return <span data-alvo={alvo} className={`tt-btn${ghost ? ' ghost' : ''}${ativo ? ' pulso' : ''}${sm ? ' sm' : ''}`}>{children}</span>
 }
 
-function Campo({ label, children, alvo, foco, flex = 1, vazio }: {
+export function Campo({ label, children, alvo, foco, flex = 1, vazio }: {
   label: string; children?: ReactNode; alvo?: string; foco?: boolean; flex?: number; vazio?: string
 }) {
   return (
@@ -36,7 +36,7 @@ function Campo({ label, children, alvo, foco, flex = 1, vazio }: {
   )
 }
 
-function Sel({ label, valor, alvo, foco, flex = 1, vazio = 'Selecione' }: {
+export function Sel({ label, valor, alvo, foco, flex = 1, vazio = 'Selecione' }: {
   label?: string; valor?: string; alvo?: string; foco?: boolean; flex?: number; vazio?: string
 }) {
   return (
@@ -50,11 +50,11 @@ function Sel({ label, valor, alvo, foco, flex = 1, vazio = 'Selecione' }: {
   )
 }
 
-function Linha({ children, gap = 8 }: { children: ReactNode; gap?: number }) {
+export function Linha({ children, gap = 8 }: { children: ReactNode; gap?: number }) {
   return <div className="tt-linha" style={{ gap }}>{children}</div>
 }
 
-function Modal({ titulo, sub, children, largura = 440 }: { titulo: string; sub?: string; children: ReactNode; largura?: number }) {
+export function Modal({ titulo, sub, children, largura = 440 }: { titulo: string; sub?: string; children: ReactNode; largura?: number }) {
   return (
     <div className="tt-modal-fundo">
       <div className="tt-modal" style={{ width: largura }}>
@@ -66,7 +66,7 @@ function Modal({ titulo, sub, children, largura = 440 }: { titulo: string; sub?:
   )
 }
 
-function Abas({ itens, ativa, alvos }: { itens: string[]; ativa: number; alvos?: (string | undefined)[] }) {
+export function Abas({ itens, ativa, alvos }: { itens: string[]; ativa: number; alvos?: (string | undefined)[] }) {
   return (
     <div className="tt-abas">
       {itens.map((t, i) => <span key={t} data-alvo={alvos?.[i]} className={i === ativa ? 'ativa' : ''}>{t}</span>)}
@@ -74,7 +74,7 @@ function Abas({ itens, ativa, alvos }: { itens: string[]; ativa: number; alvos?:
   )
 }
 
-function Check({ on, alvo }: { on: boolean; alvo?: string }) {
+export function Check({ on, alvo }: { on: boolean; alvo?: string }) {
   return (
     <span data-alvo={alvo} className={`tt-check${on ? ' on' : ''}`}>
       {on && <svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 5.2l2 2 4-4.4" fill="none" stroke="#fff" strokeWidth="1.8" /></svg>}
@@ -82,7 +82,7 @@ function Check({ on, alvo }: { on: boolean; alvo?: string }) {
   )
 }
 
-function Tabela({ cols, linhas, destaque, colDestaque, alinhar }: {
+export function Tabela({ cols, linhas, destaque, colDestaque, alinhar }: {
   cols: ReactNode[]; linhas: ReactNode[][]; destaque?: number[]; colDestaque?: number; alinhar?: ('l' | 'r')[]
 }) {
   return (
@@ -101,7 +101,7 @@ function Tabela({ cols, linhas, destaque, colDestaque, alinhar }: {
   )
 }
 
-const Badge = ({ children, cor = 'verde' }: { children: ReactNode; cor?: 'verde' | 'cinza' | 'azul' | 'ambar' }) =>
+export const Badge = ({ children, cor = 'verde' }: { children: ReactNode; cor?: 'verde' | 'cinza' | 'azul' | 'ambar' }) =>
   <span className={`tt-badge ${cor}`}>{children}</span>
 
 // ─── 1. Ingredientes ─────────────────────────────────────────────────────────

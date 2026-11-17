@@ -24,6 +24,9 @@ export default function Clientes() {
   const [sel, setSel] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [erro, setErro] = useState<string | null>(null)
+  const [contato, setContato] = useState<{ cliente: ClienteFornecedor; nome_fazenda: string; responsavel: string; telefone: string; email: string; municipio: string; uf: string } | null>(null)
+  const [erroContato, setErroContato] = useState<string | null>(null)
+  const [salvandoContato, setSalvandoContato] = useState(false)
 
   const estoquePorCliente = useMemo(() => {
     const m: Record<string, EstoqueCliente[]> = {}
@@ -34,6 +37,27 @@ export default function Clientes() {
   const dietasNome = useMemo(() => Object.fromEntries(produtos.filter(p => p.categoria === 'dieta').map(p => [p.id, p.nome])) as Record<string, string>, [produtos])
 
   const vendedores = membros.filter(m => m.ativo)
+  const podeEditarContato = (c: ClienteFornecedor) => papel === 'gestor' || (!!membro && c.vendedor_id === membro.id)
+  const abrirContato = (c: ClienteFornecedor) => {
+    setErroContato(null)
+    setContato({ cliente: c, nome_fazenda: c.nome_fazenda ?? '', responsavel: c.responsavel ?? '', telefone: c.telefone ?? '', email: c.email ?? '', municipio: c.municipio ?? '', uf: c.uf ?? '' })
+  }
+  const salvarContato = async () => {
+    if (!contato) return
+    setErroContato(null)
+    const email = contato.email.trim()
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setErroContato('E-mail inválido'); return }
+    if (contato.uf.trim() && !/^[A-Za-z]{2}$/.test(contato.uf.trim())) { setErroContato('UF deve ter 2 letras'); return }
+    setSalvandoContato(true)
+    const { error } = await supabase.rpc('definir_contato_cliente', {
+      cid: contato.cliente.id, nome_fazenda: contato.nome_fazenda, responsavel: contato.responsavel, telefone: contato.telefone,
+      email, municipio: contato.municipio, uf: contato.uf,
+    })
+    setSalvandoContato(false)
+    if (error) { setErroContato(error.message); return }
+    setContato(null)
+    recarregar()
+  }
   const atualizar = async (c: ClienteFornecedor, patch: Partial<ClienteFornecedor>) => {
     setErro(null)
     const { error } = await supabase.from('fornecedor_clientes').update(patch).eq('id', c.id)
@@ -103,7 +127,8 @@ export default function Clientes() {
                 <button className="btn btn-ghost btn-sm" onClick={() => setSel(null)}>Fechar</button>
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 12 }}>
-                {[atual.responsavel, atual.telefone, atual.email].filter(Boolean).join(' · ')}
+                {[atual.responsavel, atual.telefone, atual.email].filter(Boolean).join(' · ') || 'Sem contato cadastrado'}
+                {podeEditarContato(atual) && <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 6, height: 24 }} onClick={() => abrirContato(atual)}>Editar contato</button>}
                 {atual.resumo_atualizado_em && <div style={{ color: 'var(--text-3)' }}>Estoque atualizado em {fmtDataBr(atual.resumo_atualizado_em.slice(0, 10))}</div>}
               </div>
               <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
@@ -151,6 +176,32 @@ export default function Clientes() {
             </div>
           )}
         </div>
+      )}
+
+      {contato && (
+        <Modal open onClose={() => setContato(null)} title="Dados de contato" subtitle={nomeCliente(contato.cliente)}
+          footer={<>
+            <button className="btn btn-ghost" onClick={() => setContato(null)}>Cancelar</button>
+            <button className="btn btn-primary" disabled={salvandoContato} onClick={salvarContato}>{salvandoContato ? 'Salvando...' : 'Salvar'}</button>
+          </>}>
+          <div className="form-row-2">
+            <div className="field"><label>Nome da fazenda</label><input value={contato.nome_fazenda} onChange={e => setContato({ ...contato, nome_fazenda: e.target.value })} /></div>
+            <div className="field"><label>Responsável</label><input value={contato.responsavel} onChange={e => setContato({ ...contato, responsavel: e.target.value })} /></div>
+          </div>
+          <div className="form-row-2">
+            <div className="field"><label>Telefone (WhatsApp)</label><input value={contato.telefone} onChange={e => setContato({ ...contato, telefone: e.target.value })} placeholder="(55) 99999-0000" /></div>
+            <div className="field"><label>E-mail de contato</label><input type="email" value={contato.email} onChange={e => setContato({ ...contato, email: e.target.value })} /></div>
+          </div>
+          <div className="form-row-2">
+            <div className="field"><label>Município</label><input value={contato.municipio} onChange={e => setContato({ ...contato, municipio: e.target.value })} /></div>
+            <div className="field"><label>UF</label><input value={contato.uf} maxLength={2} onChange={e => setContato({ ...contato, uf: e.target.value.toUpperCase() })} /></div>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+            O e-mail de contato recebe os avisos de pedidos e entregas; o e-mail de acesso do produtor não muda.
+            {contato.municipio.trim() !== (contato.cliente.municipio ?? '') && !contato.cliente.rota_id && ' Mudar o município pode mudar a rota de entrega do cliente.'}
+          </div>
+          {erroContato && <div className="field-error" style={{ marginTop: 8 }}>{erroContato}</div>}
+        </Modal>
       )}
 
       {gerenciar && fornecedor && (

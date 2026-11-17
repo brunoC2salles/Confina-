@@ -19,6 +19,7 @@ export function navDoPortal(p: ReturnType<typeof usePortal>): ItemNav[] {
     ]
     if (p.papel === 'gestor') itens.push({ to: '/equipe', label: 'Equipe e convites' })
     if (p.admin) itens.push({ to: '/admin', label: 'Fornecedores' })
+    itens.push({ to: '/tutorial', label: 'Tutorial' })
     return itens
   }
   if (p.admin) return [{ to: '/admin', label: 'Fornecedores', end: true }]

@@ -621,3 +621,7 @@ create policy fsim_delete on public.fornecedor_simulacoes for delete
 -- peso total das cargas para a equipe (cargas_fornecedor); divisão de pedido
 -- (dividir_pedido); proteger_fornecedor_pedidos bloqueia rota_entrega_id para o cliente.
 -- Ver o SQL aplicado no histórico de migrações do Supabase (mesmo nome).
+
+-- ═══ Migração portal_parceiros_contato_cliente ═══
+-- RPC definir_contato_cliente(cid, nome_fazenda, responsavel, telefone, email, municipio, uf):
+-- gestor, vendedor responsável ou admin; valida e-mail e UF. O login do produtor não muda.
