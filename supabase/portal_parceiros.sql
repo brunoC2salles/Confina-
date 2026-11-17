@@ -485,3 +485,79 @@ alter table public.fornecedores add column demo boolean not null default false;
 -- Estoque gerenciado e logística (2026-11-16): ver migração portal_parceiros_estoque_gerenciado_logistica
 -- (estoque_movimentos.automatico/criado_por/pedido_id e RLS da equipe, fornecedor_consumo_informado,
 --  fornecedor_rotas, fornecedor_config, fornecedor_clientes.rota_id, fornecedor_pedidos.estoque_lancado_em).
+
+-- ═══ Migração portal_parceiros_dietas_como_produto ═══
+-- Dietas viram produtos (categoria 'dieta'): ração pronta (vendida como produto) ou receita
+alter table public.fornecedor_produtos drop constraint fornecedor_produtos_categoria_check;
+alter table public.fornecedor_produtos add constraint fornecedor_produtos_categoria_check
+  check (categoria in ('racao', 'nucleo', 'mineral', 'grao', 'farelo', 'volumoso', 'outro', 'dieta'));
+alter table public.fornecedor_produtos
+  add column modo_dieta text check (modo_dieta in ('pronta', 'receita')),
+  add column descricao text,
+  add column ciclo_recomendado integer,
+  add column gmd_esperado numeric,
+  add column gmd_esperado_concentrado numeric,
+  add column pct_consumo_pv_ms numeric,
+  add column pct_concentrado numeric,
+  add column pct_volumoso numeric,
+  add column nutricional jsonb;
+alter table public.fornecedor_produtos add constraint fornecedor_produtos_dieta_check
+  check (categoria <> 'dieta' or modo_dieta is not null);
+
+-- Composição da dieta. Preço só para a equipe do fornecedor (sem leitura para clientes).
+create table public.fornecedor_produto_itens (
+  id uuid primary key default gen_random_uuid(),
+  dieta_id uuid not null references public.fornecedor_produtos(id) on delete cascade,
+  origem text not null check (origem in ('produto', 'insumo_padrao', 'livre')),
+  produto_id uuid references public.fornecedor_produtos(id) on delete restrict,
+  insumo_id uuid references public.insumos_padrao(id) on delete restrict,
+  nome text,
+  tipo text not null check (tipo in ('concentrado', 'volumoso')),
+  pct_participacao numeric not null check (pct_participacao >= 0 and pct_participacao <= 100),
+  pct_ms numeric check (pct_ms is null or (pct_ms > 0 and pct_ms <= 100)),
+  preco_kg numeric check (preco_kg is null or preco_kg >= 0),
+  ordem integer not null default 0,
+  check ((origem = 'produto' and produto_id is not null) or (origem = 'insumo_padrao' and insumo_id is not null) or (origem = 'livre' and nome is not null))
+);
+create index on public.fornecedor_produto_itens (dieta_id);
+alter table public.fornecedor_produto_itens enable row level security;
+create policy fpitens_all on public.fornecedor_produto_itens for all
+  using (exists (select 1 from fornecedor_produtos d where d.id = dieta_id and (eh_admin() or fornec_papel(d.fornecedor_id) is not null)))
+  with check (exists (select 1 from fornecedor_produtos d where d.id = dieta_id and (eh_admin() or fornec_papel(d.fornecedor_id) is not null)));
+
+-- Migração das dietas existentes (fornecedor_dietas) para produtos receita,
+-- remapeamento de dietas.fornecedor_dieta_id e fornecedor_clientes.dietas_em_uso,
+-- e remoção de fornecedor_dietas / fornecedor_dieta_itens (aplicado uma vez).
+
+create or replace function public.dietas_fornecedor_publicadas() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', d.id, 'nome', d.nome, 'descricao', d.descricao, 'modo_dieta', d.modo_dieta,
+    'ciclo_recomendado', d.ciclo_recomendado, 'gmd_esperado', d.gmd_esperado, 'gmd_esperado_concentrado', d.gmd_esperado_concentrado,
+    'pct_consumo_pv_ms', d.pct_consumo_pv_ms, 'pct_concentrado', d.pct_concentrado, 'pct_volumoso', d.pct_volumoso,
+    'pct_ms', d.pct_ms, 'nutricional', d.nutricional, 'embalagem', d.embalagem,
+    'itens', (select coalesce(jsonb_agg(jsonb_build_object(
+        'origem', i.origem, 'produto_id', i.produto_id, 'insumo_id', i.insumo_id, 'tipo', i.tipo,
+        'pct_participacao', i.pct_participacao, 'pct_ms', coalesce(i.pct_ms, p.pct_ms, ip.pct_ms),
+        'nome', coalesce(p.nome, ip.nome, i.nome), 'categoria', coalesce(p.categoria, ip.categoria))
+        order by i.tipo, i.ordem), '[]'::jsonb)
+      from fornecedor_produto_itens i
+      left join fornecedor_produtos p on p.id = i.produto_id
+      left join insumos_padrao ip on ip.id = i.insumo_id
+      where i.dieta_id = d.id)
+  ) order by d.nome), '[]'::jsonb)
+  from fornecedor_produtos d
+  where d.fornecedor_id = meu_fornecedor_id() and d.categoria = 'dieta' and d.visivel
+$$;
+grant execute on function public.dietas_fornecedor_publicadas() to authenticated;
+
+create or replace function public.uso_dietas_fornecedor(fid uuid) returns table (fornecedor_dieta_id uuid, clientes bigint)
+language sql stable security definer set search_path = public as $$
+  select d.fornecedor_dieta_id, count(distinct d.user_id)
+  from dietas d
+  join fornecedor_produtos fp on fp.id = d.fornecedor_dieta_id
+  join fornecedor_clientes c on c.user_id = d.user_id and c.fornecedor_id = fp.fornecedor_id
+  where fp.fornecedor_id = fid and (eh_admin() or fornec_papel(fid) is not null)
+  group by d.fornecedor_dieta_id
+$$;
+grant execute on function public.uso_dietas_fornecedor(uuid) to authenticated;

@@ -9,7 +9,7 @@ import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { fmt } from '@/lib/calculations'
 import { Link } from 'react-router-dom'
 import { useParceiroCliente } from '@/hooks/useParceiroCliente'
-import { DietasFornecedorCliente } from '@/components/parceiros/DietasFornecedorCliente'
+import { DietasFornecedorCliente, type ItemPreparado } from '@/components/parceiros/DietasFornecedorCliente'
 import type { DietaPublicada } from '@/core/parceiros'
 
 // Custo por kg de MS da dieta com o custo médio atual do estoque dos
@@ -481,26 +481,47 @@ export default function Dietas() {
     setErro(null)
   }
 
-  // Dieta do fornecedor como base: os produtos entram como ingredientes
-  // próprios ligados ao produto (criados ou reativados antes de abrir).
-  const carregarDietaFornecedor = (d: DietaPublicada & { id: string }, ingredientes: IngredienteProdutor[]) => {
-    const comps: CompForm[] = d.itens.map((it, i) => {
-      const ing = ingredientes[i]
+  // Dieta do fornecedor como base: produtos e ingredientes livres entram
+  // como ingredientes próprios (criados ou reativados antes de abrir); insumos
+  // padrão entram direto, com o preço de "Meus preços da base". O % MS da
+  // dieta do fornecedor vale como % MS manual quando difere do cadastro.
+  const carregarDietaFornecedor = (d: DietaPublicada, itens: ItemPreparado[]) => {
+    const comps: CompForm[] = itens.map(it => {
+      if (it.ingrediente) {
+        const ing = it.ingrediente
+        return {
+          _key: `ingrediente_produtor:${ing.id}`,
+          _nome: ing.nome,
+          _categoria: ing.categoria,
+          _pct_ms_base: ing.pct_ms,
+          _preco_cadastro: ing.preco_kg,
+          tipo: it.tipo,
+          origem_ingrediente: 'ingrediente_produtor',
+          insumo_id: null,
+          ingrediente_produtor_id: ing.id,
+          pct_participacao: it.pct_participacao,
+          preco_kg: ing.preco_kg ?? 0,
+          pct_ms_manual: it.pct_ms != null && ing.pct_ms != null && Number(it.pct_ms) !== Number(ing.pct_ms) ? it.pct_ms : null,
+        }
+      }
+      const disp = ingredientesBusca.find(x => x.origem === 'insumo_padrao' && x.id === it.insumo_id)
+      const msBase = disp?.pct_ms ?? null
       return {
-        _key: `ingrediente_produtor:${ing.id}`,
-        _nome: ing.nome,
-        _categoria: ing.categoria,
-        _pct_ms_base: ing.pct_ms,
-        _preco_cadastro: ing.preco_kg,
+        _key: disp ? keyDisp(disp) : `insumo_padrao:${it.insumo_id}`,
+        _nome: disp?.nome ?? it.nome,
+        _categoria: disp?.categoria ?? it.categoria,
+        _pct_ms_base: msBase,
+        _preco_cadastro: disp?.preco_kg_padrao ?? null,
         tipo: it.tipo,
-        origem_ingrediente: 'ingrediente_produtor',
-        insumo_id: null,
-        ingrediente_produtor_id: ing.id,
+        origem_ingrediente: 'insumo_padrao',
+        insumo_id: it.insumo_id,
+        ingrediente_produtor_id: null,
         pct_participacao: it.pct_participacao,
-        preco_kg: ing.preco_kg ?? 0,
-        pct_ms_manual: null,
+        preco_kg: disp?.preco_kg_padrao ?? 0,
+        pct_ms_manual: it.pct_ms != null && Number(it.pct_ms) !== Number(msBase) ? it.pct_ms : null,
       }
     })
+    const ingredientes = Array.from(new Map(itens.filter(i => i.ingrediente).map(i => [i.ingrediente!.id, i.ingrediente!])).values())
     setExtrasFornecedor(ingredientes)
     setForm({
       ...emptyForm(),
@@ -509,9 +530,9 @@ export default function Dietas() {
       gmd_esperado: d.gmd_esperado != null ? String(d.gmd_esperado) : '',
       gmd_esperado_concentrado: d.gmd_esperado_concentrado != null ? String(d.gmd_esperado_concentrado) : '',
       ciclo_recomendado: d.ciclo_recomendado != null ? String(d.ciclo_recomendado) : '',
-      pct_consumo_pv_ms: String(d.pct_consumo_pv_ms),
-      pct_concentrado: String(d.pct_concentrado),
-      pct_volumoso: String(d.pct_volumoso),
+      pct_consumo_pv_ms: String(d.pct_consumo_pv_ms ?? ''),
+      pct_concentrado: String(d.pct_concentrado ?? 100),
+      pct_volumoso: String(d.pct_volumoso ?? 0),
       componentes: comps,
       fornecedor_dieta_id: d.id,
     })

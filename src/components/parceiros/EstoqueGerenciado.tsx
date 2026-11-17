@@ -5,7 +5,7 @@ import { Modal, EmptyState } from '@/components/common/UI'
 import { ModalSolicitar } from '@/components/parceiros/ModalSolicitar'
 import {
   carregarMovimentos, carregarConsumoInformado, calcularEstoqueClienteSimples, resumoEstoqueSimples, gravarResumoCliente,
-  emAlerta, fmtKg, fmtDataBr, hojeISO, ROTULO_CATEGORIA,
+  emAlerta, fmtKg, fmtDataBr, hojeISO, ROTULO_CATEGORIA, vendavel,
   type ClienteFornecedor, type ProdutoFornecedor, type MovimentoEstoque, type ConsumoInformado, type EstoqueCliente,
 } from '@/core/parceiros'
 
@@ -53,7 +53,7 @@ export function EstoqueGerenciado({ cliente, produtos, fornecedorNome, quem, onA
     Object.fromEntries(informados.map(i => [i.produto_id, Number(i.kg_dia)])))
   const informadoPor = Object.fromEntries(informados.map(i => [i.produto_id, i]))
   const comMov = new Set(movs.map(m => m.produto_id))
-  const lista = produtos.filter(p => p.visivel || comMov.has(p.id) || informadoPor[p.id])
+  const lista = produtos.filter(p => vendavel(p) && (p.visivel || comMov.has(p.id) || informadoPor[p.id]))
 
   const salvarMov = async () => {
     if (!registrar || !user) return

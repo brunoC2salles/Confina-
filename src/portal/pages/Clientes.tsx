@@ -30,12 +30,7 @@ export default function Clientes() {
     return m
   }, [estoque])
   const produtoPorId = useMemo(() => new Map(produtos.map(p => [p.id, p])), [produtos])
-  const [dietasNome, setDietasNome] = useState<Record<string, string>>({})
-  useEffect(() => {
-    if (!fornecedor) return
-    supabase.from('fornecedor_dietas').select('id, nome').eq('fornecedor_id', fornecedor.id)
-      .then(({ data }) => setDietasNome(Object.fromEntries(((data ?? []) as Array<{ id: string; nome: string }>).map(d => [d.id, d.nome]))))
-  }, [fornecedor])
+  const dietasNome = useMemo(() => Object.fromEntries(produtos.filter(p => p.categoria === 'dieta').map(p => [p.id, p.nome])) as Record<string, string>, [produtos])
 
   const vendedores = membros.filter(m => m.ativo)
   const atualizar = async (c: ClienteFornecedor, patch: Partial<ClienteFornecedor>) => {

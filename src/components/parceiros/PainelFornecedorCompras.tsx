@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParceiroCliente } from '@/hooks/useParceiroCliente'
 import { ModalSolicitar } from '@/components/parceiros/ModalSolicitar'
 import { PedidosCliente } from '@/components/parceiros/PedidosCliente'
-import { emAlerta, fmtKg, fmtDataBr, ROTULO_CATEGORIA, type ProdutoFornecedor } from '@/core/parceiros'
+import { emAlerta, vendavel, fmtKg, fmtDataBr, ROTULO_CATEGORIA, type ProdutoFornecedor } from '@/core/parceiros'
 import { Modal } from '@/components/common/UI'
 
 // Compras > Ração, para o produtor vinculado a um fornecedor: previsão de
@@ -24,7 +24,7 @@ export function PainelFornecedorCompras({ versaoEstoque }: { versaoEstoque?: num
   const nomeF = vinculo.fornecedor.nome
   const usados = vinculo.produtos.filter(p => estoque[p.id])
   const emAlertaLista = usados.filter(p => emAlerta(p, estoque[p.id]))
-  const visiveis = vinculo.produtos.filter(p => p.visivel)
+  const visiveis = vinculo.produtos.filter(p => p.visivel && vendavel(p))
   const salvarJanela = async () => {
     const n = Number(janela)
     if (!(n >= 1 && n <= 90)) { setAviso('A janela de consumo deve ter entre 1 e 90 dias'); return }

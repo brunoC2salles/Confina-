@@ -5,7 +5,7 @@ import { useDadosFornecedor, nomeCliente } from '@/portal/useDadosFornecedor'
 import { usePortal } from '@/portal/PortalContext'
 import { chamarApiParceiros } from '@/lib/parceirosApi'
 import {
-  ROTULO_STATUS, CLASSE_STATUS, ROTULO_ORIGEM, fmtKg, fmtDataBr, linkWhatsApp, criarPedido, hojeISO,
+  ROTULO_STATUS, CLASSE_STATUS, ROTULO_ORIGEM, fmtKg, fmtDataBr, linkWhatsApp, criarPedido, hojeISO, vendavel,
   type PedidoFornecedor, type StatusPedido, type ClienteFornecedor,
 } from '@/core/parceiros'
 
@@ -185,7 +185,7 @@ export default function Pedidos() {
           <div className="field"><label>Produto</label>
             <select value={formNovo.produto_id} onChange={e => setFormNovo({ ...formNovo, produto_id: e.target.value })}>
               <option value="">Escolha</option>
-              {produtos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              {produtos.filter(vendavel).map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
             </select>
           </div>
           <div className="form-row-2">

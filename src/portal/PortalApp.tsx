@@ -9,7 +9,6 @@ import Pedidos from '@/portal/pages/Pedidos'
 import Demanda from '@/portal/pages/Demanda'
 import Clientes from '@/portal/pages/Clientes'
 import Catalogo from '@/portal/pages/Catalogo'
-import DietasFornecedor from '@/portal/pages/DietasFornecedor'
 import Equipe from '@/portal/pages/Equipe'
 import Admin from '@/portal/pages/Admin'
 import Entregas from '@/portal/pages/Entregas'
@@ -57,7 +56,7 @@ function RotasProtegidas() {
           <Route path="demanda" element={<Demanda />} />
           <Route path="clientes" element={<Clientes />} />
           <Route path="catalogo" element={<Catalogo />} />
-          <Route path="dietas" element={<DietasFornecedor />} />
+          <Route path="dietas" element={<Navigate to="/catalogo" replace />} />
           {portal.papel === 'gestor' && <Route path="equipe" element={<Equipe />} />}
           {portal.admin && <Route path="admin" element={<Admin />} />}
           <Route path="*" element={<Navigate to="/" replace />} />

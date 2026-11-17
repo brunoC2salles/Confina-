@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader, EmptyState } from '@/components/common/UI'
 import { useDadosFornecedor } from '@/portal/useDadosFornecedor'
-import type { DietaFornecedor } from '@/core/parceiros'
+
 
 // Quanto entregar nos próximos 15 ou 30 dias: consumo médio atual de cada
 // cliente x dias, somado por produto ou por dieta do fornecedor.
@@ -10,14 +10,21 @@ export default function Demanda() {
   const { fornecedor, clientes, produtos, estoque, loading } = useDadosFornecedor()
   const [dias, setDias] = useState<15 | 30>(15)
   const [visao, setVisao] = useState<'produto' | 'dieta'>('produto')
-  const [dietas, setDietas] = useState<Array<Pick<DietaFornecedor, 'id' | 'nome' | 'publicado'>>>([])
+  const [itensDieta, setItensDieta] = useState<Record<string, string[]>>({})
+  const dietas = produtos.filter(p => p.categoria === 'dieta' && p.visivel)
+  const chaveDietas = dietas.map(d => d.id).join(',')
 
+  // Produtos do catálogo que compõem cada dieta; a dieta pronta conta o
+  // próprio produto (a mistura vendida).
   useEffect(() => {
-    if (!fornecedor) return
-    supabase.from('fornecedor_dietas').select('id, nome, publicado').eq('fornecedor_id', fornecedor.id).not('publicado', 'is', null)
-      .then(({ data }) => setDietas((data ?? []) as typeof dietas))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fornecedor])
+    if (!fornecedor || !chaveDietas) { setItensDieta({}); return }
+    supabase.from('fornecedor_produto_itens').select('dieta_id, produto_id').in('dieta_id', chaveDietas.split(',')).not('produto_id', 'is', null)
+      .then(({ data }) => {
+        const mapa: Record<string, string[]> = {}
+        for (const i of (data ?? []) as Array<{ dieta_id: string; produto_id: string }>) (mapa[i.dieta_id] ??= []).push(i.produto_id)
+        setItensDieta(mapa)
+      })
+  }, [fornecedor, chaveDietas])
 
   if (loading) return <div className="page"><div className="spinner" style={{ width: 28, height: 28, margin: '48px auto' }} /></div>
 
@@ -32,7 +39,7 @@ export default function Demanda() {
   // Por dieta: clientes que usam a dieta (ciclo atual de algum lote) e o
   // consumo deles dos produtos que compõem a dieta.
   const porDieta = dietas.map(d => {
-    const produtosDaDieta = new Set((d.publicado?.itens ?? []).map(i => i.produto_id))
+    const produtosDaDieta = new Set(d.modo_dieta === 'pronta' ? [d.id, ...(itensDieta[d.id] ?? [])] : (itensDieta[d.id] ?? []))
     const usam = clientes.filter(c => ativos.has(c.id) && (c.dietas_em_uso ?? []).includes(d.id))
     const ids = new Set(usam.map(c => c.id))
     const kg = linhas.filter(l => ids.has(l.cliente_id) && produtosDaDieta.has(l.produto_id)).reduce((s, l) => s + (l.consumo_dia_kg ?? 0) * dias, 0)
@@ -63,7 +70,7 @@ export default function Demanda() {
           <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Total da carteira: <strong>{t(total)}</strong></span>
         </div>
         {itens.length === 0
-          ? <EmptyState icon="◻" title="Sem consumo previsto" desc={visao === 'dieta' ? 'Nenhum cliente usa uma dieta publicada no ciclo atual dos lotes.' : 'Os clientes ainda não têm consumo registrado dos produtos.'} />
+          ? <EmptyState icon="◻" title="Sem consumo previsto" desc={visao === 'dieta' ? 'Nenhum cliente usa uma dieta visível no ciclo atual dos lotes.' : 'Os clientes ainda não têm consumo registrado dos produtos.'} />
           : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {itens.map(i => (

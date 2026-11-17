@@ -15,7 +15,7 @@ export type PapelMembro = 'gestor' | 'vendedor'
 export type ModoCliente = 'confina' | 'estoque'
 export type StatusPedido = 'novo' | 'em_cotacao' | 'cotado' | 'aprovado' | 'entregue' | 'cancelado'
 export type OrigemPedido = 'cliente' | 'alerta' | 'vendedor'
-export type CategoriaProduto = 'racao' | 'nucleo' | 'mineral' | 'grao' | 'farelo' | 'volumoso' | 'outro'
+export type CategoriaProduto = 'racao' | 'nucleo' | 'mineral' | 'grao' | 'farelo' | 'volumoso' | 'outro' | 'dieta'
 
 export interface Fornecedor {
   id: string
@@ -95,45 +95,90 @@ export interface ProdutoFornecedor {
   visivel: boolean
   dias_alerta: number
   kg_minimo_alerta: number | null
+  // Dieta (categoria 'dieta'): ração pronta (vendida como produto) ou receita.
+  modo_dieta: 'pronta' | 'receita' | null
+  descricao: string | null
+  ciclo_recomendado: number | null
+  gmd_esperado: number | null
+  gmd_esperado_concentrado: number | null
+  pct_consumo_pv_ms: number | null
+  pct_concentrado: number | null
+  pct_volumoso: number | null
+  nutricional: Nutricional | null
 }
 
-export interface ItemDietaFornecedor {
+// Níveis nutricionais da dieta (% da MS; ionóforo em texto livre).
+export interface Nutricional {
+  pb?: number | null; ndt?: number | null; ca?: number | null; p?: number | null
+  na?: number | null; fdn?: number | null; ee?: number | null; ionoforo?: string | null
+}
+export const CAMPOS_NUTRICIONAIS: Array<[keyof Nutricional, string]> = [
+  ['pb', 'PB (%)'], ['ndt', 'NDT (%)'], ['ca', 'Ca (%)'], ['p', 'P (%)'], ['na', 'Na (%)'], ['fdn', 'FDN (%)'], ['ee', 'EE (%)'],
+]
+
+// Item da composição da dieta (preço só para a equipe do fornecedor).
+export interface ItemDieta {
   id?: string
-  produto_id: string
+  origem: 'produto' | 'insumo_padrao' | 'livre'
+  produto_id: string | null
+  insumo_id: string | null
+  nome: string | null
   tipo: 'concentrado' | 'volumoso'
   pct_participacao: number
+  pct_ms: number | null
+  preco_kg: number | null
+  ordem?: number
 }
 
-export interface DietaFornecedor {
-  id: string
-  fornecedor_id: string
-  nome: string
-  descricao: string | null
-  ciclo_recomendado: number | null
-  gmd_esperado: number | null
-  gmd_esperado_concentrado: number | null
-  pct_consumo_pv_ms: number
-  pct_concentrado: number
-  pct_volumoso: number
-  publicado: DietaPublicada | null
-  publicada_em: string | null
-  alterada_apos_publicar: boolean
-  itens?: ItemDietaFornecedor[]
+// Produto que pode ser pedido e ter estoque: tudo menos dieta-receita.
+export const vendavel = (p: Pick<ProdutoFornecedor, 'categoria' | 'modo_dieta'>) =>
+  p.categoria !== 'dieta' || p.modo_dieta === 'pronta'
+
+// Custo por kg de MS da dieta: cada lado (concentrado e volumoso) é a média
+// de R$/kg MS dos itens (preço por kg MN / % MS), ponderada pela participação.
+// Null quando falta preço ou % MS em algum item com participação.
+export function custoKgMsDieta(pctConcentrado: number, pctVolumoso: number, itens: ItemDieta[]): number | null {
+  let total = 0
+  for (const [tipo, pctLado] of [['concentrado', pctConcentrado], ['volumoso', pctVolumoso]] as const) {
+    if (!(pctLado > 0)) continue
+    let lado = 0
+    for (const i of itens.filter(x => x.tipo === tipo && x.pct_participacao > 0)) {
+      if (i.preco_kg == null || !(Number(i.pct_ms) > 0)) return null
+      lado += (i.pct_participacao / 100) * (Number(i.preco_kg) / (Number(i.pct_ms) / 100))
+    }
+    total += (pctLado / 100) * lado
+  }
+  return Math.round(total * 10000) / 10000
 }
 
-// Cópia gravada ao publicar: é o que os clientes veem.
+// % MS da mistura de um lado da dieta (participações em base MS).
+export function pctMsMistura(itens: ItemDieta[], tipo: 'concentrado' | 'volumoso'): number | null {
+  const lado = itens.filter(i => i.tipo === tipo && i.pct_participacao > 0)
+  if (lado.length === 0 || lado.some(i => !(Number(i.pct_ms) > 0))) return null
+  const soma = lado.reduce((s, i) => s + i.pct_participacao, 0)
+  const mn = lado.reduce((s, i) => s + i.pct_participacao / Number(i.pct_ms), 0)
+  return Math.round((soma / mn) * 10) / 10
+}
+
+// Dieta como o cliente vê (sem preço), via dietas_fornecedor_publicadas().
 export interface DietaPublicada {
-  id?: string
+  id: string
   nome: string
   descricao: string | null
+  modo_dieta: 'pronta' | 'receita'
   ciclo_recomendado: number | null
   gmd_esperado: number | null
   gmd_esperado_concentrado: number | null
-  pct_consumo_pv_ms: number
-  pct_concentrado: number
-  pct_volumoso: number
-  itens: Array<ItemDietaFornecedor & { produto_nome: string; pct_ms: number | null; categoria: CategoriaProduto }>
-  publicada_em?: string
+  pct_consumo_pv_ms: number | null
+  pct_concentrado: number | null
+  pct_volumoso: number | null
+  pct_ms: number | null
+  nutricional: Nutricional | null
+  embalagem: string | null
+  itens: Array<{
+    origem: ItemDieta['origem']; produto_id: string | null; insumo_id: string | null; tipo: 'concentrado' | 'volumoso'
+    pct_participacao: number; pct_ms: number | null; nome: string; categoria: string | null
+  }>
 }
 
 export interface EstoqueCliente {
@@ -216,12 +261,12 @@ export const ROTULO_ORIGEM: Record<OrigemPedido, string> = {
   cliente: 'Solicitação do cliente', alerta: 'Alerta de estoque', vendedor: 'Lançado pelo vendedor',
 }
 export const ROTULO_CATEGORIA: Record<CategoriaProduto, string> = {
-  racao: 'Ração', nucleo: 'Núcleo', mineral: 'Mineral', grao: 'Grão', farelo: 'Farelo', volumoso: 'Volumoso', outro: 'Outro',
+  racao: 'Ração', nucleo: 'Núcleo', mineral: 'Mineral', grao: 'Grão', farelo: 'Farelo', volumoso: 'Volumoso', outro: 'Outro', dieta: 'Dieta',
 }
 // Categoria do ingrediente no cadastro do produtor (ingredientes_produtor).
 export const CATEGORIA_INGREDIENTE: Record<CategoriaProduto, string> = {
   racao: 'concentrado_energetico', nucleo: 'mineral_aditivo', mineral: 'mineral_aditivo', grao: 'concentrado_energetico',
-  farelo: 'concentrado_proteico', volumoso: 'volumoso', outro: 'subproduto',
+  farelo: 'concentrado_proteico', volumoso: 'volumoso', outro: 'subproduto', dieta: 'concentrado_energetico',
 }
 
 // ─── Datas e previsão ─────────────────────────────────────────────────────────

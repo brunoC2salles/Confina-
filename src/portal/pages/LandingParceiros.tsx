@@ -131,7 +131,7 @@ export default function LandingParceiros() {
                 <div className="pillar-txt">
                   <h3>Suas dietas na tela de dietas</h3>
                   <p className="pillar-lead">Composição, consumo e GMD esperado definidos pela sua equipe técnica. O produtor usa como base e ajusta ao lote. Cada ingrediente é um produto do seu catálogo.</p>
-                  <ul className="ai-list"><li><Ck />Clientes veem só as dietas e produtos da sua marca</li><li><Ck />Mudanças chegam a eles só quando você publica</li></ul>
+                  <ul className="ai-list"><li><Ck />Clientes veem só as dietas e produtos da sua marca</li><li><Ck />Composição e níveis nutricionais, sem expor seus preços</li></ul>
                 </div>
                 <Tela src="/parceiros/dietas-produtor.webp" alt="Tela de dietas do produtor com as dietas completas do fornecedor parceiro" />
               </div>
