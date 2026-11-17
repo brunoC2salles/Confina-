@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { useDadosFornecedor, nomeCliente } from '@/portal/useDadosFornecedor'
@@ -28,7 +29,8 @@ export default function Pedidos() {
   const [filtro, setFiltro] = useState<StatusPedido | 'todos'>('todos')
   const [cotar, setCotar] = useState<PedidoFornecedor | null>(null)
   const [form, setForm] = useState({ quantidade: '', data: '', preco: '', total: '', resposta: '' })
-  const [novo, setNovo] = useState(false)
+  const [params] = useSearchParams()
+  const [novo, setNovo] = useState(() => params.get('novo') === '1')
   const [formNovo, setFormNovo] = useState({ cliente_id: '', produto_id: '', quantidade: '', data: hojeISO(), obs: '' })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
