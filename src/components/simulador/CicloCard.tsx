@@ -53,8 +53,10 @@ function copiarDieta(d: Dieta): SimDieta {
 }
 
 export function CicloCard({
-  ciclo, indice, total, dietas, ingredientes, onChange, onRemove, onMover,
+  ciclo, indice, total, dietas, ingredientes, onChange, onRemove, onMover, textoCopiarDieta = 'Copiar dieta cadastrada...', marcarProprio = true,
 }: {
+  textoCopiarDieta?: string
+  marcarProprio?: boolean
   ciclo: SimCiclo
   indice: number
   total: number
@@ -162,7 +164,7 @@ export function CicloCard({
               {dietas.length > 0 && (
                 <select className="form-input" style={{ width: 'auto', maxWidth: 240, height: 32, fontSize: 13 }} value=""
                   onChange={e => { if (e.target.value) usarDietaCadastrada(e.target.value) }}>
-                  <option value="">Copiar dieta cadastrada...</option>
+                  <option value="">{textoCopiarDieta}</option>
                   {dietas.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
                 </select>
               )}
@@ -181,7 +183,7 @@ export function CicloCard({
               <PastoControle dieta={ciclo.dieta} onChange={setDieta} />
             </div>
           )}
-          {dietaAberta && !ciclo.dieta.origemNome && <EditorDieta dieta={ciclo.dieta} ingredientes={ingredientes} onChange={setDieta} gmdCiclo={num(ciclo.gmd)} mostraPasto={mostraPasto} />}
+          {dietaAberta && !ciclo.dieta.origemNome && <EditorDieta dieta={ciclo.dieta} ingredientes={ingredientes} onChange={setDieta} gmdCiclo={num(ciclo.gmd)} mostraPasto={mostraPasto} marcarProprio={marcarProprio} />}
         </div>
       )}
     </div>
@@ -219,7 +221,8 @@ function PastoControle({ dieta, onChange }: {
 
 // ─── Editor da dieta do ciclo (mesmos campos da criação de dietas) ─────────
 
-function EditorDieta({ dieta, ingredientes, onChange, gmdCiclo, mostraPasto }: {
+function EditorDieta({ dieta, ingredientes, onChange, gmdCiclo, mostraPasto, marcarProprio }: {
+  marcarProprio: boolean
   dieta: SimDieta
   ingredientes: IngredienteDisponivel[]
   onChange: (patch: Partial<SimDieta>) => void
@@ -340,7 +343,7 @@ function EditorDieta({ dieta, ingredientes, onChange, gmdCiclo, mostraPasto }: {
                     <div style={{ flex: '1 1 130px', minWidth: 110 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, overflowWrap: 'break-word' }}>{c.nome}</div>
                       <div style={{ fontSize: 10, color: 'var(--gray-400)' }}>
-                        {categoriaLabel[c.categoria] ?? c.categoria}{c.origem === 'ingrediente_produtor' ? ' · próprio' : ''}
+                        {categoriaLabel[c.categoria] ?? c.categoria}{marcarProprio && c.origem === 'ingrediente_produtor' ? ' · próprio' : ''}
                       </div>
                     </div>
                     <div style={{ flex: '0 1 76px', minWidth: 68 }}>
@@ -385,7 +388,7 @@ function EditorDieta({ dieta, ingredientes, onChange, gmdCiclo, mostraPasto }: {
                         <button key={keyDisp(ing)} type="button"
                           style={{ fontSize: 11, padding: '3px 8px', background: 'var(--gray-50)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', color: 'var(--gray-600)' }}
                           onClick={() => addComp(tipo, ing)}>
-                          + {ing.nome}{ing.origem === 'ingrediente_produtor' ? ' *' : ''}
+                          + {ing.nome}{marcarProprio && ing.origem === 'ingrediente_produtor' ? ' *' : ''}
                         </button>
                       ))}
                     </div>

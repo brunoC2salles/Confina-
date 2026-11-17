@@ -13,6 +13,8 @@ import Equipe from '@/portal/pages/Equipe'
 import Admin from '@/portal/pages/Admin'
 import Entregas from '@/portal/pages/Entregas'
 import Romaneio from '@/portal/pages/Romaneio'
+import SimuladorPortal from '@/portal/pages/SimuladorPortal'
+import SimulacaoPdf from '@/portal/pages/SimulacaoPdf'
 import ClienteEstoque from '@/portal/pages/ClienteEstoque'
 import ClientePedidos from '@/portal/pages/ClientePedidos'
 import Convite from '@/pages/Convite'
@@ -49,6 +51,7 @@ function RotasProtegidas() {
     return (
       <Routes>
         <Route path="romaneio" element={<Romaneio />} />
+        <Route path="simulacao-pdf" element={<SimulacaoPdf />} />
         <Route element={<PortalLayout />}>
           <Route index element={<Painel />} />
           <Route path="pedidos" element={<Pedidos />} />
@@ -56,6 +59,7 @@ function RotasProtegidas() {
           <Route path="demanda" element={<Demanda />} />
           <Route path="clientes" element={<Clientes />} />
           <Route path="catalogo" element={<Catalogo />} />
+          <Route path="simulador" element={<SimuladorPortal />} />
           <Route path="dietas" element={<Navigate to="/catalogo" replace />} />
           {portal.papel === 'gestor' && <Route path="equipe" element={<Equipe />} />}
           {portal.admin && <Route path="admin" element={<Admin />} />}

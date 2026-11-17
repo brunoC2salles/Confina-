@@ -561,3 +561,57 @@ language sql stable security definer set search_path = public as $$
   group by d.fornecedor_dieta_id
 $$;
 grant execute on function public.uso_dietas_fornecedor(uuid) to authenticated;
+
+-- ═══ Migração portal_parceiros_simulador_endereco ═══
+-- Preço de referência dos produtos (R$/kg MN), só para a equipe do fornecedor.
+create table public.fornecedor_produto_precos (
+  produto_id uuid primary key references public.fornecedor_produtos(id) on delete cascade,
+  preco_kg numeric not null check (preco_kg >= 0),
+  atualizado_em timestamptz not null default now()
+);
+alter table public.fornecedor_produto_precos enable row level security;
+create policy fprecos_all on public.fornecedor_produto_precos for all
+  using (exists (select 1 from fornecedor_produtos p where p.id = produto_id and (eh_admin() or fornec_papel(p.fornecedor_id) is not null)))
+  with check (exists (select 1 from fornecedor_produtos p where p.id = produto_id and (eh_admin() or fornec_papel(p.fornecedor_id) is not null)));
+
+-- Endereço de entrega do produtor
+alter table public.fornecedor_clientes add column endereco_entrega text, add column link_maps text;
+
+create or replace function public.definir_endereco_cliente(cid uuid, endereco text, link text)
+returns void language plpgsql security definer set search_path = public as $$
+declare c record;
+begin
+  select * into c from fornecedor_clientes where id = cid;
+  if not found then raise exception 'Cliente não encontrado'; end if;
+  if not (c.user_id = auth.uid() or eh_admin() or fornec_papel(c.fornecedor_id) = 'gestor'
+          or (c.vendedor_id is not null and c.vendedor_id = fornec_membro_id(c.fornecedor_id))) then
+    raise exception 'Sem permissão para alterar o endereço deste cliente';
+  end if;
+  if link is not null and btrim(link) <> '' and btrim(link) !~* '^https://' then
+    raise exception 'O link do Google Maps deve começar com https://';
+  end if;
+  update fornecedor_clientes set endereco_entrega = nullif(btrim(endereco), ''), link_maps = nullif(btrim(link), '') where id = cid;
+end $$;
+grant execute on function public.definir_endereco_cliente(uuid, text, text) to authenticated;
+
+-- Simulações do portal: de cada vendedor; o gestor vê as da equipe.
+create table public.fornecedor_simulacoes (
+  id uuid primary key default gen_random_uuid(),
+  fornecedor_id uuid not null references public.fornecedores(id) on delete cascade,
+  membro_id uuid not null references public.fornecedor_membros(id) on delete cascade,
+  nome text not null,
+  dados jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index on public.fornecedor_simulacoes (fornecedor_id, membro_id);
+alter table public.fornecedor_simulacoes enable row level security;
+create policy fsim_select on public.fornecedor_simulacoes for select
+  using (eh_admin() or fornec_papel(fornecedor_id) = 'gestor' or membro_id = fornec_membro_id(fornecedor_id));
+create policy fsim_insert on public.fornecedor_simulacoes for insert
+  with check (membro_id = fornec_membro_id(fornecedor_id));
+create policy fsim_update on public.fornecedor_simulacoes for update
+  using (eh_admin() or membro_id = fornec_membro_id(fornecedor_id))
+  with check (eh_admin() or membro_id = fornec_membro_id(fornecedor_id));
+create policy fsim_delete on public.fornecedor_simulacoes for delete
+  using (eh_admin() or fornec_papel(fornecedor_id) = 'gestor' or membro_id = fornec_membro_id(fornecedor_id));

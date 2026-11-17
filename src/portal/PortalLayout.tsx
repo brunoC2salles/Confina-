@@ -15,6 +15,7 @@ export function navDoPortal(p: ReturnType<typeof usePortal>): ItemNav[] {
       { to: '/demanda', label: 'Previsão de demanda' },
       { to: '/clientes', label: 'Clientes' },
       { to: '/catalogo', label: 'Produtos' },
+      { to: '/simulador', label: 'Simulador' },
     ]
     if (p.papel === 'gestor') itens.push({ to: '/equipe', label: 'Equipe e convites' })
     if (p.admin) itens.push({ to: '/admin', label: 'Fornecedores' })

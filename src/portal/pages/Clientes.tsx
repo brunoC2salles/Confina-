@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader, EmptyState, Modal } from '@/components/common/UI'
 import { EstoqueGerenciado } from '@/components/parceiros/EstoqueGerenciado'
+import { EnderecoEntrega } from '@/components/parceiros/EnderecoEntrega'
 import { useDadosFornecedor, nomeCliente } from '@/portal/useDadosFornecedor'
 import { usePortal } from '@/portal/PortalContext'
 import { fmtKg, fmtDataBr, emAlerta, linkWhatsApp, rotaDoCliente, type ClienteFornecedor, type EstoqueCliente } from '@/core/parceiros'
@@ -104,6 +105,9 @@ export default function Clientes() {
               <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 12 }}>
                 {[atual.responsavel, atual.telefone, atual.email].filter(Boolean).join(' · ')}
                 {atual.resumo_atualizado_em && <div style={{ color: 'var(--text-3)' }}>Estoque atualizado em {fmtDataBr(atual.resumo_atualizado_em.slice(0, 10))}</div>}
+              </div>
+              <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                <EnderecoEntrega key={`${atual.id}-${atual.endereco_entrega ?? ''}-${atual.link_maps ?? ''}`} cliente={atual} onSalvo={() => recarregar()} />
               </div>
               {linhasAtual.length === 0 ? <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Sem estoque registrado ainda.</div> : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

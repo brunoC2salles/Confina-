@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParceiroCliente } from '@/hooks/useParceiroCliente'
 import { ModalSolicitar } from '@/components/parceiros/ModalSolicitar'
 import { PedidosCliente } from '@/components/parceiros/PedidosCliente'
+import { EnderecoEntrega } from '@/components/parceiros/EnderecoEntrega'
 import { emAlerta, vendavel, fmtKg, fmtDataBr, ROTULO_CATEGORIA, type ProdutoFornecedor } from '@/core/parceiros'
 import { Modal } from '@/components/common/UI'
 
@@ -91,6 +92,10 @@ export function PainelFornecedorCompras({ versaoEstoque }: { versaoEstoque?: num
               </table>
             </div>
           )}
+
+      <div style={{ margin: '20px 0 0', padding: '12px 0 0', borderTop: '1px solid var(--border)' }}>
+        <EnderecoEntrega cliente={vinculo.cliente} />
+      </div>
 
       <div style={{ fontSize: 14, fontWeight: 600, margin: '20px 0 8px' }}>Meus pedidos à {nomeF}</div>
       <PedidosCliente vinculo={vinculo} pedidos={pedidos} onAlterado={() => recarregarPedidos()} />

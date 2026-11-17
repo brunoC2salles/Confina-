@@ -63,6 +63,8 @@ export interface ClienteFornecedor {
   ativo: boolean
   created_at: string
   rota_id: string | null
+  endereco_entrega: string | null
+  link_maps: string | null
 }
 
 export interface ConviteFornecedor {
@@ -655,4 +657,14 @@ export function rotaDoCliente(cliente: Pick<ClienteFornecedor, 'rota_id' | 'muni
   const m = normalizarMunicipio(cliente.municipio)
   if (!m) return null
   return rotas.find(r => r.municipios.some(x => normalizarMunicipio(x) === m)) ?? null
+}
+
+// Link do Google Maps do endereço de entrega: o link colado, quando existe;
+// senão, uma busca pelo endereço com município e UF. Null sem endereço.
+export function linkMapsCliente(c: Pick<ClienteFornecedor, 'endereco_entrega' | 'link_maps' | 'municipio' | 'uf'> | null | undefined): string | null {
+  if (!c) return null
+  if (c.link_maps) return c.link_maps
+  if (!c.endereco_entrega) return null
+  const q = [c.endereco_entrega, c.municipio, c.uf].filter(Boolean).join(', ')
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
 }

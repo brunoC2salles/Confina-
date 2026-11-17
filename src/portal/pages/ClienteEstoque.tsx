@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PageHeader, EmptyState } from '@/components/common/UI'
 import { useParceiroCliente } from '@/hooks/useParceiroCliente'
 import { EstoqueGerenciado } from '@/components/parceiros/EstoqueGerenciado'
+import { EnderecoEntrega } from '@/components/parceiros/EnderecoEntrega'
 
 // Conta só de estoque: o cliente lança entradas, baixas e ajustes, informa
 // o consumo e pede cotação. O vendedor e o gestor operam o mesmo estoque
@@ -33,6 +34,9 @@ export default function ClienteEstoque() {
               <button className="btn btn-primary btn-sm" onClick={salvarJanela}>Salvar</button></>}
       </div>
       {erro && <div className="field-error" style={{ marginBottom: 12 }}>{erro}</div>}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <EnderecoEntrega cliente={vinculo.cliente} />
+      </div>
       <EstoqueGerenciado key={`${vinculo.cliente.id}-${vinculo.cliente.janela_consumo_dias}`} cliente={vinculo.cliente}
         produtos={vinculo.produtos} fornecedorNome={vinculo.fornecedor.nome} quem="cliente" />
     </div>

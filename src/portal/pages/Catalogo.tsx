@@ -16,7 +16,7 @@ interface LinhaItem { ref: string; nome: string; tipo: 'concentrado' | 'volumoso
 const vazio = {
   nome: '', categoria: 'racao' as CategoriaProduto, tipo_dieta: 'concentrado' as 'concentrado' | 'volumoso',
   embalagem: '', peso_embalagem_kg: '', pedido_minimo_kg: '', prazo_entrega_dias: '', regiao: '', pct_ms: '',
-  visivel: true, dias_alerta: '7', kg_minimo_alerta: '',
+  visivel: true, dias_alerta: '7', kg_minimo_alerta: '', preco_kg: '',
   modo_dieta: 'receita' as 'pronta' | 'receita', descricao: '', ciclo_recomendado: '', gmd_esperado: '', gmd_esperado_concentrado: '',
   pct_consumo_pv_ms: '2.2', pct_concentrado: '100', pct_volumoso: '0',
   nutricional: {} as Record<string, string>,
@@ -31,7 +31,7 @@ const txt = (v: number | null | undefined) => v != null ? String(v) : ''
 // composição aceita produtos do catálogo, insumos padrão do Confina+ e
 // ingredientes livres; preços e custo ficam só para a equipe.
 export default function Catalogo() {
-  const { fornecedor, produtos, loading, recarregar } = useDadosFornecedor()
+  const { fornecedor, produtos, precos, loading, recarregar } = useDadosFornecedor()
   const [filtro, setFiltro] = useState<CategoriaProduto | 'todos'>('todos')
   const [editando, setEditando] = useState<ProdutoFornecedor | 'novo' | null>(null)
   const [form, setForm] = useState(vazio)
@@ -88,7 +88,7 @@ export default function Catalogo() {
       nome: p.nome, categoria: p.categoria, tipo_dieta: p.tipo_dieta, embalagem: p.embalagem ?? '',
       peso_embalagem_kg: txt(p.peso_embalagem_kg), pedido_minimo_kg: txt(p.pedido_minimo_kg),
       prazo_entrega_dias: txt(p.prazo_entrega_dias), regiao: p.regiao ?? '', pct_ms: txt(p.pct_ms),
-      visivel: p.visivel, dias_alerta: String(p.dias_alerta), kg_minimo_alerta: txt(p.kg_minimo_alerta),
+      visivel: p.visivel, dias_alerta: String(p.dias_alerta), kg_minimo_alerta: txt(p.kg_minimo_alerta), preco_kg: txt(precos[p.id]),
       modo_dieta: p.modo_dieta ?? 'receita', descricao: p.descricao ?? '', ciclo_recomendado: txt(p.ciclo_recomendado),
       gmd_esperado: txt(p.gmd_esperado), gmd_esperado_concentrado: txt(p.gmd_esperado_concentrado),
       pct_consumo_pv_ms: txt(p.pct_consumo_pv_ms ?? 2.2), pct_concentrado: txt(p.pct_concentrado ?? 100), pct_volumoso: txt(p.pct_volumoso ?? 0),
@@ -104,7 +104,7 @@ export default function Catalogo() {
     setItens(ls => ls.map((l, i) => {
       if (i !== idx) return l
       const [origem, id] = ref.split(':')
-      if (origem === 'produto') { const p = produtoPorId.get(id); return { ...l, ref, ms: txt(p?.pct_ms), nome: '' } }
+      if (origem === 'produto') { const p = produtoPorId.get(id); return { ...l, ref, ms: txt(p?.pct_ms), preco: l.preco || txt(precos[id]), nome: '' } }
       if (origem === 'insumo_padrao') { const ins = insumoPorId.get(id); return { ...l, ref, ms: txt(ins?.pct_ms), preco: l.preco || txt(ins?.preco_referencia), nome: '' } }
       return { ...l, ref }
     }))
@@ -141,6 +141,8 @@ export default function Catalogo() {
     if (!ehDieta && pctMs != null && !(pctMs > 0 && pctMs <= 100)) { setErro('% MS deve estar entre 0 e 100'); return }
     const diasAlerta = n(form.dias_alerta)
     if (!ehDieta || pronta) { if (diasAlerta == null || diasAlerta < 0) { setErro('Informe os dias de alerta'); return } }
+    const precoKg = !ehDieta || pronta ? n(form.preco_kg) : null
+    if (precoKg != null && !(precoKg >= 0)) { setErro('Preço inválido'); return }
     const nutricional: Record<string, number | string> = {}
     for (const [k] of CAMPOS_NUTRICIONAIS) { const v = n(form.nutricional[k] ?? ''); if (v != null) nutricional[k] = v }
     if ((form.nutricional.ionoforo ?? '').trim()) nutricional.ionoforo = form.nutricional.ionoforo.trim()
@@ -180,6 +182,10 @@ export default function Catalogo() {
         if (error) { setSalvando(false); setErro(error.message); return }
       }
     }
+    const { error: ePreco } = precoKg != null
+      ? await supabase.from('fornecedor_produto_precos').upsert({ produto_id: id, preco_kg: precoKg, atualizado_em: new Date().toISOString() })
+      : await supabase.from('fornecedor_produto_precos').delete().eq('produto_id', id)
+    if (ePreco) { setSalvando(false); setErro(ePreco.message); return }
     setSalvando(false)
     setEditando(null)
     recarregar()
@@ -258,7 +264,7 @@ export default function Catalogo() {
 
       {lista.length === 0 ? <div className="card"><EmptyState icon="◻" title="Nenhum produto" desc="Cadastre rações, núcleos, minerais, grãos, farelos e dietas." /></div> : (
         <div className="table-wrap"><table>
-          <thead><tr><th>Produto</th><th>Categoria</th><th>Embalagem</th><th>Pedido mín.</th><th>Prazo</th><th>Alerta</th><th>Visível</th><th></th></tr></thead>
+          <thead><tr><th>Produto</th><th>Categoria</th><th>Preço/kg</th><th>Embalagem</th><th>Pedido mín.</th><th>Prazo</th><th>Alerta</th><th>Visível</th><th></th></tr></thead>
           <tbody>{lista.map(p => {
             const its = itensPorDieta[p.id] ?? []
             const c = p.categoria === 'dieta' ? custoKgMsDieta(Number(p.pct_concentrado ?? 0), Number(p.pct_volumoso ?? 0), its) : null
@@ -272,6 +278,7 @@ export default function Catalogo() {
                     : p.regiao && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.regiao}</div>}
                 </td>
                 <td>{p.categoria === 'dieta' ? (p.modo_dieta === 'pronta' ? 'Dieta pronta' : 'Dieta receita') : ROTULO_CATEGORIA[p.categoria]}</td>
+                <td>{receita || precos[p.id] == null ? '—' : fmtReais(precos[p.id])}</td>
                 <td>{receita ? '—' : p.embalagem ?? '—'}</td>
                 <td>{!receita && p.pedido_minimo_kg != null ? fmtKg(p.pedido_minimo_kg) : '—'}</td>
                 <td>{!receita && p.prazo_entrega_dias != null ? `${p.prazo_entrega_dias} dias` : '—'}</td>
@@ -364,6 +371,10 @@ export default function Catalogo() {
           {vende && (
             <>
               {ehDieta && <strong style={{ display: 'block', fontSize: 14, margin: '8px 0 10px' }}>Venda e estoque</strong>}
+              <div className="form-row-2">
+                <div className="field"><label>Preço de referência (R$/kg MN)</label><input type="number" step="0.01" value={form.preco_kg} onChange={e => setForm({ ...form, preco_kg: e.target.value })} placeholder="Usado no simulador" /></div>
+                <div className="field" style={{ alignSelf: 'end', fontSize: 12, color: 'var(--text-3)' }}>Só a equipe vê. Entra no simulador, nas dietas e nos PDFs de simulação.</div>
+              </div>
               <div className="form-row-3">
                 <div className="field"><label>Embalagem</label><input value={form.embalagem} onChange={e => setForm({ ...form, embalagem: e.target.value })} placeholder="Saco 30 kg, granel" /></div>
                 <div className="field"><label>Peso da embalagem (kg)</label><input type="number" value={form.peso_embalagem_kg} onChange={e => setForm({ ...form, peso_embalagem_kg: e.target.value })} /></div>

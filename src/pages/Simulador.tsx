@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { useDietas } from '@/hooks/useDietas'
+import { useDietas, type Dieta, type IngredienteDisponivel } from '@/hooks/useDietas'
 import { useSimulacoes, type Simulacao } from '@/hooks/useSimulacoes'
 import { estadoAtualLote } from '@/core/analises'
 import { PageHeader, EmptyState } from '@/components/common/UI'
@@ -25,13 +25,47 @@ interface Aberta {
 
 export default function Simulador() {
   const { simulacoes, loading, tabelaAusente, criarSimulacao, salvarSimulacao, excluirSimulacao } = useSimulacoes()
+  const { dietas, ingredientesDisponiveis } = useDietas()
+  return (
+    <SimuladorTela simulacoes={simulacoes} loading={loading} tabelaAusente={tabelaAusente}
+      criar={criarSimulacao} salvar={salvarSimulacao} excluir={excluirSimulacao}
+      dietas={dietas} ingredientes={ingredientesDisponiveis} permitirLote />
+  )
+}
+
+// Tela do simulador, com a fonte das simulações, das dietas e dos
+// ingredientes injetada: no Confina+ são as do produtor; no portal de
+// parceiros, as do vendedor com os produtos e dietas do fornecedor.
+export interface SimuladorTelaProps<S extends Simulacao = Simulacao> {
+  simulacoes: S[]
+  loading: boolean
+  tabelaAusente?: boolean
+  criar: (nome: string, dados: SimDados) => Promise<{ error: string | null; id?: string | null }>
+  salvar: (id: string, nome: string, dados: SimDados) => Promise<{ error: string | null }>
+  excluir: (id: string) => Promise<{ error: string | null }>
+  dietas: Dieta[]
+  ingredientes: IngredienteDisponivel[]
+  permitirLote?: boolean
+  podeCriar?: boolean
+  avisoCriar?: string
+  subtitulo?: string
+  textoCopiarDieta?: string
+  marcarProprio?: boolean
+  infoCard?: (s: S) => ReactNode
+  acoesEditor?: (id: string | null, sujo: boolean) => ReactNode
+  podeEditar?: (s: S) => boolean
+}
+
+export function SimuladorTela<S extends Simulacao = Simulacao>(props: SimuladorTelaProps<S>) {
+  const { simulacoes, loading, tabelaAusente = false, criar, salvar, excluir, podeCriar = true } = props
   const [aberta, setAberta] = useState<Aberta | null>(null)
+  const [somenteLeitura, setSomenteLeitura] = useState(false)
   const [sujo, setSujo] = useState(false)
 
-  const abrir = (s: Simulacao) => { setAberta({ id: s.id, nome: s.nome, dados: s.dados }); setSujo(false) }
-  const nova = () => { setAberta({ id: null, nome: 'Nova simulação', dados: dadosIniciais() }); setSujo(true) }
+  const abrir = (s: S) => { setAberta({ id: s.id, nome: s.nome, dados: s.dados }); setSomenteLeitura(props.podeEditar ? !props.podeEditar(s) : false); setSujo(false) }
+  const nova = () => { setAberta({ id: null, nome: 'Nova simulação', dados: dadosIniciais() }); setSomenteLeitura(false); setSujo(true) }
   const fechar = () => {
-    if (sujo && !window.confirm('Há alterações não salvas. Sair mesmo assim?')) return
+    if (sujo && !somenteLeitura && !window.confirm('Há alterações não salvas. Sair mesmo assim?')) return
     setAberta(null); setSujo(false)
   }
 
@@ -39,23 +73,30 @@ export default function Simulador() {
     return (
       <EditorSimulacao
         aberta={aberta}
-        sujo={sujo}
+        sujo={sujo && !somenteLeitura}
+        somenteLeitura={somenteLeitura}
+        dietas={props.dietas}
+        ingredientes={props.ingredientes}
+        permitirLote={!!props.permitirLote}
+        textoCopiarDieta={props.textoCopiarDieta}
+        marcarProprio={props.marcarProprio ?? true}
+        acoes={props.acoesEditor?.(aberta.id, sujo && !somenteLeitura)}
         onChange={a => { setAberta(a); setSujo(true) }}
         onFechar={fechar}
         onSalvar={async () => {
           if (aberta.id) {
-            const r = await salvarSimulacao(aberta.id, aberta.nome.trim() || 'Simulação', aberta.dados)
+            const r = await salvar(aberta.id, aberta.nome.trim() || 'Simulação', aberta.dados)
             if (!r.error) setSujo(false)
             return r.error
           }
-          const r = await criarSimulacao(aberta.nome.trim() || 'Simulação', aberta.dados)
+          const r = await criar(aberta.nome.trim() || 'Simulação', aberta.dados)
           if (!r.error && r.id) { setAberta({ ...aberta, id: r.id }); setSujo(false) }
           return r.error
         }}
         onExcluir={async () => {
           if (!aberta.id) { setAberta(null); setSujo(false); return }
           if (!window.confirm(`Excluir a simulação "${aberta.nome}"?`)) return
-          const r = await excluirSimulacao(aberta.id)
+          const r = await excluir(aberta.id)
           if (r.error) { alert(r.error); return }
           setAberta(null); setSujo(false)
         }}
@@ -63,16 +104,20 @@ export default function Simulador() {
     )
   }
 
+  const criarHabilitado = !tabelaAusente && podeCriar
   return (
     <div className="page">
       <PageHeader title="Simulador"
-        subtitle="Monte caminhos do ciclo inicial até a venda e compare qual é mais rentável"
-        action={<button className="btn btn-primary" onClick={nova} disabled={tabelaAusente}>+ Nova simulação</button>} />
+        subtitle={props.subtitulo ?? 'Monte caminhos do ciclo inicial até a venda e compare qual é mais rentável'}
+        action={<button className="btn btn-primary" onClick={nova} disabled={!criarHabilitado}>+ Nova simulação</button>} />
 
       {tabelaAusente && (
         <div className="card" style={{ padding: 16, marginBottom: 16, background: '#fff8e1', borderColor: '#fde68a', fontSize: 13 }}>
           A tabela de simulações ainda não existe no banco. Rode o SQL de <code>supabase/simulacoes.sql</code> no SQL Editor do Supabase.
         </div>
+      )}
+      {!podeCriar && props.avisoCriar && (
+        <div className="card" style={{ padding: 12, marginBottom: 16, fontSize: 13, color: 'var(--text-2)' }}>{props.avisoCriar}</div>
       )}
 
       {loading ? (
@@ -83,18 +128,18 @@ export default function Simulador() {
         <div className="card">
           <EmptyState icon="" title="Nenhuma simulação salva"
             desc="Crie uma simulação, defina o ponto de partida e monte um ou mais caminhos de ciclos até a venda."
-            action={!tabelaAusente ? <button className="btn btn-primary" onClick={nova}>Criar simulação</button> : undefined} />
+            action={criarHabilitado ? <button className="btn btn-primary" onClick={nova}>Criar simulação</button> : undefined} />
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-          {simulacoes.map(s => <CardSimulacao key={s.id} s={s} onAbrir={() => abrir(s)} />)}
+          {simulacoes.map(s => <CardSimulacao key={s.id} s={s} info={props.infoCard?.(s)} onAbrir={() => abrir(s)} />)}
         </div>
       )}
     </div>
   )
 }
 
-function CardSimulacao({ s, onAbrir }: { s: Simulacao; onAbrir: () => void }) {
+function CardSimulacao({ s, onAbrir, info }: { s: Simulacao; onAbrir: () => void; info?: ReactNode }) {
   const resultados = useMemo(() => s.dados.cenarios.map(c => ({ c, r: calcularCenario(s.dados.partida, c) })), [s])
   const comLucro = lucroVisivel(s.dados)
   const validos = resultados.filter(x => x.r.erros.length === 0 && x.r.lucroCabeca != null)
@@ -105,6 +150,7 @@ function CardSimulacao({ s, onAbrir }: { s: Simulacao; onAbrir: () => void }) {
   return (
     <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <div style={{ fontSize: 15, fontWeight: 600 }}>{s.nome}</div>
+      {info}
       <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
         {s.dados.cenarios.length} caminho{s.dados.cenarios.length !== 1 ? 's' : ''}
         {s.dados.partida.origem === 'lote' && s.dados.partida.loteNome ? ` · lote ${s.dados.partida.loteNome}` : ''}
@@ -129,15 +175,21 @@ function CardSimulacao({ s, onAbrir }: { s: Simulacao; onAbrir: () => void }) {
 
 // ─── Editor ─────────────────────────────────────────────────────────────────
 
-function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir }: {
+function EditorSimulacao({ aberta, sujo, somenteLeitura, dietas, ingredientes, permitirLote, textoCopiarDieta, marcarProprio, acoes, onChange, onFechar, onSalvar, onExcluir }: {
   aberta: Aberta
   sujo: boolean
+  somenteLeitura: boolean
+  dietas: Dieta[]
+  ingredientes: IngredienteDisponivel[]
+  permitirLote: boolean
+  textoCopiarDieta?: string
+  marcarProprio: boolean
+  acoes?: ReactNode
   onChange: (a: Aberta) => void
   onFechar: () => void
   onSalvar: () => Promise<string | null>
   onExcluir: () => void
 }) {
-  const { dietas, ingredientesDisponiveis } = useDietas()
   const [cenarioAtivoId, setCenarioAtivoId] = useState(aberta.dados.cenarios[0]?.id ?? '')
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
@@ -196,14 +248,18 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {msg && <span style={{ fontSize: 13, color: msg.tipo === 'ok' ? 'var(--green)' : 'var(--red)' }}>{msg.texto}</span>}
           {sujo && !msg && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Alterações não salvas</span>}
+          {acoes}
+          {!somenteLeitura && <>
           <button type="button" className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={onExcluir}>Excluir</button>
           <button type="button" className="btn btn-primary" onClick={salvar} disabled={salvando}>
             {salvando ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Salvar'}
           </button>
+          </>}
+          {somenteLeitura && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Somente leitura</span>}
         </div>
       </div>
 
-      <PartidaCard partida={dados.partida} onChange={setPartida} mostrarMsConc={Object.values(resultados).some(r => r.concMnEstimada)} />
+      <PartidaCard partida={dados.partida} onChange={setPartida} permitirLote={permitirLote} mostrarMsConc={Object.values(resultados).some(r => r.concMnEstimada)} />
 
       <ComparativoCaminhos cenarios={dados.cenarios} resultados={resultados} ativoId={cenarioAtivo?.id ?? ''} onSelecionar={setCenarioAtivoId}
         mostrarLucro={mostrarLucro} onAlternarLucro={() => setDados({ ...dados, mostrarLucro: !mostrarLucro })} />
@@ -264,7 +320,7 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
 
           {cenarioAtivo.ciclos.map((ci, idx) => (
             <CicloCard key={ci.id} ciclo={ci} indice={idx} total={cenarioAtivo.ciclos.length}
-              dietas={dietas} ingredientes={ingredientesDisponiveis}
+              dietas={dietas} ingredientes={ingredientes} textoCopiarDieta={textoCopiarDieta} marcarProprio={marcarProprio}
               onChange={novo => setCenario({ ...cenarioAtivo, ciclos: cenarioAtivo.ciclos.map(x => x.id === novo.id ? novo : x) })}
               onRemove={() => setCenario({ ...cenarioAtivo, ciclos: cenarioAtivo.ciclos.filter(x => x.id !== ci.id) })}
               onMover={dir => {
@@ -290,7 +346,7 @@ function EditorSimulacao({ aberta, sujo, onChange, onFechar, onSalvar, onExcluir
 
 // ─── Ponto de partida ───────────────────────────────────────────────────────
 
-function PartidaCard({ partida, onChange, mostrarMsConc }: { partida: SimPartida; onChange: (p: Partial<SimPartida>) => void; mostrarMsConc: boolean }) {
+function PartidaCard({ partida, onChange, mostrarMsConc, permitirLote }: { partida: SimPartida; onChange: (p: Partial<SimPartida>) => void; mostrarMsConc: boolean; permitirLote: boolean }) {
   const { user } = useAuth()
   const [lotes, setLotes] = useState<Array<{ id: string; nome_lote: string }>>([])
   const [loteSel, setLoteSel] = useState(partida.loteId ?? '')
@@ -298,10 +354,10 @@ function PartidaCard({ partida, onChange, mostrarMsConc }: { partida: SimPartida
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !permitirLote) return
     supabase.from('lotes').select('id, nome_lote').eq('user_id', user.id).eq('status', 'ativo').order('nome_lote')
       .then(({ data }) => setLotes((data ?? []) as Array<{ id: string; nome_lote: string }>))
-  }, [user])
+  }, [user, permitirLote])
 
   // Estado de hoje do lote: animais ativos, peso médio projetado hoje pelo
   // motor de custo e investimento médio já feito por cabeça (compra + custo
@@ -330,15 +386,15 @@ function PartidaCard({ partida, onChange, mostrarMsConc }: { partida: SimPartida
     <div className="card" style={{ padding: 16, marginBottom: 16 }}>
       <div className="flex-between" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>Ponto de partida <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-3)' }}>· comum a todos os caminhos</span></div>
-        <div className="pill-wrap" style={{ marginBottom: 0 }}>
+        {permitirLote && <div className="pill-wrap" style={{ marginBottom: 0 }}>
           <button type="button" className={`pill${partida.origem === 'manual' ? ' active' : ''}`}
             onClick={() => onChange({ origem: 'manual', loteId: null, loteNome: null, dataReferencia: null })}>Informar à mão</button>
           <button type="button" className={`pill${partida.origem === 'lote' ? ' active' : ''}`}
             onClick={() => onChange({ origem: 'lote' })}>Puxar de um lote</button>
-        </div>
+        </div>}
       </div>
 
-      {partida.origem === 'lote' && (
+      {permitirLote && partida.origem === 'lote' && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
           <div style={{ flex: '1 1 240px', minWidth: 0 }}>
             <label style={fieldLabel}>Lote ativo</label>
@@ -396,7 +452,7 @@ function PartidaCard({ partida, onChange, mostrarMsConc }: { partida: SimPartida
 
 // ─── Comparativo dos caminhos ───────────────────────────────────────────────
 
-function notaConc(r: ResultadoCenario, linha: 'mn' | 'ms' | 'custo'): string | null {
+export function notaConc(r: ResultadoCenario, linha: 'mn' | 'ms' | 'custo'): string | null {
   const partes: string[] = []
   if (linha === 'mn' && r.concMnEstimada) partes.push(`Estimado com ${fmtNum(r.pctMsConcentradoUsada, 1)}% de MS, editável no ponto de partida: há dieta sem ingredientes do concentrado cadastrados.`)
   if (linha === 'custo' && r.custoConcDietaToda) partes.push('Inclui o volumoso: há dieta com custo manual da dieta inteira, sem como separar o concentrado.')
@@ -404,21 +460,11 @@ function notaConc(r: ResultadoCenario, linha: 'mn' | 'ms' | 'custo'): string | n
   return partes.length > 0 ? partes.join(' ') : null
 }
 
-function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, mostrarLucro, onAlternarLucro }: {
-  cenarios: SimCenario[]
-  resultados: Record<string, ResultadoCenario>
-  ativoId: string
-  onSelecionar: (id: string) => void
-  mostrarLucro: boolean
-  onAlternarLucro: () => void
-}) {
-  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
-  const validos = cenarios.map(c => resultados[c.id]).filter(r => r && r.erros.length === 0 && r.lucroCabeca != null)
-  const melhorId = mostrarLucro && validos.length >= 2 ? validos.reduce((a, b) => (b.lucroCabeca! > a.lucroCabeca! ? b : a)).cenarioId : null
-
-  type Linha = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean; lucro?: boolean; dica?: string; nota?: (r: ResultadoCenario) => string | null; id?: string; pai?: string }
-  const ou = (v: number | null, f: (n: number) => string) => v == null ? '—' : f(v)
-  const todas: Linha[] = [
+export type LinhaComparativo = { rotulo: string; valor: (r: ResultadoCenario) => string; cor?: (r: ResultadoCenario) => string | undefined; destaque?: boolean; lucro?: boolean; dica?: string; nota?: (r: ResultadoCenario) => string | null; id?: string; pai?: string }
+const ou = (v: number | null, f: (n: number) => string) => v == null ? '—' : f(v)
+// Linhas do comparativo dos caminhos (tela e PDF do portal).
+export function linhasComparativo(): LinhaComparativo[] {
+  return [
     { rotulo: 'Dias totais', valor: r => String(r.diasTotais) },
     { rotulo: 'Peso final', valor: r => `${fmtNum(r.pesoFinal, 1)} kg` },
     { rotulo: 'Ganho total', valor: r => `${fmtNum(r.ganhoTotal, 1)} kg` },
@@ -442,6 +488,21 @@ function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, most
     { rotulo: 'Retorno sobre o investimento', valor: r => ou(r.roiPct, v => `${fmtNum(1 + v / 100, 2)}x`), cor: r => corValor(r.roiPct), lucro: true, dica: 'Quanto volta para cada R$ 1,00 investido. Cálculo: receita líquida dividida pelo custo total (compra, custo anterior e custo dos ciclos). Acima de 1,00x há lucro; abaixo de 1,00x, prejuízo. Ex.: 1,25x significa que cada R$ 1,00 investido voltou R$ 1,25.' },
     { rotulo: 'Lucro por @ de carcaça', valor: r => ou(r.lucroPorArroba, fmt), cor: r => corValor(r.lucroPorArroba), lucro: true },
   ]
+}
+
+function ComparativoCaminhos({ cenarios, resultados, ativoId, onSelecionar, mostrarLucro, onAlternarLucro }: {
+  cenarios: SimCenario[]
+  resultados: Record<string, ResultadoCenario>
+  ativoId: string
+  onSelecionar: (id: string) => void
+  mostrarLucro: boolean
+  onAlternarLucro: () => void
+}) {
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
+  const validos = cenarios.map(c => resultados[c.id]).filter(r => r && r.erros.length === 0 && r.lucroCabeca != null)
+  const melhorId = mostrarLucro && validos.length >= 2 ? validos.reduce((a, b) => (b.lucroCabeca! > a.lucroCabeca! ? b : a)).cenarioId : null
+
+  const todas = linhasComparativo()
   const linhas = todas.filter(l => (mostrarLucro || !l.lucro) && (!l.pai || expandidos.has(l.pai)))
   const alternar = (id: string) => setExpandidos(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
 

@@ -16,6 +16,8 @@ export function useDadosFornecedor() {
   const [estoque, setEstoque] = useState<EstoqueCliente[]>([])
   const [rotas, setRotas] = useState<RotaEntrega[]>([])
   const [capacidadeKg, setCapacidadeKg] = useState(15000)
+  // Preço de referência R$/kg MN por produto (só a equipe lê).
+  const [precos, setPrecos] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
   const carregar = useCallback(async () => {
@@ -43,13 +45,20 @@ export function useDadosFornecedor() {
     setPedidos((pe.data ?? []) as PedidoFornecedor[])
     setEstoque(est)
     setRotas((ro.data ?? []) as RotaEntrega[])
+    const idsProdutos = ((p.data ?? []) as ProdutoFornecedor[]).map(x => x.id)
+    const mapaPrecos: Record<string, number> = {}
+    for (let i = 0; i < idsProdutos.length; i += 200) {
+      const { data } = await supabase.from('fornecedor_produto_precos').select('produto_id, preco_kg').in('produto_id', idsProdutos.slice(i, i + 200))
+      for (const r of (data ?? []) as Array<{ produto_id: string; preco_kg: number }>) mapaPrecos[r.produto_id] = Number(r.preco_kg)
+    }
+    setPrecos(mapaPrecos)
     setCapacidadeKg(cfg.data?.capacidade_carga_kg != null ? Number(cfg.data.capacidade_carga_kg) : 15000)
     setLoading(false)
   }, [fornecedor])
 
   useEffect(() => { carregar() }, [carregar])
 
-  return { fornecedor, clientes, produtos, membros, pedidos, estoque, rotas, capacidadeKg, loading, recarregar: carregar }
+  return { fornecedor, clientes, produtos, membros, pedidos, estoque, rotas, capacidadeKg, precos, loading, recarregar: carregar }
 }
 
 export const nomeCliente = (c: ClienteFornecedor | undefined) => c ? (c.nome_fazenda || c.responsavel || c.email || 'Cliente') : 'Cliente'

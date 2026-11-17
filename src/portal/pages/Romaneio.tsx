@@ -1,6 +1,6 @@
 import { useSearchParams, Link } from 'react-router-dom'
 import { useDadosFornecedor, nomeCliente } from '@/portal/useDadosFornecedor'
-import { rotaDoCliente, fmtKg, fmtDataBr, hojeISO } from '@/core/parceiros'
+import { rotaDoCliente, fmtKg, fmtDataBr, hojeISO, linkMapsCliente } from '@/core/parceiros'
 
 const CSS = `
 .rom { max-width: 1000px; margin: 0 auto; padding: 32px 28px; font-family: Inter, sans-serif; color: #111; }
@@ -16,6 +16,8 @@ const CSS = `
 .rom td.qtd { white-space: nowrap; font-weight: 600; }
 .rom .assin { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 56px; font-size: 13px; color: #444; }
 .rom .assin div { border-top: 1px solid #555; padding-top: 6px; }
+.rom .end { font-size: 13px; }
+.rom .end a { color: #1b5e20; font-weight: 600; text-decoration: underline; }
 .rom .rodape { margin-top: 28px; font-size: 11px; color: #777; }
 @media print {
   .rom-acoes { display: none; }
@@ -70,14 +72,21 @@ export default function Romaneio() {
       </div>
       {itens.length === 0 ? <p>Nenhuma entrega aprovada para esta data e rota.</p> : (
         <table>
-          <thead><tr><th>Nº</th><th>Fazenda e contato</th><th>Município</th><th>Produto</th><th>Quantidade</th><th>Observações</th></tr></thead>
+          <thead><tr><th>Nº</th><th>Fazenda e contato</th><th>Endereço de entrega</th><th>Produto</th><th>Quantidade</th><th>Observações</th></tr></thead>
           <tbody>{itens.map(p => {
             const c = clientePorId.get(p.cliente_id)
             return (
               <tr key={p.id}>
                 <td>#{p.numero}</td>
                 <td><strong>{nomeCliente(c)}</strong><div>{[c?.responsavel, c?.telefone].filter(Boolean).join(' · ')}</div></td>
-                <td>{[c?.municipio, c?.uf].filter(Boolean).join('/') || '—'}</td>
+                <td className="end">
+                  {c?.endereco_entrega && <div>{c.endereco_entrega}</div>}
+                  <div>{[c?.municipio, c?.uf].filter(Boolean).join('/') || (c?.endereco_entrega ? '' : '—')}</div>
+                  {(() => {
+                    const link = linkMapsCliente(c)
+                    return link ? <a href={link} target="_blank" rel="noreferrer">Abrir no Google Maps</a> : null
+                  })()}
+                </td>
                 <td>{p.produto_nome ?? '—'}</td>
                 <td className="qtd">{fmtKg(p.quantidade_kg)}</td>
                 <td>{p.observacoes ?? ''}</td>
