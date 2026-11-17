@@ -247,6 +247,7 @@ export interface PedidoFornecedor {
   resposta: string | null
   notificado_em: string | null
   estoque_lancado_em: string | null
+  rota_entrega_id: string | null
   created_at: string
   updated_at: string
 }
@@ -657,6 +658,12 @@ export function rotaDoCliente(cliente: Pick<ClienteFornecedor, 'rota_id' | 'muni
   const m = normalizarMunicipio(cliente.municipio)
   if (!m) return null
   return rotas.find(r => r.municipios.some(x => normalizarMunicipio(x) === m)) ?? null
+}
+
+// Rota da entrega: a escolhida só para este pedido ou a rota do cliente.
+export function rotaDoPedido(pedido: Pick<PedidoFornecedor, 'rota_entrega_id'>, cliente: Pick<ClienteFornecedor, 'rota_id' | 'municipio'> | null | undefined, rotas: RotaEntrega[]): RotaEntrega | null {
+  if (pedido.rota_entrega_id) return rotas.find(r => r.id === pedido.rota_entrega_id) ?? null
+  return cliente ? rotaDoCliente(cliente, rotas) : null
 }
 
 // Link do Google Maps do endereço de entrega: o link colado, quando existe;

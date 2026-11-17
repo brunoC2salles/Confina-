@@ -615,3 +615,9 @@ create policy fsim_update on public.fornecedor_simulacoes for update
   with check (eh_admin() or membro_id = fornec_membro_id(fornecedor_id));
 create policy fsim_delete on public.fornecedor_simulacoes for delete
   using (eh_admin() or fornec_papel(fornecedor_id) = 'gestor' or membro_id = fornec_membro_id(fornecedor_id));
+
+-- ═══ Migração portal_parceiros_entregas_vendedor ═══
+-- Vendedor cria e edita rotas (excluir: gestor); rota só da entrega no pedido;
+-- peso total das cargas para a equipe (cargas_fornecedor); divisão de pedido
+-- (dividir_pedido); proteger_fornecedor_pedidos bloqueia rota_entrega_id para o cliente.
+-- Ver o SQL aplicado no histórico de migrações do Supabase (mesmo nome).

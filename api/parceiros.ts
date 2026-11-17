@@ -5,6 +5,7 @@
 //  - cobranca_ativar       admin: cria cliente e assinatura na Stripe
 //  - cobranca_sincronizar  admin: ajusta a quantidade de clientes cobrados
 //  - pedido_entregue       gestor ou vendedor: lança a entrega no estoque do cliente
+//  - entrega_reprogramada  gestor ou vendedor: avisa o cliente da nova data de entrega
 // O acesso de cada ação é conferido com o cliente do Supabase do próprio
 // usuário (RLS); a chave de serviço só é usada depois disso.
 import { definirProvedorDb } from '../src/core/db.js'
@@ -15,7 +16,7 @@ import {
   SERVICE_KEY, PRICE_FIXO, PRICE_CLIENTE, URL_PORTAL, URL_APP,
 } from './_parceiros.js'
 
-type Corpo = { acao?: string; convite_id?: string; pedido_id?: string; fornecedor_id?: string }
+type Corpo = { acao?: string; convite_id?: string; pedido_id?: string; fornecedor_id?: string; pedido_ids?: string[] }
 
 // O código de src/core usa o cliente de serviço nesta função (só em ações
 // já autorizadas pelo RLS do usuário).
@@ -91,6 +92,44 @@ export async function POST(request: Request): Promise<Response> {
       if (r.error) return json({ error: r.error }, 502)
       await servico.from('fornecedor_pedidos').update({ notificado_em: new Date().toISOString() }).eq('id', p.id)
       return json({ ok: true, fornecedor: f?.nome })
+    }
+
+    case 'entrega_reprogramada': {
+      const ids = Array.isArray(corpo.pedido_ids) ? corpo.pedido_ids.filter(x => typeof x === 'string').slice(0, 50) : []
+      if (ids.length === 0) return json({ error: 'Nenhum pedido informado' }, 400)
+      // Leitura pelo RLS do usuário: só pedidos de clientes que ele atende.
+      const { data: lista } = await usuario.from('fornecedor_pedidos').select('*').in('id', ids)
+      const pedidos = (lista ?? []).filter((p: any) => p.status === 'aprovado' && p.data_entrega)
+      if (pedidos.length === 0) return json({ error: 'Pedidos não encontrados' }, 404)
+      const fid = pedidos[0].fornecedor_id
+      const { data: papel } = await usuario.rpc('fornec_papel', { fid })
+      const { data: admin } = await usuario.rpc('eh_admin')
+      if (!papel && !admin) return json({ error: 'Somente a equipe do fornecedor reprograma entregas' }, 403)
+      const { data: f } = await servico.from('fornecedores').select('nome, demo').eq('id', fid).maybeSingle()
+      if (f?.demo) return json({ ok: true, enviados: 0, demo: true })
+      const porCliente = new Map<string, any[]>()
+      for (const p of pedidos) porCliente.set(p.cliente_id, [...(porCliente.get(p.cliente_id) ?? []), p])
+      let enviados = 0
+      const falhas: string[] = []
+      for (const [clienteId, ps] of porCliente) {
+        const { data: cli } = await servico.from('fornecedor_clientes').select('*').eq('id', clienteId).maybeSingle()
+        if (!cli) continue
+        let email = cli.email as string | null
+        if (!email) { const { data: u } = await servico.auth.admin.getUserById(cli.user_id); email = u?.user?.email ?? null }
+        if (!email) { falhas.push(cli.nome_fazenda ?? 'Cliente'); continue }
+        const nomeF = f?.nome ?? 'Seu fornecedor'
+        const titulo = ps.length === 1 ? 'Entrega reprogramada' : 'Entregas reprogramadas'
+        const linhas: Array<[string, string]> = []
+        for (const p of ps.sort((a, b) => String(a.data_entrega).localeCompare(String(b.data_entrega)))) {
+          linhas.push([`Pedido #${p.numero} · ${p.produto_nome ?? 'Produto'} · ${kg(p.quantidade_kg)}`, dataBr(p.data_entrega)])
+        }
+        const url = cli.modo === 'confina' ? `${URL_APP}/compras` : `${URL_PORTAL}/meus-pedidos`
+        const r = await enviarEmail([email], `${titulo} · ${nomeF}`, modeloEmail(titulo,
+          `${nomeF} ajustou a programação de entrega${ps.length === 1 ? ' do seu pedido' : ' dos seus pedidos'}. Nova data:`, linhas,
+          { texto: 'Ver meus pedidos', url }))
+        if (r.error) falhas.push(cli.nome_fazenda ?? 'Cliente'); else enviados++
+      }
+      return json({ ok: true, enviados, falhas })
     }
 
     case 'pedido_entregue': {

@@ -1,6 +1,6 @@
 import { useSearchParams, Link } from 'react-router-dom'
 import { useDadosFornecedor, nomeCliente } from '@/portal/useDadosFornecedor'
-import { rotaDoCliente, fmtKg, fmtDataBr, hojeISO, linkMapsCliente } from '@/core/parceiros'
+import { rotaDoPedido, fmtKg, fmtDataBr, hojeISO, linkMapsCliente } from '@/core/parceiros'
 
 const CSS = `
 .rom { max-width: 1000px; margin: 0 auto; padding: 32px 28px; font-family: Inter, sans-serif; color: #111; }
@@ -44,8 +44,7 @@ export default function Romaneio() {
     if (p.status !== 'aprovado' || !p.data_entrega) return false
     const d = p.data_entrega < hoje ? hoje : p.data_entrega
     if (d !== data) return false
-    const c = clientePorId.get(p.cliente_id)
-    const r = c ? rotaDoCliente(c, rotas) : null
+    const r = rotaDoPedido(p, clientePorId.get(p.cliente_id), rotas)
     return (r?.id ?? 'sem-rota') === rotaId
   }).sort((a, b) => (clientePorId.get(a.cliente_id)?.municipio ?? '').localeCompare(clientePorId.get(b.cliente_id)?.municipio ?? ''))
   const total = itens.reduce((s, p) => s + Number(p.quantidade_kg ?? 0), 0)
