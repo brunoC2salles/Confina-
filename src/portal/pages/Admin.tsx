@@ -8,13 +8,13 @@ import { fmtDataBr, type Fornecedor } from '@/core/parceiros'
 
 // Valor mensal da plataforma de venda de ração: R$ 2.000 fixos + pacote de
 // clientes (20, depois múltiplos de 50). O preço por cliente da faixa do pacote vale para
-// o pacote todo: 1-100 R$ 35, 101-200 R$ 32, 201-300 R$ 29, 301-400 R$ 26,
-// acima de 400 R$ 24. Igual ao preço de pacotes na Stripe.
+// o pacote todo: 1-100 R$ 20, 101-200 R$ 19, 201-300 R$ 17, 301-400 R$ 16,
+// acima de 400 R$ 15. Igual ao preço de pacotes na Stripe.
 export function pacoteClientes(clientes: number): number {
   return clientes <= 0 ? 0 : clientes <= 20 ? 20 : Math.ceil(clientes / 50) * 50
 }
 function precoPorCliente(pacote: number): number {
-  return pacote <= 100 ? 35 : pacote <= 200 ? 32 : pacote <= 300 ? 29 : pacote <= 400 ? 26 : 24
+  return pacote <= 100 ? 20 : pacote <= 200 ? 19 : pacote <= 300 ? 17 : pacote <= 400 ? 16 : 15
 }
 export function valorMensal(clientes: number): number {
   const pacote = pacoteClientes(clientes)

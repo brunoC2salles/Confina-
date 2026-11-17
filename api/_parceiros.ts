@@ -8,8 +8,8 @@
 //   RESEND_FROM                 remetente (padrão: Confina+ <parceiros@confinamais.com>)
 //   STRIPE_SECRET_KEY           cobrança da plataforma de venda de ração
 //   STRIPE_PRICE_PARCEIRO_FIXO      preço fixo mensal (R$ 2.000)
-//   STRIPE_PRICE_PARCEIRO_CLIENTE   preço por cliente em pacotes (volume: 1-100 R$ 35,
-//                                   101-200 R$ 32, 201-300 R$ 29, 301-400 R$ 26, acima R$ 24)
+//   STRIPE_PRICE_PARCEIRO_CLIENTE   preço por cliente em pacotes (volume: 1-100 R$ 20,
+//                                   101-200 R$ 19, 201-300 R$ 17, 301-400 R$ 16, acima R$ 15)
 //   CRON_SECRET                 autenticação da rotina diária (Vercel Cron)
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './_config.js'
