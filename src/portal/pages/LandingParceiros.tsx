@@ -233,7 +233,7 @@ export default function LandingParceiros() {
             <div className="center">
               <p className="tag">Planos</p>
               <h2 id="planos-h">Três formas de parceria.</h2>
-              <p className="lead">Do uso integrado ao Confina+ até a plataforma com a marca da sua cooperativa. Os valores são apresentados na conversa, conforme o tamanho da carteira.</p>
+              <p className="lead">Clientes que usam o Confina+ não geram custo para a cooperativa. Para atender clientes sem Confina+, a plataforma tem um valor fixo mensal e um pacote de clientes. Os valores são apresentados na conversa.</p>
             </div>
             <div className="price-grid">
               <div className="pc">
@@ -243,21 +243,22 @@ export default function LandingParceiros() {
                 <ul className="pc-feats">
                   <li><Ck />Suas dietas na tela de dietas do produtor</li>
                   <li><Ck />Pedido em 1 clique e alerta de estoque</li>
-                  <li><Ck />Portal com calendário, pedidos e demanda</li>
+                  <li><Ck />Portal com calendário, pedidos, rotas e simulador</li>
                   <li><Ck />Exclusividade: o cliente vê só os seus produtos</li>
+                  <li><Ck />Sem custo para a cooperativa</li>
                 </ul>
                 <a href={WHATSAPP} target="_blank" rel="noopener" className="pc-btn">Quero esta parceria</a>
               </div>
               <div className="pc feat">
                 <div className="pc-badge">Mais completo</div>
                 <div className="pc-plan">Plataforma de venda de ração</div>
-                <div className="pc-for">Toda a operação comercial e logística, para clientes de corte e leite</div>
+                <div className="pc-for">Para atender também os clientes sem Confina+, de corte e leite</div>
                 <div className="pc-div" />
                 <ul className="pc-feats">
                   <li><Ck />Tudo da parceria integrada</li>
                   <li><Ck />Estoque gerenciado para clientes sem Confina+</li>
-                  <li><Ck />Rotas, ajuste de cargas e romaneio</li>
-                  <li><Ck />Simulador com PDF da sua marca</li>
+                  <li><Ck />Valor fixo mensal + pacote de 50 a 500 clientes</li>
+                  <li><Ck />Valor por cliente menor a cada 100 clientes</li>
                   <li><Ck />Implantação e treinamento inclusos</li>
                 </ul>
                 <a href={WHATSAPP} target="_blank" rel="noopener" className="pc-btn">Falar sobre a plataforma</a>

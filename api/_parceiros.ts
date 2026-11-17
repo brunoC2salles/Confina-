@@ -8,7 +8,8 @@
 //   RESEND_FROM                 remetente (padrão: Confina+ <parceiros@confinamais.com>)
 //   STRIPE_SECRET_KEY           cobrança da plataforma de venda de ração
 //   STRIPE_PRICE_PARCEIRO_FIXO      preço fixo mensal (R$ 2.000)
-//   STRIPE_PRICE_PARCEIRO_CLIENTE   preço escalonado por cliente (graduado)
+//   STRIPE_PRICE_PARCEIRO_CLIENTE   preço por cliente em pacotes (volume: 1-100 R$ 35,
+//                                   101-200 R$ 32, 201-300 R$ 29, 301-400 R$ 26, acima R$ 24)
 //   CRON_SECRET                 autenticação da rotina diária (Vercel Cron)
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './_config.js'
@@ -116,7 +117,12 @@ export async function contarClientesCobrados(sb: SupabaseClient, fornecedorId: s
   return count ?? 0
 }
 
-// Ajusta a quantidade do item escalonado da assinatura ao número de clientes
+// Pacotes de clientes em múltiplos de 50: 489 clientes cobram o pacote de 500.
+export function pacoteClientes(n: number): number {
+  return n > 0 ? Math.ceil(n / 50) * 50 : 0
+}
+
+// Ajusta o item de clientes da assinatura ao pacote que cobre os clientes
 // cobrados. Sem clientes, o item sai da assinatura (fica só o valor fixo).
 // A nova quantidade vale a partir da próxima fatura (sem rateio).
 export async function sincronizarCobranca(sb: SupabaseClient, fornecedorId: string): Promise<{ error: string | null; clientes?: number }> {
@@ -124,12 +130,14 @@ export async function sincronizarCobranca(sb: SupabaseClient, fornecedorId: stri
     const { data: f } = await sb.from('fornecedores').select('*').eq('id', fornecedorId).maybeSingle()
     if (!f?.stripe_subscription_id) return { error: 'Cobrança não ativada' }
     const n = await contarClientesCobrados(sb, fornecedorId)
+    const pacote = pacoteClientes(n)
     let itemId: string | null = f.stripe_item_clientes_id
-    if (n > 0 && itemId) {
-      await stripe('POST', `subscription_items/${itemId}`, { quantity: String(n), proration_behavior: 'none' })
-    } else if (n > 0) {
+    if (pacote > 0 && itemId) {
+      // price junto: migra assinaturas do preço antigo para o de pacotes
+      await stripe('POST', `subscription_items/${itemId}`, { price: PRICE_CLIENTE, quantity: String(pacote), proration_behavior: 'none' })
+    } else if (pacote > 0) {
       const item = await stripe('POST', 'subscription_items', {
-        subscription: f.stripe_subscription_id, price: PRICE_CLIENTE, quantity: String(n), proration_behavior: 'none',
+        subscription: f.stripe_subscription_id, price: PRICE_CLIENTE, quantity: String(pacote), proration_behavior: 'none',
       })
       itemId = item.id
     } else if (itemId) {

@@ -12,7 +12,7 @@ import { definirProvedorDb } from '../src/core/db.js'
 import { recalcularIngrediente } from '../src/core/estoque.js'
 import {
   clienteDoUsuario, clienteServico, json, enviarEmail, modeloEmail, emailsAtendimento,
-  kg, dataBr, stripe, sincronizarCobranca, contarClientesCobrados,
+  kg, dataBr, stripe, sincronizarCobranca, contarClientesCobrados, pacoteClientes,
   SERVICE_KEY, PRICE_FIXO, PRICE_CLIENTE, URL_PORTAL, URL_APP,
 } from './_parceiros.js'
 
@@ -217,7 +217,7 @@ export async function POST(request: Request): Promise<Response> {
           'items[0][price]': PRICE_FIXO,
           'items[0][quantity]': '1',
         }
-        if (n > 0) { params['items[1][price]'] = PRICE_CLIENTE; params['items[1][quantity]'] = String(n) }
+        if (n > 0) { params['items[1][price]'] = PRICE_CLIENTE; params['items[1][quantity]'] = String(pacoteClientes(n)) }
         const sub = await stripe('POST', 'subscriptions', params)
         const itemClientes = (sub.items?.data ?? []).find((i: any) => i.price?.id === PRICE_CLIENTE)
         await servico.from('fornecedores').update({

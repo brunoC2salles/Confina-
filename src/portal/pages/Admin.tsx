@@ -6,17 +6,19 @@ import { usePortal } from '@/portal/PortalContext'
 import { chamarApiParceiros } from '@/lib/parceirosApi'
 import { fmtDataBr, type Fornecedor } from '@/core/parceiros'
 
-// Valor mensal da plataforma de venda de ração: R$ 2.000 fixos + valor por
-// cliente escalonado (cada faixa cobra o seu preço só dos clientes dentro dela).
-const FAIXAS: Array<[number, number]> = [[50, 35], [100, 33], [300, 30], [500, 28], [1000, 25]]
+// Valor mensal da plataforma de venda de ração: R$ 2.000 fixos + pacote de
+// clientes (múltiplos de 50). O preço por cliente da faixa do pacote vale para
+// o pacote todo: 1-100 R$ 35, 101-200 R$ 32, 201-300 R$ 29, 301-400 R$ 26,
+// acima de 400 R$ 24. Igual ao preço de pacotes na Stripe.
+export function pacoteClientes(clientes: number): number {
+  return clientes > 0 ? Math.ceil(clientes / 50) * 50 : 0
+}
+function precoPorCliente(pacote: number): number {
+  return pacote <= 100 ? 35 : pacote <= 200 ? 32 : pacote <= 300 ? 29 : pacote <= 400 ? 26 : 24
+}
 export function valorMensal(clientes: number): number {
-  let total = 2000, anterior = 0
-  for (const [ate, preco] of FAIXAS) {
-    if (clientes <= anterior) break
-    total += (Math.min(clientes, ate) - anterior) * preco
-    anterior = ate
-  }
-  return total
+  const pacote = pacoteClientes(clientes)
+  return 2000 + pacote * precoPorCliente(pacote)
 }
 
 const vazio = { nome: '', email_contato: '', opcao_integrada: true, opcao_plataforma: false, ativo: true, gestor_email: '', gestor_nome: '' }
@@ -88,7 +90,7 @@ export default function Admin() {
                 {f.stripe_subscription_id
                   ? <>
                       <span className={`badge ${f.cobranca_status === 'active' ? 'badge-green' : 'badge-amber'}`}>{f.cobranca_status ?? 'criada'}</span>
-                      <div style={{ marginTop: 4 }}>{f.clientes_cobrados ?? 0} clientes · {valorMensal(f.clientes_cobrados ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/mês</div>
+                      <div style={{ marginTop: 4 }}>{f.clientes_cobrados ?? 0} clientes · pacote de {pacoteClientes(f.clientes_cobrados ?? 0)} · {valorMensal(f.clientes_cobrados ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/mês</div>
                       {f.cobranca_sincronizada_em && <div style={{ color: 'var(--text-3)' }}>Ajustada em {fmtDataBr(f.cobranca_sincronizada_em.slice(0, 10))}</div>}
                     </>
                   : f.opcao_plataforma ? 'Não ativada' : 'Sem custo'}
