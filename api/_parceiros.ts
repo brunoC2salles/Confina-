@@ -117,9 +117,9 @@ export async function contarClientesCobrados(sb: SupabaseClient, fornecedorId: s
   return count ?? 0
 }
 
-// Pacotes de clientes em múltiplos de 50: 489 clientes cobram o pacote de 500.
+// Pacotes de clientes: 20, depois múltiplos de 50 (489 clientes cobram o pacote de 500).
 export function pacoteClientes(n: number): number {
-  return n > 0 ? Math.ceil(n / 50) * 50 : 0
+  return n <= 0 ? 0 : n <= 20 ? 20 : Math.ceil(n / 50) * 50
 }
 
 // Ajusta o item de clientes da assinatura ao pacote que cobre os clientes

@@ -7,11 +7,11 @@ import { chamarApiParceiros } from '@/lib/parceirosApi'
 import { fmtDataBr, type Fornecedor } from '@/core/parceiros'
 
 // Valor mensal da plataforma de venda de ração: R$ 2.000 fixos + pacote de
-// clientes (múltiplos de 50). O preço por cliente da faixa do pacote vale para
+// clientes (20, depois múltiplos de 50). O preço por cliente da faixa do pacote vale para
 // o pacote todo: 1-100 R$ 35, 101-200 R$ 32, 201-300 R$ 29, 301-400 R$ 26,
 // acima de 400 R$ 24. Igual ao preço de pacotes na Stripe.
 export function pacoteClientes(clientes: number): number {
-  return clientes > 0 ? Math.ceil(clientes / 50) * 50 : 0
+  return clientes <= 0 ? 0 : clientes <= 20 ? 20 : Math.ceil(clientes / 50) * 50
 }
 function precoPorCliente(pacote: number): number {
   return pacote <= 100 ? 35 : pacote <= 200 ? 32 : pacote <= 300 ? 29 : pacote <= 400 ? 26 : 24

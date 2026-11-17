@@ -257,7 +257,7 @@ export default function LandingParceiros() {
                 <ul className="pc-feats">
                   <li><Ck />Tudo da parceria integrada</li>
                   <li><Ck />Estoque gerenciado para clientes sem Confina+</li>
-                  <li><Ck />Valor fixo mensal + pacote de 50 a 500 clientes</li>
+                  <li><Ck />Valor fixo mensal + pacote de 20 a 500 clientes</li>
                   <li><Ck />Valor por cliente menor a cada 100 clientes</li>
                   <li><Ck />Implantação e treinamento inclusos</li>
                 </ul>
