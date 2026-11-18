@@ -78,7 +78,7 @@ export default function Clientes() {
       {erro && <div className="field-error" style={{ marginBottom: 12 }}>{erro}</div>}
 
       {lista.length === 0 ? <div className="card"><EmptyState icon="◻" title="Nenhum cliente" desc={papel === 'gestor' ? 'Convide clientes em Equipe e convites.' : 'O gestor ainda não atribuiu clientes a você.'} /></div> : (
-        <div style={{ display: 'grid', gridTemplateColumns: atual ? 'minmax(0, 1fr) minmax(300px, 380px)' : '1fr', gap: 16, alignItems: 'start' }}>
+        <div>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Fazenda</th><th>Conta</th><th>Cabeças</th><th>Dieta em uso</th><th>Consumo x previsto</th><th>Próxima reposição</th><th>Rota</th>{papel === 'gestor' && <th>Vendedor</th>}</tr></thead>
@@ -89,7 +89,7 @@ export default function Clientes() {
                   const proxima = linhas.filter(l => l.data_fim).sort((a, b) => (a.data_fim ?? '').localeCompare(b.data_fim ?? ''))[0]
                   const alerta = linhas.some(l => { const p = produtoPorId.get(l.produto_id); return p ? emAlerta(p, l) : false })
                   return (
-                    <tr key={c.id} onClick={() => setSel(c.id === sel ? null : c.id)} style={{ cursor: 'pointer', background: c.id === sel ? 'var(--green-light)' : undefined, opacity: c.ativo ? 1 : 0.5 }}>
+                    <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: 'pointer', opacity: c.ativo ? 1 : 0.5 }}>
                       <td><strong>{nomeCliente(c)}</strong><div style={{ fontSize: 11, color: 'var(--text-3)' }}>{[c.municipio, c.uf].filter(Boolean).join('/') || c.email}</div></td>
                       <td style={{ fontSize: 12 }}>{c.modo === 'confina' ? 'Confina+' : 'Só estoque'}{!c.ativo && ' (inativo)'}</td>
                       <td>{c.cabecas ?? '—'}</td>
@@ -120,12 +120,9 @@ export default function Clientes() {
             </table>
           </div>
 
-          {atual && (
-            <div className="card">
-              <div className="flex-between" style={{ marginBottom: 4 }}>
-                <strong>{nomeCliente(atual)}</strong>
-                <button className="btn btn-ghost btn-sm" onClick={() => setSel(null)}>Fechar</button>
-              </div>
+          {atual && !contato && !gerenciar && (
+            <Modal open onClose={() => setSel(null)} title={nomeCliente(atual)}
+              subtitle={`${atual.modo === 'confina' ? 'Confina+' : 'Só estoque'}${[atual.municipio, atual.uf].filter(Boolean).length ? ` · ${[atual.municipio, atual.uf].filter(Boolean).join('/')}` : ''}${!atual.ativo ? ' · inativo' : ''}`}>
               <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 12 }}>
                 {[atual.responsavel, atual.telefone, atual.email].filter(Boolean).join(' · ') || 'Sem contato cadastrado'}
                 {podeEditarContato(atual) && <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 6, height: 24 }} onClick={() => abrirContato(atual)}>Editar contato</button>}
@@ -173,7 +170,7 @@ export default function Clientes() {
                   }}>{atual.ativo ? 'Desativar cliente' : 'Reativar cliente'}</button>
                 )}
               </div>
-            </div>
+            </Modal>
           )}
         </div>
       )}

@@ -625,3 +625,53 @@ create policy fsim_delete on public.fornecedor_simulacoes for delete
 -- ═══ Migração portal_parceiros_contato_cliente ═══
 -- RPC definir_contato_cliente(cid, nome_fazenda, responsavel, telefone, email, municipio, uf):
 -- gestor, vendedor responsável ou admin; valida e-mail e UF. O login do produtor não muda.
+-- Espécies de produtos e dietas do fornecedor; exclusão de pedidos pela equipe
+alter table public.fornecedor_produtos
+  add column if not exists especies text[] not null default '{bovino_corte}';
+alter table public.fornecedor_produtos drop constraint if exists fornecedor_produtos_especies_chk;
+alter table public.fornecedor_produtos add constraint fornecedor_produtos_especies_chk
+  check (cardinality(especies) >= 1 and especies <@ array['bovino_corte','bovino_leite','suino','ovino','equino']::text[]);
+
+-- Produtor do Confina+ só vê dietas de bovino de corte
+create or replace function public.dietas_fornecedor_publicadas()
+ returns jsonb language sql stable security definer set search_path to 'public'
+as $function$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', d.id, 'nome', d.nome, 'descricao', d.descricao, 'modo_dieta', d.modo_dieta,
+    'ciclo_recomendado', d.ciclo_recomendado, 'gmd_esperado', d.gmd_esperado, 'gmd_esperado_concentrado', d.gmd_esperado_concentrado,
+    'pct_consumo_pv_ms', d.pct_consumo_pv_ms, 'pct_concentrado', d.pct_concentrado, 'pct_volumoso', d.pct_volumoso,
+    'pct_ms', d.pct_ms, 'nutricional', d.nutricional, 'embalagem', d.embalagem,
+    'itens', (select coalesce(jsonb_agg(jsonb_build_object(
+        'origem', i.origem, 'produto_id', i.produto_id, 'insumo_id', i.insumo_id, 'tipo', i.tipo,
+        'pct_participacao', i.pct_participacao, 'pct_ms', coalesce(i.pct_ms, p.pct_ms, ip.pct_ms),
+        'nome', coalesce(p.nome, ip.nome, i.nome), 'categoria', coalesce(p.categoria, ip.categoria))
+        order by i.tipo, i.ordem), '[]'::jsonb)
+      from fornecedor_produto_itens i
+      left join fornecedor_produtos p on p.id = i.produto_id
+      left join insumos_padrao ip on ip.id = i.insumo_id
+      where i.dieta_id = d.id)
+  ) order by d.nome), '[]'::jsonb)
+  from fornecedor_produtos d
+  where d.fornecedor_id = meu_fornecedor_id() and d.categoria = 'dieta' and d.visivel
+    and 'bovino_corte' = any(d.especies)
+$function$;
+
+-- Exclui um pedido/cotação (gestor ou vendedor responsável pelo cliente).
+-- Entradas de estoque geradas pela entrega do pedido saem junto.
+create or replace function public.excluir_pedido(pid uuid)
+ returns void language plpgsql security definer set search_path to 'public'
+as $function$
+declare v_fid uuid; v_vend uuid;
+begin
+  select c.fornecedor_id, c.vendedor_id into v_fid, v_vend
+  from fornecedor_pedidos p join fornecedor_clientes c on c.id = p.cliente_id where p.id = pid;
+  if v_fid is null then raise exception 'Pedido não encontrado'; end if;
+  if not (eh_admin() or fornec_papel(v_fid) = 'gestor'
+          or (v_vend is not null and v_vend = fornec_membro_id(v_fid))) then
+    raise exception 'Sem permissão para excluir este pedido';
+  end if;
+  delete from estoque_movimentos where pedido_id = pid;
+  delete from fornecedor_pedidos where id = pid;
+end $function$;
+revoke all on function public.excluir_pedido(uuid) from public, anon;
+grant execute on function public.excluir_pedido(uuid) to authenticated;

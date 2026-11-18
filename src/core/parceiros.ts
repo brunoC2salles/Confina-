@@ -107,7 +107,17 @@ export interface ProdutoFornecedor {
   pct_concentrado: number | null
   pct_volumoso: number | null
   nutricional: Nutricional | null
+  especies: Especie[]
 }
+
+// Espécies a que o produto ou a dieta se destina. O produtor do Confina+
+// (bovino de corte) só vê o que inclui bovino de corte.
+export type Especie = 'bovino_corte' | 'bovino_leite' | 'suino' | 'ovino' | 'equino'
+export const ESPECIES: Especie[] = ['bovino_corte', 'bovino_leite', 'suino', 'ovino', 'equino']
+export const ROTULO_ESPECIE: Record<Especie, string> = {
+  bovino_corte: 'Bovino corte', bovino_leite: 'Bovino leite', suino: 'Suíno', ovino: 'Ovino', equino: 'Equino',
+}
+export const paraConfina = (p: Pick<ProdutoFornecedor, 'especies'>) => (p.especies ?? ['bovino_corte']).includes('bovino_corte')
 
 // Níveis nutricionais da dieta (% da MS; ionóforo em texto livre).
 export interface Nutricional {
@@ -592,7 +602,8 @@ export async function carregarVinculoCliente(userId: string): Promise<VinculoCli
     cliente,
     fornecedor: f as Pick<Fornecedor, 'id' | 'nome'>,
     vendedor: (vend.data ?? null) as VinculoCliente['vendedor'],
-    produtos: (prods ?? []) as ProdutoFornecedor[],
+    // Cliente do Confina+ (bovino de corte) só vê produtos e dietas de bovino de corte
+    produtos: ((prods ?? []) as ProdutoFornecedor[]).filter(p => cliente.modo !== 'confina' || paraConfina(p)),
   }
 }
 

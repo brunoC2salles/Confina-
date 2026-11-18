@@ -3,8 +3,8 @@ import { supabase } from '@/lib/supabase'
 import { Modal, PageHeader, EmptyState } from '@/components/common/UI'
 import { useDadosFornecedor } from '@/portal/useDadosFornecedor'
 import {
-  ROTULO_CATEGORIA, CAMPOS_NUTRICIONAIS, fmtKg, custoKgMsDieta, pctMsMistura,
-  type CategoriaProduto, type ProdutoFornecedor, type ItemDieta,
+  ROTULO_CATEGORIA, CAMPOS_NUTRICIONAIS, fmtKg, custoKgMsDieta, pctMsMistura, ESPECIES, ROTULO_ESPECIE,
+  type CategoriaProduto, type Especie, type ProdutoFornecedor, type ItemDieta,
 } from '@/core/parceiros'
 
 const CATEGORIAS = Object.keys(ROTULO_CATEGORIA) as CategoriaProduto[]
@@ -20,6 +20,7 @@ const vazio = {
   modo_dieta: 'receita' as 'pronta' | 'receita', descricao: '', ciclo_recomendado: '', gmd_esperado: '', gmd_esperado_concentrado: '',
   pct_consumo_pv_ms: '2.2', pct_concentrado: '100', pct_volumoso: '0',
   nutricional: {} as Record<string, string>,
+  especies: ['bovino_corte'] as Especie[],
 }
 
 const fmtReais = (v: number | null) => v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 })
@@ -33,6 +34,7 @@ const txt = (v: number | null | undefined) => v != null ? String(v) : ''
 export default function Catalogo() {
   const { fornecedor, produtos, precos, loading, recarregar } = useDadosFornecedor()
   const [filtro, setFiltro] = useState<CategoriaProduto | 'todos'>('todos')
+  const [filtroEspecie, setFiltroEspecie] = useState<Especie | 'todas'>('todas')
   const [editando, setEditando] = useState<ProdutoFornecedor | 'novo' | null>(null)
   const [form, setForm] = useState(vazio)
   const [itens, setItens] = useState<LinhaItem[]>([])
@@ -93,6 +95,7 @@ export default function Catalogo() {
       gmd_esperado: txt(p.gmd_esperado), gmd_esperado_concentrado: txt(p.gmd_esperado_concentrado),
       pct_consumo_pv_ms: txt(p.pct_consumo_pv_ms ?? 2.2), pct_concentrado: txt(p.pct_concentrado ?? 100), pct_volumoso: txt(p.pct_volumoso ?? 0),
       nutricional: Object.fromEntries(Object.entries(p.nutricional ?? {}).map(([k, v]) => [k, v == null ? '' : String(v)])),
+      especies: p.especies?.length ? p.especies : ['bovino_corte'],
     })
     setItens((itensPorDieta[p.id] ?? []).map(i => ({
       ref: i.origem === 'produto' ? `produto:${i.produto_id}` : i.origem === 'insumo_padrao' ? `insumo_padrao:${i.insumo_id}` : 'livre:',
@@ -133,6 +136,7 @@ export default function Catalogo() {
   const salvar = async () => {
     if (!fornecedor) return
     if (!form.nome.trim()) { setErro('Informe o nome'); return }
+    if (form.especies.length === 0) { setErro('Marque ao menos uma espécie'); return }
     const ehDieta = form.categoria === 'dieta'
     const pronta = ehDieta && form.modo_dieta === 'pronta'
     if (ehDieta) { const v = validarDieta(); if (v) { setErro(v); return } }
@@ -162,6 +166,7 @@ export default function Catalogo() {
       pct_consumo_pv_ms: ehDieta ? n(form.pct_consumo_pv_ms) : null,
       pct_concentrado: ehDieta ? pctC : null, pct_volumoso: ehDieta ? pctV : null,
       nutricional: ehDieta && Object.keys(nutricional).length > 0 ? nutricional : null,
+      especies: ESPECIES.filter(e => form.especies.includes(e)),
     }
     setSalvando(true); setErro(null)
     let id = editando !== 'novo' && editando ? editando.id : null
@@ -207,7 +212,10 @@ export default function Catalogo() {
   }
 
   if (loading) return <div className="page"><div className="spinner" style={{ width: 28, height: 28, margin: '48px auto' }} /></div>
-  const lista = filtro === 'todos' ? produtos : produtos.filter(p => p.categoria === filtro)
+  const lista = produtos.filter(p => (filtro === 'todos' || p.categoria === filtro)
+    && (filtroEspecie === 'todas' || (p.especies ?? ['bovino_corte']).includes(filtroEspecie)))
+  const especiesUsadas = ESPECIES.filter(e => produtos.some(p => (p.especies ?? ['bovino_corte']).includes(e)))
+  const alternarEspecie = (e: Especie) => setForm(f => ({ ...f, especies: f.especies.includes(e) ? f.especies.filter(x => x !== e) : [...f.especies, e] }))
   const ehDieta = form.categoria === 'dieta'
   const vende = !ehDieta || form.modo_dieta === 'pronta'
 
@@ -260,11 +268,19 @@ export default function Catalogo() {
           <button key={c} className={`pill${filtro === c ? ' active' : ''}`} onClick={() => setFiltro(c)}>{c === 'dieta' ? 'Dietas' : ROTULO_CATEGORIA[c]}</button>
         ))}
       </div>
+      {especiesUsadas.length > 1 && (
+        <div className="pill-wrap">
+          <button className={`pill${filtroEspecie === 'todas' ? ' active' : ''}`} onClick={() => setFiltroEspecie('todas')}>Todas as espécies</button>
+          {especiesUsadas.map(e => (
+            <button key={e} className={`pill${filtroEspecie === e ? ' active' : ''}`} onClick={() => setFiltroEspecie(e)}>{ROTULO_ESPECIE[e]}</button>
+          ))}
+        </div>
+      )}
       {erro && !editando && <div className="field-error" style={{ marginBottom: 12 }}>{erro}</div>}
 
       {lista.length === 0 ? <div className="card"><EmptyState icon="◻" title="Nenhum produto" desc="Cadastre rações, núcleos, minerais, grãos, farelos e dietas." /></div> : (
         <div className="table-wrap"><table>
-          <thead><tr><th>Produto</th><th>Categoria</th><th>Preço/kg</th><th>Embalagem</th><th>Pedido mín.</th><th>Prazo</th><th>Alerta</th><th>Visível</th><th></th></tr></thead>
+          <thead><tr><th>Produto</th><th>Categoria</th><th>Espécie</th><th>Preço/kg</th><th>Embalagem</th><th>Pedido mín.</th><th>Prazo</th><th>Alerta</th><th>Visível</th><th></th></tr></thead>
           <tbody>{lista.map(p => {
             const its = itensPorDieta[p.id] ?? []
             const c = p.categoria === 'dieta' ? custoKgMsDieta(Number(p.pct_concentrado ?? 0), Number(p.pct_volumoso ?? 0), its) : null
@@ -278,6 +294,7 @@ export default function Catalogo() {
                     : p.regiao && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.regiao}</div>}
                 </td>
                 <td>{p.categoria === 'dieta' ? (p.modo_dieta === 'pronta' ? 'Dieta pronta' : 'Dieta receita') : ROTULO_CATEGORIA[p.categoria]}</td>
+                <td style={{ fontSize: 12 }}>{(p.especies?.length ? p.especies : ['bovino_corte' as Especie]).map(e => ROTULO_ESPECIE[e]).join(', ')}</td>
                 <td>{receita || precos[p.id] == null ? '—' : fmtReais(precos[p.id])}</td>
                 <td>{receita ? '—' : p.embalagem ?? '—'}</td>
                 <td>{!receita && p.pedido_minimo_kg != null ? fmtKg(p.pedido_minimo_kg) : '—'}</td>
@@ -305,6 +322,17 @@ export default function Catalogo() {
                 {CATEGORIAS.map(c => <option key={c} value={c}>{ROTULO_CATEGORIA[c]}</option>)}
               </select>
             </div>
+          </div>
+          <div className="field">
+            <label>Espécie</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {ESPECIES.map(e => (
+                <label key={e} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 400, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px', background: form.especies.includes(e) ? 'var(--green-light)' : undefined }}>
+                  <input type="checkbox" checked={form.especies.includes(e)} onChange={() => alternarEspecie(e)} />{ROTULO_ESPECIE[e]}
+                </label>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>Clientes do Confina+ veem só o que inclui bovino de corte.</div>
           </div>
 
           {ehDieta && (

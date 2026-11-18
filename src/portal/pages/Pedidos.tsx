@@ -24,7 +24,7 @@ function mensagemWhatsApp(p: PedidoFornecedor, c: ClienteFornecedor | undefined,
 }
 
 export default function Pedidos() {
-  const { fornecedor, membro } = usePortal()
+  const { fornecedor, membro, papel } = usePortal()
   const { clientes, produtos, pedidos, estoque, loading, recarregar } = useDadosFornecedor()
   const [filtro, setFiltro] = useState<StatusPedido | 'todos'>('todos')
   const [cotar, setCotar] = useState<PedidoFornecedor | null>(null)
@@ -48,6 +48,22 @@ export default function Pedidos() {
       const r = await chamarApiParceiros('pedido_entregue', { pedido_id: p.id })
       if (r.error) setErro(`Pedido marcado como entregue, mas a entrada no estoque do cliente falhou: ${r.error}`)
     }
+    recarregar()
+  }
+
+  // Excluir de vez: gestor ou vendedor responsável pelo cliente. A entrada no
+  // estoque do cliente gerada pela entrega sai junto.
+  const podeExcluir = (p: PedidoFornecedor) => {
+    if (papel === 'gestor') return true
+    const c = clientes.find(x => x.id === p.cliente_id)
+    return !!membro && c?.vendedor_id === membro.id
+  }
+  const excluir = async (p: PedidoFornecedor) => {
+    const aviso = p.status === 'entregue' ? ' A entrada desse pedido no estoque do cliente também será removida.' : ''
+    if (!window.confirm(`Excluir o pedido #${p.numero}? Ele some para a equipe e para o cliente.${aviso}`)) return
+    setErro(null)
+    const { error } = await supabase.rpc('excluir_pedido', { pid: p.id })
+    if (error) { setErro(error.message); return }
     recarregar()
   }
 
@@ -142,6 +158,7 @@ export default function Pedidos() {
                       {['novo', 'em_cotacao', 'cotado', 'aprovado'].includes(p.status) && (
                         <button className="btn btn-ghost btn-sm" style={{ marginLeft: 6 }} onClick={() => { if (window.confirm(`Cancelar o pedido #${p.numero}?`)) mudarStatus(p, 'cancelado') }}>Cancelar</button>
                       )}
+                      {podeExcluir(p) && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 6, color: 'var(--red)' }} onClick={() => excluir(p)}>Excluir</button>}
                     </td>
                   </tr>
                 )
