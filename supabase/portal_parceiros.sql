@@ -675,3 +675,8 @@ begin
 end $function$;
 revoke all on function public.excluir_pedido(uuid) from public, anon;
 grant execute on function public.excluir_pedido(uuid) to authenticated;
+
+-- Espécie aves
+alter table public.fornecedor_produtos drop constraint if exists fornecedor_produtos_especies_chk;
+alter table public.fornecedor_produtos add constraint fornecedor_produtos_especies_chk
+  check (cardinality(especies) >= 1 and especies <@ array['bovino_corte','bovino_leite','suino','ovino','equino','aves']::text[]);

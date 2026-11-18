@@ -115,10 +115,12 @@ export default function Catalogo() {
   const setItem = (idx: number, patch: Partial<LinhaItem>) => setItens(ls => ls.map((l, i) => i === idx ? { ...l, ...patch } : l))
 
   const validarDieta = (): string | null => {
+    // GMD e consumo em % PV são obrigatórios só para bovino de corte (usados no Confina+)
+    const corte = form.especies.includes('bovino_corte')
     const pv = n(form.pct_consumo_pv_ms)
-    if (!pv || pv <= 0 || pv > 10) return 'Consumo (% PV em MS) deve ser maior que 0 e até 10'
+    if ((corte || pv != null) && (!pv || pv <= 0 || pv > 10)) return 'Consumo (% PV em MS) deve ser maior que 0 e até 10'
     if (Math.abs(pctC + pctV - 100) > 0.01) return '% concentrado + % volumoso deve somar 100'
-    if (!((n(form.gmd_esperado) ?? 0) > 0)) return 'Informe o GMD esperado'
+    if (corte && !((n(form.gmd_esperado) ?? 0) > 0)) return 'Informe o GMD esperado'
     for (const tipo of ['concentrado', 'volumoso'] as const) {
       const pct = tipo === 'concentrado' ? pctC : pctV
       if (pct > 0 && Math.abs(soma(tipo) - 100) > 0.01) return `Os ingredientes do ${tipo} devem somar 100% (atual ${soma(tipo).toFixed(2).replace('.', ',')})`
@@ -354,11 +356,11 @@ export default function Catalogo() {
                     {CICLOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
-                <div className="field"><label>GMD esperado (kg/dia)</label><input type="number" value={form.gmd_esperado} onChange={e => setForm({ ...form, gmd_esperado: e.target.value })} /></div>
+                <div className="field"><label>GMD esperado (kg/dia){!form.especies.includes('bovino_corte') && ' · opcional'}</label><input type="number" value={form.gmd_esperado} onChange={e => setForm({ ...form, gmd_esperado: e.target.value })} /></div>
                 <div className="field"><label>GMD do concentrado (opcional)</label><input type="number" value={form.gmd_esperado_concentrado} onChange={e => setForm({ ...form, gmd_esperado_concentrado: e.target.value })} /></div>
               </div>
               <div className="form-row-3">
-                <div className="field"><label>Consumo (% PV em MS)</label><input type="number" value={form.pct_consumo_pv_ms} onChange={e => setForm({ ...form, pct_consumo_pv_ms: e.target.value })} /></div>
+                <div className="field"><label>Consumo (% PV em MS){!form.especies.includes('bovino_corte') && ' · opcional'}</label><input type="number" value={form.pct_consumo_pv_ms} onChange={e => setForm({ ...form, pct_consumo_pv_ms: e.target.value })} /></div>
                 <div className="field"><label>% concentrado</label><input type="number" value={form.pct_concentrado} onChange={e => setForm({ ...form, pct_concentrado: e.target.value, pct_volumoso: String(Math.max(0, 100 - (Number(e.target.value) || 0))) })} /></div>
                 <div className="field"><label>% volumoso</label><input type="number" value={form.pct_volumoso} onChange={e => setForm({ ...form, pct_volumoso: e.target.value, pct_concentrado: String(Math.max(0, 100 - (Number(e.target.value) || 0))) })} /></div>
               </div>
