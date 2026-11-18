@@ -680,3 +680,19 @@ grant execute on function public.excluir_pedido(uuid) to authenticated;
 alter table public.fornecedor_produtos drop constraint if exists fornecedor_produtos_especies_chk;
 alter table public.fornecedor_produtos add constraint fornecedor_produtos_especies_chk
   check (cardinality(especies) >= 1 and especies <@ array['bovino_corte','bovino_leite','suino','ovino','equino','aves']::text[]);
+
+-- Consumo informado por mês; "meus produtos" do cliente (inclusão/exclusão manual)
+alter table public.fornecedor_consumo_informado drop constraint if exists fornecedor_consumo_informado_unidade_check;
+alter table public.fornecedor_consumo_informado add constraint fornecedor_consumo_informado_unidade_check
+  check (unidade = any (array['dia','semana','mes']::text[]));
+create table if not exists public.fornecedor_cliente_produtos (
+  cliente_id uuid not null references public.fornecedor_clientes(id) on delete cascade,
+  produto_id uuid not null references public.fornecedor_produtos(id) on delete cascade,
+  escolha text not null check (escolha in ('incluir','excluir')),
+  atualizado_em timestamptz not null default now(),
+  primary key (cliente_id, produto_id)
+);
+alter table public.fornecedor_cliente_produtos enable row level security;
+create policy fcliprod_all on public.fornecedor_cliente_produtos for all
+  using (fornec_cliente_visivel(cliente_id)) with check (fornec_cliente_visivel(cliente_id));
+grant select, insert, update, delete on public.fornecedor_cliente_produtos to authenticated;

@@ -17,6 +17,7 @@ import SimuladorPortal from '@/portal/pages/SimuladorPortal'
 import SimulacaoPdf from '@/portal/pages/SimulacaoPdf'
 import TutorialPortal from '@/portal/pages/TutorialPortal'
 import ClienteEstoque from '@/portal/pages/ClienteEstoque'
+import ClientePainel from '@/portal/pages/ClientePainel'
 import ClientePedidos from '@/portal/pages/ClientePedidos'
 import Convite from '@/pages/Convite'
 import RedefinirSenha from '@/pages/RedefinirSenha'
@@ -85,7 +86,7 @@ function RotasProtegidas() {
       <Routes>
         <Route element={<PortalLayout />}>
           {portal.vinculo.cliente.modo === 'estoque'
-            ? <><Route index element={<ClienteEstoque />} /><Route path="meus-pedidos" element={<ClientePedidos />} /></>
+            ? <><Route index element={<ClientePainel />} /><Route path="produtos" element={<ClienteEstoque />} /><Route path="meus-pedidos" element={<ClientePedidos />} /></>
             : <Route index element={<ClientePedidos />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

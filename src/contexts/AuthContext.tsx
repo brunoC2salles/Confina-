@@ -30,10 +30,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(atual => (atual && novo && atual.id === novo.id && atual.email === novo.email
         && JSON.stringify(atual.user_metadata) === JSON.stringify(novo.user_metadata) ? atual : novo))
     }
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    // Vindo do portal de parceiros ("Usar o Confina+"): a sessão chega no
+    // fragmento da URL; aplica e limpa o endereço antes de seguir.
+    const iniciar = async () => {
+      const h = typeof window !== 'undefined' ? window.location.hash : ''
+      if (h.startsWith('#sessao=')) {
+        const ps = new URLSearchParams(h.slice(1))
+        const access_token = ps.get('sessao'), refresh_token = ps.get('r')
+        window.history.replaceState(null, '', window.location.pathname + window.location.search)
+        if (access_token && refresh_token) await supabase.auth.setSession({ access_token, refresh_token })
+      }
+      const { data: { session: s } } = await supabase.auth.getSession()
       aplicar(s)
       setLoading(false)
-    })
+    }
+    iniciar()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => aplicar(s))
 

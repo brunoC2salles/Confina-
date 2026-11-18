@@ -3,6 +3,18 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePortal } from '@/portal/PortalContext'
 import { IconeSair } from '@/components/common/NavIcons'
+import { supabase } from '@/lib/supabase'
+
+// Abre o Confina+ (www.confinamais.com) já logado: a sessão vai no fragmento
+// da URL (não chega a nenhum servidor) e o app a aplica ao abrir.
+async function abrirConfina() {
+  const aba = window.open('about:blank', '_blank')
+  const { data } = await supabase.auth.getSession()
+  const s = data.session
+  const url = s ? `https://www.confinamais.com/#sessao=${encodeURIComponent(s.access_token)}&r=${encodeURIComponent(s.refresh_token)}` : 'https://www.confinamais.com/login'
+  if (aba) aba.location.href = url
+  else window.location.href = url
+}
 
 interface ItemNav { to: string; label: string; end?: boolean }
 
@@ -24,7 +36,8 @@ export function navDoPortal(p: ReturnType<typeof usePortal>): ItemNav[] {
   }
   if (p.admin) return [{ to: '/admin', label: 'Fornecedores', end: true }]
   if (p.vinculo?.cliente.modo === 'estoque') return [
-    { to: '/', label: 'Estoque', end: true },
+    { to: '/', label: 'Painel', end: true },
+    { to: '/produtos', label: 'Produtos' },
     { to: '/meus-pedidos', label: 'Pedidos' },
   ]
   if (p.vinculo) return [{ to: '/', label: 'Pedidos', end: true }]
@@ -80,6 +93,13 @@ export function PortalLayout() {
           ))}
         </nav>
         <div className="sidebar-rodape" style={{ borderTop: '1px solid #f0f0f0' }}>
+          {portal.vinculo?.cliente.modo === 'estoque' && !portal.fornecedor && (
+            <button type="button" onClick={abrirConfina} className="sidebar-confina"
+              style={{ width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', background: '#e8f5e9', border: '1px solid #c8e6c9', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#1b5e20' }}>Usar o Confina+</div>
+              <div style={{ fontSize: 11.5, color: '#4b6b4d', marginTop: 2, lineHeight: 1.35 }}>Gestão do rebanho com o mesmo e-mail e senha. Abre já com a sua conta.</div>
+            </button>
+          )}
           <div className="sidebar-usuario" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
             <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#e8f5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#2e7d32', flexShrink: 0 }}>
               {String(nome).split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase()}

@@ -226,10 +226,13 @@ export interface ConsumoInformado {
   cliente_id: string
   produto_id: string
   kg_dia: number
-  unidade: 'dia' | 'semana'
+  unidade: UnidadeConsumo
   vigente_desde: string
   atualizado_em?: string
 }
+export type UnidadeConsumo = 'dia' | 'semana' | 'mes'
+export const DIAS_UNIDADE: Record<UnidadeConsumo, number> = { dia: 1, semana: 7, mes: 30 }
+export const ROTULO_UNIDADE: Record<UnidadeConsumo, string> = { dia: 'dia', semana: 'semana', mes: 'mês' }
 
 export interface RotaEntrega {
   id: string

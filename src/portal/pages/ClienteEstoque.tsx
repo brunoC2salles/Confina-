@@ -25,7 +25,7 @@ export default function ClienteEstoque() {
 
   return (
     <div className="page">
-      <PageHeader title="Estoque" subtitle={`Produtos ${vinculo.fornecedor.nome}: saldo, consumo e previsão de fim`} />
+      <PageHeader title="Produtos" subtitle={`Produtos ${vinculo.fornecedor.nome}: saldo, consumo e previsão de fim`} />
       <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         Média das baixas calculada sobre os últimos {vinculo.cliente.janela_consumo_dias} dias.
         {janela == null
